@@ -16,7 +16,6 @@
                 <form id="authForm">
                     <input type="text" id="username" placeholder="用户名" required>
                     <input type="password" id="password" placeholder="密码" required>
-                    <input type="text" id="groupName" placeholder="项目组名称" required>
                     <button type="submit" id="submitBtn">登录</button>
                 </form>
                 <p>
@@ -27,10 +26,113 @@
         </div>
     </div>
 
+    <!-- 项目选择页面 -->
+    <div id="projectPage" class="page hidden">
+        <div class="container">
+            <header class="project-header">
+                <h1>工作台</h1>
+                <div class="user-info">
+                    <span id="currentUserName">用户名</span>
+                    <button id="logoutFromProject" class="logout-btn">退出登录</button>
+                </div>
+            </header>
+            
+            <!-- 所有看板 -->
+            <div class="dashboard-section">
+                <h2>📋 所有看板</h2>
+                <div id="quickAccessBoards" class="quick-boards-grid">
+                    <!-- 看板快速访问将动态生成 -->
+                </div>
+            </div>
+            
+            <!-- 项目管理 -->
+            <div class="dashboard-section">
+                <div class="projects-header">
+                    <h2>📁 项目管理</h2>
+                    <div class="header-actions">
+                        <button class="btn-primary" onclick="showCreateProjectForm()">
+                            <i>➕</i> 创建项目
+                        </button>
+                        <button class="btn-secondary" onclick="showJoinProjectForm()">
+                            <i>🔗</i> 加入项目
+                        </button>
+                    </div>
+                </div>
+                <div id="projectsList" class="projects-grid">
+                    <!-- 项目列表将动态生成 -->
+                </div>
+                
+                <!-- 创建项目表单 -->
+                <div id="createProjectForm" class="create-form hidden">
+                    <div class="form-card">
+                        <h3>创建新项目</h3>
+                        <input type="text" id="newProjectName" placeholder="输入项目名称" required>
+                        <div class="form-actions">
+                            <button onclick="createProject()" class="btn-primary">创建项目</button>
+                            <button onclick="hideCreateProjectForm()" class="btn-secondary">取消</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 加入项目表单 -->
+                <div id="joinProjectForm" class="create-form hidden">
+                    <div class="form-card">
+                        <h3>加入现有项目</h3>
+                        <p>输入项目邀请码，加入团队协作</p>
+                        <input type="text" id="inviteCode" placeholder="输入6位邀请码 (如: ABC123)" required maxlength="6">
+                        <div class="form-actions">
+                            <button onclick="joinProject()" class="btn-primary">加入项目</button>
+                            <button onclick="hideJoinProjectForm()" class="btn-secondary">取消</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 看板选择页面 -->
+    <div id="boardSelectPage" class="page hidden">
+        <div class="container">
+            <header class="board-select-header">
+                <h1 class="project-breadcrumb">
+                    <span class="home-link" onclick="showProjectPage()">首页</span> / <span id="projectTitle">项目名称</span>
+                </h1>
+                <div class="header-actions">
+                    <button id="backToProjects">返回首页</button>
+                    <button id="logoutFromBoard" class="logout-btn">退出登录</button>
+                </div>
+            </header>
+            
+            <div class="project-info">
+                <p><strong>邀请码：</strong><span id="projectInviteCode" class="invite-code">------</span></p>
+                <p><strong>项目成员：</strong><span id="projectMembers">loading...</span></p>
+            </div>
+            
+            <div class="board-section">
+                <h2>选择看板</h2>
+                <div id="boardList" class="quick-boards-grid">
+                    <!-- 看板列表将动态生成 -->
+                </div>
+            </div>
+            
+            <div class="board-section">
+                <h2>创建新看板</h2>
+                <div class="create-board-form">
+                    <input type="text" id="newBoardName" placeholder="看板名称 (如: 开发看板)" required>
+                    <button onclick="createBoard()">创建看板</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 看板页面 -->
     <div id="boardPage" class="page hidden">
         <header class="header">
-            <h1 id="boardTitle">项目看板</h1>
+            <div class="board-header-left">
+                <h1 class="board-breadcrumb">
+                    <span id="currentProjectName" class="project-link" onclick="goToProjectBoards()">项目名</span> / <span id="currentBoardName">看板名</span>
+                </h1>
+            </div>
             <div class="header-actions">
                 <div class="online-users">
                     <span id="onlineCount">在线用户: 0</span>
@@ -40,6 +142,7 @@
                 <button id="importBtn">导入</button>
                 <button id="exportBtn">导出Markdown</button>
                 <button id="archiveBtn">归档管理</button>
+                <button id="backToBoardSelect">返回</button>
                 <button id="logoutBtn">退出</button>
             </div>
         </header>
@@ -50,8 +153,10 @@
                 <h3>待办 <span class="count" id="todoCount">0</span></h3>
                 <div class="cards" id="todoCards"></div>
                 <div class="add-card">
-                    <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newTodoTitle" required>
-                    <input type="date" id="newTodoDeadline" title="截止日期">
+                    <div class="input-row">
+                        <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newTodoTitle" required>
+                        <input type="date" id="newTodoDeadline" title="截止日期">
+                    </div>
                     <button onclick="addCard('todo')">+ 添加任务</button>
                     <div class="keyboard-hint">按 Enter 快速添加</div>
                 </div>
@@ -62,8 +167,10 @@
                 <h3>进行中 <span class="count" id="doingCount">0</span></h3>
                 <div class="cards" id="doingCards"></div>
                 <div class="add-card">
-                    <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoingTitle" required>
-                    <input type="date" id="newDoingDeadline" title="截止日期">
+                    <div class="input-row">
+                        <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoingTitle" required>
+                        <input type="date" id="newDoingDeadline" title="截止日期">
+                    </div>
                     <button onclick="addCard('doing')">+ 添加任务</button>
                     <div class="keyboard-hint">按 Enter 快速添加</div>
                 </div>
@@ -74,8 +181,10 @@
                 <h3>已完成 <span class="count" id="doneCount">0</span></h3>
                 <div class="cards" id="doneCards"></div>
                 <div class="add-card">
-                    <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoneTitle" required>
-                    <input type="date" id="newDoneDeadline" title="截止日期">
+                    <div class="input-row">
+                        <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoneTitle" required>
+                        <input type="date" id="newDoneDeadline" title="截止日期">
+                    </div>
                     <button onclick="addCard('done')">+ 添加任务</button>
                     <div class="keyboard-hint">按 Enter 快速添加</div>
                 </div>

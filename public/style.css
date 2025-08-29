@@ -7,30 +7,43 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #f5f7fa;
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
     color: #333;
+    width: 100%;
+    min-height: 100vh;
 }
 
 /* 页面切换 */
 .page {
     min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    width: 100%;
 }
 
 .hidden {
     display: none !important;
 }
 
-/* 登录页面 */
+/* 页面容器 */
 .container {
-    background: white;
+    width: 100%;
     padding: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+/* 登录页面特殊样式 */
+#loginPage .container {
+    max-width: 400px;
+    margin: 0 auto;
+    background: white;
     border-radius: 8px;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-    width: 100%;
-    max-width: 400px;
+}
+
+#loginPage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 h1 {
@@ -173,9 +186,11 @@ h1 {
     flex: 1;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1.5rem;
-    padding: 1.5rem;
+    gap: 1.25rem;
+    padding: 1.5rem 2rem;
     overflow-x: auto;
+    max-width: none;
+    width: 100%;
 }
 
 /* 归档页面样式 */
@@ -317,9 +332,31 @@ h1 {
     gap: 0.25rem;
 }
 
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-top: 0.5rem;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 0.5rem;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.card-footer:hover {
+    color: #6b7280;
+}
+
 .card-author {
     font-weight: 500;
     color: #2563eb;
+}
+
+.card-created {
+    font-size: 0.75rem;
+    color: #9ca3af;
 }
 
 .deadline {
@@ -372,6 +409,12 @@ h1 {
     margin-top: 1rem;
 }
 
+.input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
 .add-card input[type="text"] {
     padding: 0.75rem;
     border: 2px solid #e2e8f0;
@@ -380,6 +423,7 @@ h1 {
     transition: all 0.2s;
     background: white;
     font-family: inherit;
+    flex: 1;
 }
 
 .add-card input[type="text"]:focus {
@@ -395,18 +439,41 @@ h1 {
 }
 
 .add-card input[type="date"] {
-    padding: 0.5rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    font-size: 0.875rem;
-    background: white;
+    padding: 0.3rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 4px;
+    font-size: 0;
+    background: #f8fafc;
+    color: transparent;
+    transition: all 0.2s;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    cursor: pointer;
+    position: relative;
+}
+
+.add-card input[type="date"]::-webkit-calendar-picker-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: auto;
     color: #64748b;
-    transition: border-color 0.2s;
+    cursor: pointer;
 }
 
 .add-card input[type="date"]:focus {
     outline: none;
     border-color: #3b82f6;
+    background: #eff6ff;
+}
+
+.add-card input[type="date"]:hover {
+    border-color: #94a3b8;
+    background: #f1f5f9;
 }
 
 .add-card button {
@@ -454,16 +521,33 @@ h1 {
     display: none;
     position: absolute;
     top: 0.5rem;
-    gap: 0.25rem;
-}
-
-.card-actions.left-actions {
     left: 0.5rem;
+    right: 0.5rem;
+    justify-content: space-between;
+    pointer-events: none;
 }
 
-.card-actions.right-actions {
-    right: 0.5rem;
+.card-actions .action-btn,
+.card-actions .archive-btn,
+.card-actions .restore-btn {
+    pointer-events: auto;
 }
+
+/* 待办列只有向右按钮，应该在右边 */
+.column[data-status="todo"] .card-actions {
+    justify-content: flex-end;
+}
+
+/* 进行中列有左右两个按钮，分散两端 */
+.column[data-status="doing"] .card-actions {
+    justify-content: space-between;
+}
+
+/* 已完成列有向左按钮和归档按钮，分散两端 */
+.column[data-status="done"] .card-actions {
+    justify-content: space-between;
+}
+
 
 .card:hover .card-actions {
     display: flex;
@@ -495,9 +579,34 @@ h1 {
 .archive-btn {
     background: #f59e0b;
     color: white;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
 }
 
-.action-btn:hover {
+.restore-btn {
+    background: #8b5cf6;
+    color: white;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.action-btn:hover, .archive-btn:hover, .restore-btn:hover {
     transform: scale(1.1);
 }
 
@@ -753,5 +862,803 @@ h1 {
     .modal-content {
         margin: 1rem;
         width: calc(100% - 2rem);
+    }
+    
+    .project-list, .board-list {
+        grid-template-columns: 1fr;
+    }
+    
+    .create-project-form, .join-project-form, .create-board-form {
+        flex-direction: column;
+    }
+    
+    .create-project-form input, .join-project-form input, .create-board-form input {
+        min-width: auto;
+    }
+    
+    .board-header-left {
+        margin-bottom: 1rem;
+    }
+}
+
+/* 项目选择页面样式 */
+.project-header, .board-select-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.project-section, .board-section {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.project-section h2, .board-section h2 {
+    margin: 0 0 1rem 0;
+    color: #374151;
+    font-size: 1.25rem;
+}
+
+.project-list, .board-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.project-card, .board-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    min-height: 85px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.project-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f3f4f6 100%);
+}
+
+.board-card {
+    background: linear-gradient(135deg, #f7fdf7 0%, #f0fdf4 100%);
+    border-color: #d1fae5;
+}
+
+.project-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    border-color: #667eea;
+    background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
+}
+
+.board-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(34, 197, 94, 0.08);
+    border-color: #a7f3d0;
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+}
+
+.project-card h3, .board-card h3 {
+    margin: 0 0 0.5rem 0;
+    color: #1f2937;
+    font-size: 1.125rem;
+}
+
+.project-card .project-info, .board-card .board-info {
+    color: #6b7280;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.invite-code {
+    background: #eff6ff;
+    color: #1d4ed8;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.create-project-form, .join-project-form, .create-board-form {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.create-project-form input, .join-project-form input, .create-board-form input {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.75rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: border-color 0.2s;
+}
+
+.create-project-form input:focus, .join-project-form input:focus, .create-board-form input:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.create-project-form button, .join-project-form button, .create-board-form button {
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.create-project-form button:hover, .join-project-form button:hover, .create-board-form button:hover {
+    background: linear-gradient(135deg, #1d4ed8, #1e40af);
+    transform: translateY(-1px);
+}
+
+.project-info {
+    background: #f8fafc;
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 2rem;
+}
+
+.project-info p {
+    margin: 0.5rem 0;
+    color: #4b5563;
+}
+
+/* 看板头部样式 */
+.board-header-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.board-breadcrumb {
+    font-size: 1.875rem;
+    color: #374151;
+    margin: 0;
+    font-weight: bold;
+}
+
+.board-breadcrumb span {
+    color: #374151;
+    font-weight: 500;
+}
+
+.board-breadcrumb .project-link {
+    color: #3b82f6;
+    cursor: pointer;
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.board-breadcrumb .project-link:hover {
+    color: #1d4ed8;
+    border-bottom-color: #1d4ed8;
+}
+
+.project-breadcrumb {
+    font-size: 1.875rem;
+    color: #374151;
+    margin: 0;
+    font-weight: bold;
+}
+
+.project-breadcrumb span {
+    color: #374151;
+    font-weight: 500;
+}
+
+.project-breadcrumb .home-link {
+    color: #3b82f6;
+    cursor: pointer;
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.project-breadcrumb .home-link:hover {
+    color: #1d4ed8;
+    border-bottom-color: #1d4ed8;
+}
+
+.logout-btn {
+    background: #dc2626 !important;
+    color: white;
+}
+
+.logout-btn:hover {
+    background: #b91c1c !important;
+}
+
+#backToBoardSelect {
+    background: #6b7280;
+    color: white;
+}
+
+#backToBoardSelect:hover {
+    background: #4b5563;
+}
+
+.empty-state {
+    text-align: center;
+    color: #6b7280;
+    font-style: italic;
+    padding: 2rem;
+    background: #f9fafb;
+    border: 2px dashed #d1d5db;
+    border-radius: 8px;
+}
+
+/* 首页优化样式 */
+.all-boards-section, .projects-section {
+    margin-bottom: 2rem;
+}
+
+.all-boards-section h3, .projects-section h3 {
+    margin: 0 0 1rem 0;
+    color: #1f2937;
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.all-boards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.projects-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.quick-board-card {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: white;
+    border-radius: 8px;
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+    min-height: 70px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.quick-board-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+}
+
+.board-icon {
+    font-size: 1.5rem;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.board-details h4 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.board-project {
+    font-size: 0.875rem;
+    opacity: 0.8;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+}
+
+/* 看板卡片操作按钮 */
+.board-card-with-actions {
+    position: relative;
+}
+
+.board-card-actions {
+    display: none;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    gap: 0.5rem;
+}
+
+.board-card-with-actions:hover .board-card-actions {
+    display: flex;
+}
+
+.board-action-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    backdrop-filter: blur(10px);
+}
+
+.board-action-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: scale(1.1);
+}
+
+.board-action-btn.delete-btn:hover {
+    background: #dc2626;
+}
+
+/* 项目头部样式 */
+.project-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.user-info span {
+    color: #4b5563;
+    font-weight: 500;
+    background: #f3f4f6;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+}
+
+/* 工作台样式 */
+.dashboard-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    border-left: 4px solid #3b82f6;
+    transition: transform 0.2s;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.stat-icon {
+    font-size: 2rem;
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stat-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #1f2937;
+    line-height: 1;
+}
+
+.stat-label {
+    color: #6b7280;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+}
+
+.dashboard-section {
+    margin-bottom: 2rem;
+}
+
+.dashboard-section h2 {
+    margin: 0 0 1rem 0;
+    color: #1f2937;
+    font-size: 1.5rem;
+}
+
+.quick-boards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.recent-activities {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+}
+
+.activity-item {
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #f3f4f6;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+.activity-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    background: #f0f9ff;
+    flex-shrink: 0;
+}
+
+.activity-content {
+    flex: 1;
+}
+
+.activity-title {
+    font-weight: 500;
+    color: #1f2937;
+    margin: 0 0 0.25rem 0;
+}
+
+.activity-time {
+    font-size: 0.875rem;
+    color: #6b7280;
+}
+
+/* 项目管理样式 */
+.projects-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.projects-header h2 {
+    margin: 0;
+    color: #1f2937;
+}
+
+.header-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: white;
+    border: none;
+    padding: 0.625rem 1.25rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.15);
+    font-size: 0.875rem;
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.25);
+}
+
+.btn-secondary {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid #d1d5db;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+    background: #e5e7eb;
+}
+
+.create-form {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.form-card {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+    width: 100%;
+    max-width: 400px;
+}
+
+.form-card h3 {
+    margin: 0 0 1.5rem 0;
+    color: #1f2937;
+}
+
+.form-card input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    box-sizing: border-box;
+}
+
+.form-card input:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.form-actions {
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+/* 加入项目样式 */
+.join-section {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+}
+
+.join-card {
+    background: white;
+    padding: 3rem;
+    border-radius: 16px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    max-width: 500px;
+    width: 100%;
+}
+
+.join-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+}
+
+.join-card h2 {
+    margin: 0 0 0.5rem 0;
+    color: #1f2937;
+}
+
+.join-card p {
+    color: #6b7280;
+    margin: 0 0 2rem 0;
+}
+
+.join-form {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.join-form input {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.75rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 1rem;
+    text-transform: uppercase;
+    text-align: center;
+    font-weight: bold;
+}
+
+.join-form input:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+.join-tips {
+    text-align: left;
+    background: #f8fafc;
+    padding: 1.5rem;
+    border-radius: 8px;
+    border-left: 4px solid #3b82f6;
+}
+
+.join-tips h4 {
+    margin: 0 0 1rem 0;
+    color: #374151;
+}
+
+.join-tips ul {
+    margin: 0;
+    padding-left: 1.5rem;
+}
+
+.join-tips li {
+    color: #6b7280;
+    margin-bottom: 0.5rem;
+}
+
+/* 桌面版优化 */
+@media (min-width: 1024px) {
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .quick-boards-grid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1.25rem;
+    }
+    
+    .projects-grid {
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.25rem;
+    }
+    
+    
+    .dashboard-section {
+        margin-bottom: 3rem;
+    }
+    
+    .quick-board-card {
+        padding: 1.25rem;
+        min-height: 70px;
+    }
+    
+    .board-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 1.5rem;
+    }
+    
+    .board-details h4 {
+        font-size: 1.125rem;
+    }
+    
+    .project-card {
+        padding: 1.25rem;
+        min-height: 85px;
+    }
+    
+    .board-container {
+        padding: 1.5rem 2.5rem;
+        gap: 1.5rem;
+    }
+}
+
+/* 移动端响应式 */
+@media (max-width: 768px) {
+    
+    /* 工作台响应式 */
+    .dashboard-stats {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+    
+    .stat-card {
+        padding: 1rem;
+        gap: 0.75rem;
+    }
+    
+    .stat-icon {
+        width: 50px;
+        height: 50px;
+        font-size: 1.5rem;
+    }
+    
+    .stat-number {
+        font-size: 1.5rem;
+    }
+    
+    .quick-boards-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .projects-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .projects-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+    
+    .join-card {
+        padding: 2rem 1.5rem;
+    }
+    
+    .join-form {
+        flex-direction: column;
+    }
+    
+    .join-form input {
+        min-width: auto;
+    }
+    
+    .form-card {
+        margin: 1rem;
+        width: calc(100% - 2rem);
+        max-width: none;
+    }
+    
+    .form-actions {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .user-info {
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.5rem;
+    }
+    
+    .project-header h1 {
+        font-size: 1.5rem;
     }
 }

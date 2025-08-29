@@ -1,24 +1,25 @@
 // 全局变量
 let socket;
 let currentUser = null;
-let currentGroup = null;
+let currentProjectId = null;
+let currentProjectName = null;
+let currentBoardName = null;
 let boardData = { todo: [], doing: [], done: [], archived: [] };
 let editingCardId = null;
+let previousPage = null; // 记录上一个页面
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
+const projectPage = document.getElementById('projectPage');
+const boardSelectPage = document.getElementById('boardSelectPage');
 const boardPage = document.getElementById('boardPage');
+const archivePage = document.getElementById('archivePage');
 const authForm = document.getElementById('authForm');
 const formTitle = document.getElementById('formTitle');
 const submitBtn = document.getElementById('submitBtn');
 const switchMode = document.getElementById('switchMode');
 const switchText = document.getElementById('switchText');
-const groupNameInput = document.getElementById('groupName');
-const boardTitle = document.getElementById('boardTitle');
-const onlineCount = document.getElementById('onlineCount');
-const userList = document.getElementById('userList');
 const editModal = document.getElementById('editModal');
-const archivePage = document.getElementById('archivePage');
 const importModal = document.getElementById('importModal');
 let importFileData = null;
 
@@ -26,22 +27,56 @@ let importFileData = null;
 document.addEventListener('DOMContentLoaded', function() {
     // 检查是否已登录
     const savedUser = localStorage.getItem('kanbanUser');
-    const savedGroup = localStorage.getItem('kanbanGroup');
-    
-    if (savedUser && savedGroup) {
+    if (savedUser) {
         currentUser = savedUser;
-        currentGroup = savedGroup;
-        showBoard();
-        connectWebSocket();
+        
+        // 恢复页面状态
+        const savedPageState = localStorage.getItem('kanbanPageState');
+        const savedCurrentProjectId = localStorage.getItem('kanbanCurrentProjectId');
+        const savedCurrentProjectName = localStorage.getItem('kanbanCurrentProjectName'); 
+        const savedCurrentBoardName = localStorage.getItem('kanbanCurrentBoardName');
+        
+        if (savedPageState && savedCurrentProjectId && savedCurrentProjectName) {
+            currentProjectId = savedCurrentProjectId;
+            currentProjectName = savedCurrentProjectName;
+            
+            if (savedPageState === 'boardSelect') {
+                showBoardSelectPage();
+            } else if (savedPageState === 'board' && savedCurrentBoardName) {
+                currentBoardName = savedCurrentBoardName;
+                showBoard();
+            } else if (savedPageState === 'archive' && savedCurrentBoardName) {
+                currentBoardName = savedCurrentBoardName;
+                showBoard();
+                // 稍后显示归档页面
+                setTimeout(() => showArchive(), 100);
+            } else {
+                showProjectPage();
+            }
+        } else {
+            showProjectPage();
+        }
+    } else {
+        showLoginPage();
     }
-    
+
     // 绑定事件
     authForm.addEventListener('submit', handleAuth);
     switchMode.addEventListener('click', toggleAuthMode);
+    
+    // 项目页面事件
+    document.getElementById('logoutFromProject').addEventListener('click', logout);
+    
+    // 看板选择页面事件
+    document.getElementById('backToProjects').addEventListener('click', showProjectPage);
+    document.getElementById('logoutFromBoard').addEventListener('click', logout);
+    
+    // 看板页面事件
     document.getElementById('logoutBtn').addEventListener('click', logout);
     document.getElementById('exportBtn').addEventListener('click', exportMarkdown);
     document.getElementById('importBtn').addEventListener('click', importBoard);
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
+    document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
     
     // 绑定模态框事件
@@ -77,6 +112,100 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// 页面显示函数
+function showLoginPage() {
+    loginPage.classList.remove('hidden');
+    projectPage.classList.add('hidden');
+    boardSelectPage.classList.add('hidden');
+    boardPage.classList.add('hidden');
+    archivePage.classList.add('hidden');
+}
+
+function showProjectPage() {
+    previousPage = 'project';
+    loginPage.classList.add('hidden');
+    projectPage.classList.remove('hidden');
+    boardSelectPage.classList.add('hidden');
+    boardPage.classList.add('hidden');
+    archivePage.classList.add('hidden');
+    
+    // 保存页面状态
+    localStorage.setItem('kanbanPageState', 'project');
+    localStorage.removeItem('kanbanCurrentProjectId');
+    localStorage.removeItem('kanbanCurrentProjectName');
+    localStorage.removeItem('kanbanCurrentBoardName');
+    
+    loadUserProjects();
+}
+
+function showBoardSelectPage() {
+    previousPage = 'boardSelect';
+    loginPage.classList.add('hidden');
+    projectPage.classList.add('hidden');
+    boardSelectPage.classList.remove('hidden');
+    boardPage.classList.add('hidden');
+    archivePage.classList.add('hidden');
+    
+    // 更新项目标题
+    document.getElementById('projectTitle').textContent = currentProjectName;
+    
+    // 保存页面状态
+    localStorage.setItem('kanbanPageState', 'boardSelect');
+    localStorage.setItem('kanbanCurrentProjectId', currentProjectId);
+    localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
+    localStorage.removeItem('kanbanCurrentBoardName');
+    
+    loadProjectBoards();
+}
+
+function showBoard() {
+    if (!previousPage) {
+        previousPage = 'project'; // 如果直接进入看板，设置默认返回到项目页面
+    }
+    loginPage.classList.add('hidden');
+    projectPage.classList.add('hidden');
+    boardSelectPage.classList.add('hidden');
+    boardPage.classList.remove('hidden');
+    archivePage.classList.add('hidden');
+    
+    // 保存页面状态
+    localStorage.setItem('kanbanPageState', 'board');
+    localStorage.setItem('kanbanCurrentProjectId', currentProjectId);
+    localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
+    localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
+    
+    updateBoardHeader();
+    loadBoardData();
+    connectWebSocket();
+}
+
+function showArchive() {
+    boardPage.classList.add('hidden');
+    archivePage.classList.remove('hidden');
+    
+    // 保存页面状态  
+    localStorage.setItem('kanbanPageState', 'archive');
+    
+    renderArchive();
+}
+
+// 智能返回功能
+function goBack() {
+    if (previousPage === 'project') {
+        showProjectPage();
+    } else if (previousPage === 'boardSelect') {
+        showBoardSelectPage();
+    } else {
+        // 默认返回项目页面
+        showProjectPage();
+    }
+}
+
+// 从看板页面返回到项目看板选择页面
+function goToProjectBoards() {
+    showBoardSelectPage();
+}
+
 // 认证模式切换
 function toggleAuthMode(e) {
     e.preventDefault();
@@ -101,76 +230,377 @@ async function handleAuth(e) {
     
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
-    const groupName = groupNameInput.value.trim();
     const isLogin = submitBtn.textContent === '登录';
     
-    if (!username || !password || !groupName) {
-        alert('请填写所有字段');
+    if (!username || !password) {
+        alert('请填写用户名和密码');
         return;
     }
     
     try {
-        submitBtn.disabled = true;
-        submitBtn.textContent = isLogin ? '登录中...' : '注册中...';
-        
         const response = await fetch(`/api/${isLogin ? 'login' : 'register'}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ username, password, groupName })
+            body: JSON.stringify({
+                username,
+                password
+            })
         });
         
-        const data = await response.json();
+        const result = await response.json();
         
-        if (data.success) {
+        if (response.ok) {
             currentUser = username;
-            currentGroup = groupName;
             localStorage.setItem('kanbanUser', username);
-            localStorage.setItem('kanbanGroup', groupName);
-            showBoard();
-            connectWebSocket();
+            showProjectPage();
         } else {
-            alert(data.message || '操作失败');
+            alert(result.message || `${isLogin ? '登录' : '注册'}失败`);
         }
     } catch (error) {
         console.error('Auth error:', error);
-        alert('网络错误，请重试');
-    } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = isLogin ? '登录' : '注册';
+        alert('网络错误，请稍后重试');
     }
 }
 
-// 显示看板页面
-function showBoard() {
-    loginPage.classList.add('hidden');
-    boardPage.classList.remove('hidden');
-    archivePage.classList.add('hidden');
-    boardTitle.textContent = `${currentGroup} - 项目看板`;
-    loadBoardData();
+// 加载用户数据
+async function loadUserProjects() {
+    try {
+        const response = await fetch(`/api/user-projects/${currentUser}`);
+        const projects = await response.json();
+        
+        // 设置用户名
+        document.getElementById('currentUserName').textContent = currentUser;
+        
+        if (projects.length === 0) {
+            document.getElementById('quickAccessBoards').innerHTML = '<div class="empty-state">还没有加入任何项目，请先创建或加入一个项目！</div>';
+            document.getElementById('projectsList').innerHTML = '<div class="empty-state">还没有项目，创建第一个项目开始协作吧！</div>';
+            return;
+        }
+        
+        const quickAccessBoards = document.getElementById('quickAccessBoards');
+        const projectsList = document.getElementById('projectsList');
+        
+        // 清空现有内容，避免重复
+        quickAccessBoards.innerHTML = '';
+        projectsList.innerHTML = '';
+        
+        // 加载所有看板和项目数据
+        for (const project of projects) {
+            try {
+                const boardsResponse = await fetch(`/api/project-boards/${project.id}`);
+                const boardsData = await boardsResponse.json();
+                
+                // 添加快速访问看板
+                boardsData.boards.forEach(boardName => {
+                    const boardCard = document.createElement('div');
+                    boardCard.className = 'quick-board-card board-card-with-actions';
+                    boardCard.onclick = () => {
+                        currentProjectId = project.id;
+                        currentProjectName = project.name;
+                        currentBoardName = boardName;
+                        previousPage = 'project'; // 从项目首页直接进入看板
+                        showBoard();
+                    };
+                    
+                    boardCard.innerHTML = `
+                        <div class="board-icon">📋</div>
+                        <div class="board-details">
+                            <h4>${escapeHtml(boardName)}</h4>
+                            <span class="board-project">${escapeHtml(project.name)}</span>
+                        </div>
+                        <div class="board-card-actions">
+                            <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="删除看板">🗑️</button>
+                        </div>
+                    `;
+                    
+                    quickAccessBoards.appendChild(boardCard);
+                });
+                
+            } catch (error) {
+                console.error(`Error loading boards for project ${project.id}:`, error);
+            }
+            
+            // 添加项目卡片到项目管理Tab
+            const projectCard = document.createElement('div');
+            projectCard.className = 'project-card';
+            projectCard.onclick = () => selectProject(project.id, project.name);
+            
+            projectCard.innerHTML = `
+                <h3>${escapeHtml(project.name)}</h3>
+                <div class="project-info">
+                    邀请码: <span class="invite-code">${project.inviteCode}</span><br>
+                    成员: ${project.memberCount}人<br>
+                    看板: ${project.boardCount}个<br>
+                    创建于: ${new Date(project.created).toLocaleDateString()}
+                </div>
+            `;
+            
+            projectsList.appendChild(projectCard);
+        }
+        
+    } catch (error) {
+        console.error('Load projects error:', error);
+        alert('加载项目列表失败');
+    }
 }
 
-// 显示归档页面
-function showArchive() {
-    boardPage.classList.add('hidden');
-    archivePage.classList.remove('hidden');
-    renderArchive();
+// Tab切换功能已移除，现在使用单页面布局
+
+// 显示/隐藏创建项目表单
+function showCreateProjectForm() {
+    document.getElementById('createProjectForm').classList.remove('hidden');
+    document.getElementById('newProjectName').focus();
 }
 
-// 渲染归档页面
-function renderArchive() {
-    const archivedCards = document.getElementById('archivedCards');
-    const archivedCount = document.getElementById('archivedCount');
+function hideCreateProjectForm() {
+    document.getElementById('createProjectForm').classList.add('hidden');
+    document.getElementById('newProjectName').value = '';
+}
+
+// 显示/隐藏加入项目表单
+function showJoinProjectForm() {
+    document.getElementById('joinProjectForm').classList.remove('hidden');
+    document.getElementById('inviteCode').focus();
+}
+
+function hideJoinProjectForm() {
+    document.getElementById('joinProjectForm').classList.add('hidden');
+    document.getElementById('inviteCode').value = '';
+}
+
+// 选择项目
+function selectProject(projectId, projectName) {
+    currentProjectId = projectId;
+    currentProjectName = projectName;
+    document.getElementById('projectTitle').textContent = projectName;
+    previousPage = 'project'; // 从项目页面进入看板选择
+    showBoardSelectPage();
+}
+
+// 创建项目
+async function createProject() {
+    const projectName = document.getElementById('newProjectName').value.trim();
+    if (!projectName) {
+        alert('请输入项目名称');
+        return;
+    }
     
-    archivedCards.innerHTML = '';
-    const cards = boardData.archived || [];
-    archivedCount.textContent = cards.length;
+    try {
+        const response = await fetch('/api/create-project', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                username: currentUser,
+                projectName
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            hideCreateProjectForm();
+            loadUserProjects();
+            alert(`项目创建成功！\n项目名称: ${projectName}\n邀请码: ${result.inviteCode}\n\n请保存邀请码，用于邀请团队成员！`);
+        } else {
+            alert(result.message || '创建项目失败');
+        }
+    } catch (error) {
+        console.error('Create project error:', error);
+        alert('创建项目失败');
+    }
+}
+
+// 加入项目
+async function joinProject() {
+    const inviteCode = document.getElementById('inviteCode').value.trim().toUpperCase();
+    if (!inviteCode || inviteCode.length !== 6) {
+        alert('请输入6位邀请码');
+        return;
+    }
     
-    cards.forEach(card => {
-        const cardElement = createCardElement(card, 'archived');
-        archivedCards.appendChild(cardElement);
-    });
+    try {
+        const response = await fetch('/api/join-project', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                username: currentUser,
+                inviteCode
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            hideJoinProjectForm();
+            loadUserProjects();
+            alert('成功加入项目！');
+        } else {
+            alert(result.message || '加入项目失败');
+        }
+    } catch (error) {
+        console.error('Join project error:', error);
+        alert('加入项目失败');
+    }
+}
+
+// 加载项目看板列表
+async function loadProjectBoards() {
+    try {
+        const response = await fetch(`/api/project-boards/${currentProjectId}`);
+        const data = await response.json();
+        
+        document.getElementById('projectInviteCode').textContent = data.inviteCode;
+        document.getElementById('projectMembers').textContent = data.members.join(', ');
+        
+        const boardList = document.getElementById('boardList');
+        boardList.innerHTML = '';
+        
+        if (data.boards.length === 0) {
+            boardList.innerHTML = '<div class="empty-state">还没有看板，创建第一个看板吧！</div>';
+            return;
+        }
+        
+        data.boards.forEach(boardName => {
+            const boardCard = document.createElement('div');
+            boardCard.className = 'quick-board-card board-card-with-actions';
+            boardCard.onclick = () => selectBoard(boardName);
+            
+            boardCard.innerHTML = `
+                <div class="board-icon">📋</div>
+                <div class="board-details">
+                    <h4>${escapeHtml(boardName)}</h4>
+                    <span class="board-project">${escapeHtml(currentProjectName)}</span>
+                </div>
+                <div class="board-card-actions">
+                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeHtml(boardName)}')" title="删除看板">🗑️</button>
+                </div>
+            `;
+            
+            boardList.appendChild(boardCard);
+        });
+        
+    } catch (error) {
+        console.error('Load boards error:', error);
+        alert('加载看板列表失败');
+    }
+}
+
+// 选择看板
+function selectBoard(boardName) {
+    currentBoardName = boardName;
+    previousPage = 'boardSelect'; // 从看板选择页面进入看板
+    showBoard();
+}
+
+// 创建看板
+async function createBoard() {
+    const boardName = document.getElementById('newBoardName').value.trim();
+    if (!boardName) {
+        alert('请输入看板名称');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/create-board', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                projectId: currentProjectId,
+                boardName
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            document.getElementById('newBoardName').value = '';
+            loadProjectBoards();
+            alert('看板创建成功！');
+        } else {
+            alert(result.message || '创建看板失败');
+        }
+    } catch (error) {
+        console.error('Create board error:', error);
+        alert('创建看板失败');
+    }
+}
+
+// 删除看板
+async function deleteBoard(boardName) {
+    if (!confirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/delete-board', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                projectId: currentProjectId,
+                boardName
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            loadProjectBoards();
+            alert('看板删除成功！');
+        } else {
+            alert(result.message || '删除看板失败');
+        }
+    } catch (error) {
+        console.error('Delete board error:', error);
+        alert('删除看板失败');
+    }
+}
+
+// 从首页删除看板
+async function deleteBoardFromHome(boardName, projectId) {
+    if (!confirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/delete-board', {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                projectId: projectId,
+                boardName
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            loadUserProjects(); // 重新加载首页项目列表
+            alert('看板删除成功！');
+        } else {
+            alert(result.message || '删除看板失败');
+        }
+    } catch (error) {
+        console.error('Delete board from home error:', error);
+        alert('删除看板失败');
+    }
+}
+
+// 更新看板头部信息
+function updateBoardHeader() {
+    document.getElementById('currentProjectName').textContent = currentProjectName;
+    document.getElementById('currentBoardName').textContent = currentBoardName;
 }
 
 // WebSocket 连接
@@ -182,11 +612,11 @@ function connectWebSocket() {
     
     socket.onopen = function() {
         console.log('WebSocket connected');
-        // 加入项目组
         socket.send(JSON.stringify({
             type: 'join',
             user: currentUser,
-            group: currentGroup
+            projectId: currentProjectId,
+            boardName: currentBoardName
         }));
     };
     
@@ -197,7 +627,6 @@ function connectWebSocket() {
     
     socket.onclose = function() {
         console.log('WebSocket disconnected');
-        // 重连机制
         setTimeout(connectWebSocket, 3000);
     };
     
@@ -206,22 +635,22 @@ function connectWebSocket() {
     };
 }
 
-// 处理 WebSocket 消息
+// 处理WebSocket消息
 function handleWebSocketMessage(data) {
     switch (data.type) {
         case 'board-update':
-            if (data.group === currentGroup) {
+            if (data.projectId === currentProjectId && data.boardName === currentBoardName) {
                 boardData = data.board;
                 renderBoard();
             }
             break;
-        case 'users-update':
-            if (data.group === currentGroup) {
+        case 'user-list':
+            if (data.projectId === currentProjectId && data.boardName === currentBoardName) {
                 updateOnlineUsers(data.users);
             }
             break;
         case 'card-editing':
-            if (data.group === currentGroup && data.user !== currentUser) {
+            if (data.projectId === currentProjectId && data.boardName === currentBoardName) {
                 showCardEditing(data.cardId, data.user, data.editing);
             }
             break;
@@ -237,11 +666,9 @@ function handleWebSocketMessage(data) {
 // 加载看板数据
 async function loadBoardData() {
     try {
-        const response = await fetch(`/api/board/${currentGroup}`);
-        const data = await response.json();
-        
-        if (data.success) {
-            boardData = data.board;
+        const response = await fetch(`/api/board/${currentProjectId}/${encodeURIComponent(currentBoardName)}`);
+        if (response.ok) {
+            boardData = await response.json();
             renderBoard();
         }
     } catch (error) {
@@ -259,92 +686,99 @@ function renderBoard() {
         const cards = boardData[status] || [];
         countElement.textContent = cards.length;
         
-        cards.forEach(card => {
+        // 按创建时间倒序排序（最新的在前面）
+        const sortedCards = cards.slice().sort((a, b) => {
+            return new Date(b.created) - new Date(a.created);
+        });
+        
+        sortedCards.forEach(card => {
             const cardElement = createCardElement(card, status);
             cardsContainer.appendChild(cardElement);
         });
     });
     
-    // 如果当前在归档页面，也更新归档显示
     if (!archivePage.classList.contains('hidden')) {
         renderArchive();
     }
 }
 
+// 渲染归档页面
+function renderArchive() {
+    const archivedCards = document.getElementById('archivedCards');
+    const archivedCount = document.getElementById('archivedCount');
+    
+    archivedCards.innerHTML = '';
+    const cards = boardData.archived || [];
+    archivedCount.textContent = cards.length;
+    
+    // 按创建时间倒序排序（最新的在前面）
+    const sortedCards = cards.slice().sort((a, b) => {
+        return new Date(b.created) - new Date(a.created);
+    });
+    
+    sortedCards.forEach(card => {
+        const cardElement = createCardElement(card, 'archived');
+        archivedCards.appendChild(cardElement);
+    });
+}
+
 // 创建卡片元素
 function createCardElement(card, status) {
-    const cardDiv = document.createElement('div');
-    cardDiv.className = 'card';
-    cardDiv.dataset.cardId = card.id;
+    const cardElement = document.createElement('div');
+    cardElement.className = 'card';
+    cardElement.dataset.cardId = card.id;
     
-    // 计算日期状态
-    const today = new Date();
-    const deadline = card.deadline ? new Date(card.deadline) : null;
-    const daysUntilDeadline = deadline ? Math.ceil((deadline - today) / (1000 * 60 * 60 * 24)) : null;
+    const isOverdue = card.deadline && new Date(card.deadline) < new Date();
+    const isEditing = editingCardId === card.id;
     
-    let deadlineClass = '';
-    let deadlineText = '';
+    if (isOverdue) cardElement.classList.add('overdue');
+    if (isEditing) cardElement.classList.add('editing');
     
-    if (deadline) {
-        if (daysUntilDeadline < 0) {
-            deadlineClass = 'deadline overdue';
-            deadlineText = `已逾期 ${Math.abs(daysUntilDeadline)} 天`;
-        } else if (daysUntilDeadline <= 3) {
-            deadlineClass = 'deadline upcoming';
-            deadlineText = `${daysUntilDeadline} 天后到期`;
-        } else {
-            deadlineClass = 'deadline';
-            deadlineText = formatDate(deadline);
-        }
-    }
-    
-    // 根据状态决定按钮布局
-    let leftActions = '';
-    let rightActions = '';
-    
-    if (status === 'archived') {
-        // 归档状态：只有还原按钮
-        rightActions = '<button class="action-btn move-right" onclick="restoreCard(\'' + card.id + '\')" title="还原">↶</button>';
-    } else {
-        // 普通状态：左移、右移按钮
+    let actionsHtml = '';
+    if (status !== 'archived') {
         if (status !== 'todo') {
-            leftActions = '<button class="action-btn move-left" onclick="moveCard(\'' + card.id + '\', \'left\')" title="向左移动">←</button>';
+            actionsHtml += `<button class="action-btn move-left" onclick="moveCard('${card.id}', 'left')" title="向左移动">←</button>`;
         }
         if (status !== 'done') {
-            rightActions = '<button class="action-btn move-right" onclick="moveCard(\'' + card.id + '\', \'right\')" title="向右移动">→</button>';
+            actionsHtml += `<button class="action-btn move-right" onclick="moveCard('${card.id}', 'right')" title="向右移动">→</button>`;
         }
-        // 只有已完成列才显示归档按钮
         if (status === 'done') {
-            rightActions += '<button class="action-btn archive-btn" onclick="archiveCard(\'' + card.id + '\')" title="归档">📁</button>';
+            actionsHtml += `<button class="archive-btn" onclick="archiveCard('${card.id}')" title="归档">📁</button>`;
         }
+    } else {
+        actionsHtml = `<button class="restore-btn" onclick="restoreCard('${card.id}')" title="还原到待办">↶</button>`;
     }
-
-    cardDiv.innerHTML = `
-        ${leftActions ? `<div class="card-actions left-actions">${leftActions}</div>` : ''}
-        ${rightActions ? `<div class="card-actions right-actions">${rightActions}</div>` : ''}
-        <div class="card-title">${escapeHtml(card.title)}</div>
-        ${card.description ? `<div class="card-description">${escapeHtml(card.description)}</div>` : ''}
-        <div class="card-meta">
-            <div class="card-dates">
-                <span>创建: ${formatDate(new Date(card.created))}</span>
-                ${deadline ? `<span class="${deadlineClass}">截止: ${deadlineText}</span>` : ''}
+    
+    const deadlineHtml = card.deadline ? 
+        `<span class="card-deadline">📅 ${card.deadline}</span>` : '';
+    
+    cardElement.innerHTML = `
+        <div class="card-actions">${actionsHtml}</div>
+        <h4 class="card-title" onclick="openEditModal('${card.id}')">${escapeHtml(card.title)}</h4>
+        <p class="card-description" onclick="openEditModal('${card.id}')">${escapeHtml(card.description || '')}</p>
+        <div class="card-footer" onclick="openEditModal('${card.id}')">
+            <div class="card-footer-top">
+                <span class="card-author">@${escapeHtml(card.author)}</span>
+                <span class="card-created">${new Date(card.created).toLocaleDateString()}</span>
             </div>
-            <span class="card-author">${escapeHtml(card.author)}</span>
+            ${card.deadline ? `<div class="card-footer-bottom">${deadlineHtml}</div>` : ''}
         </div>
     `;
     
-    // 添加点击事件
-    cardDiv.addEventListener('click', function(e) {
-        if (!e.target.closest('.card-actions')) {
-            editCard(card.id);
+    // 为整个卡片添加点击事件作为备选
+    cardElement.addEventListener('click', function(e) {
+        // 如果点击的是按钮，不触发卡片点击
+        if (e.target.closest('.card-actions')) {
+            return;
         }
+        openEditModal(card.id);
     });
     
-    return cardDiv;
+    return cardElement;
 }
 
 // 添加卡片
-async function addCard(status) {
+function addCard(status) {
     const titleInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Title`);
     const deadlineInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Deadline`);
     
@@ -354,7 +788,7 @@ async function addCard(status) {
         return;
     }
     
-    const newCard = {
+    const card = {
         id: Date.now().toString(),
         title: title,
         description: '',
@@ -363,17 +797,16 @@ async function addCard(status) {
         deadline: deadlineInput.value || null
     };
     
-    // 发送到服务器
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'add-card',
-            group: currentGroup,
+            projectId: currentProjectId,
+            boardName: currentBoardName,
             status: status,
-            card: newCard
+            card: card
         }));
     }
     
-    // 清空输入框
     titleInput.value = '';
     deadlineInput.value = '';
 }
@@ -381,60 +814,54 @@ async function addCard(status) {
 // 移动卡片
 function moveCard(cardId, direction) {
     const statuses = ['todo', 'doing', 'done'];
-    let currentStatus = null;
+    let fromStatus = null;
     let cardIndex = -1;
     
-    // 查找卡片当前状态
     for (const status of statuses) {
         const index = boardData[status].findIndex(card => card.id === cardId);
         if (index !== -1) {
-            currentStatus = status;
+            fromStatus = status;
             cardIndex = index;
             break;
         }
     }
     
-    if (!currentStatus) return;
+    if (fromStatus === null) return;
     
-    const currentStatusIndex = statuses.indexOf(currentStatus);
-    let newStatusIndex;
+    const currentIndex = statuses.indexOf(fromStatus);
+    let toStatus;
     
-    if (direction === 'left') {
-        newStatusIndex = currentStatusIndex - 1;
-    } else {
-        newStatusIndex = currentStatusIndex + 1;
+    if (direction === 'left' && currentIndex > 0) {
+        toStatus = statuses[currentIndex - 1];
+    } else if (direction === 'right' && currentIndex < statuses.length - 1) {
+        toStatus = statuses[currentIndex + 1];
     }
     
-    if (newStatusIndex < 0 || newStatusIndex >= statuses.length) return;
-    
-    const newStatus = statuses[newStatusIndex];
-    
-    // 发送到服务器
-    if (socket && socket.readyState === WebSocket.OPEN) {
+    if (toStatus && socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'move-card',
-            group: currentGroup,
+            projectId: currentProjectId,
+            boardName: currentBoardName,
             cardId: cardId,
-            fromStatus: currentStatus,
-            toStatus: newStatus
+            fromStatus: fromStatus,
+            toStatus: toStatus
         }));
     }
 }
 
-// 归档卡片（直接执行，无需确认）
+// 归档卡片
 function archiveCard(cardId) {
-    // 只能归档已完成的任务
     const cardIndex = boardData.done.findIndex(card => card.id === cardId);
     if (cardIndex === -1) {
         alert('只能归档已完成的任务');
         return;
     }
     
-    // 直接归档，无需确认
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'archive-card',
-            group: currentGroup,
+            projectId: currentProjectId,
+            boardName: currentBoardName,
             cardId: cardId,
             fromStatus: 'done'
         }));
@@ -443,11 +870,11 @@ function archiveCard(cardId) {
 
 // 还原卡片
 function restoreCard(cardId) {
-    // 发送到服务器，还原到待办列
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'restore-card',
-            group: currentGroup,
+            projectId: currentProjectId,
+            boardName: currentBoardName,
             cardId: cardId
         }));
     }
@@ -455,53 +882,47 @@ function restoreCard(cardId) {
 
 // 清空归档
 function clearArchive() {
-    const archivedCount = boardData.archived ? boardData.archived.length : 0;
-    
-    if (archivedCount === 0) {
-        alert('归档列表为空');
-        return;
-    }
-    
-    if (confirm(`确定要永久删除所有 ${archivedCount} 个归档任务吗？此操作不可撤销！`)) {
-        // 发送到服务器
+    if (confirm('确定要清空所有归档任务吗？此操作不可恢复。')) {
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 type: 'clear-archive',
-                group: currentGroup
+                projectId: currentProjectId,
+                boardName: currentBoardName
             }));
         }
     }
 }
 
-// 编辑卡片
-function editCard(cardId) {
+// 打开编辑模态框
+function openEditModal(cardId) {
     let card = null;
+    let cardStatus = null;
     
-    // 查找卡片
     for (const status of ['todo', 'doing', 'done', 'archived']) {
-        card = boardData[status].find(c => c.id === cardId);
-        if (card) break;
+        const found = boardData[status].find(c => c.id === cardId);
+        if (found) {
+            card = found;
+            cardStatus = status;
+            break;
+        }
     }
     
     if (!card) return;
     
     editingCardId = cardId;
-    
-    // 填充编辑表单
     document.getElementById('editCardTitle').value = card.title;
-    document.getElementById('editCardDeadline').value = card.deadline || '';
     document.getElementById('editCardDescription').value = card.description || '';
-    document.getElementById('editCardCreated').textContent = `创建时间: ${formatDate(new Date(card.created))}`;
+    document.getElementById('editCardDeadline').value = card.deadline || '';
+    document.getElementById('editCardCreated').textContent = `创建于: ${new Date(card.created).toLocaleString()}`;
     document.getElementById('editCardAuthor').textContent = `创建者: ${card.author}`;
     
-    // 显示模态框
     editModal.classList.remove('hidden');
     
-    // 通知其他用户正在编辑
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'card-editing',
-            group: currentGroup,
+            projectId: currentProjectId,
+            boardName: currentBoardName,
             cardId: cardId,
             user: currentUser,
             editing: true
@@ -514,25 +935,23 @@ function saveCard() {
     if (!editingCardId) return;
     
     const title = document.getElementById('editCardTitle').value.trim();
-    const deadline = document.getElementById('editCardDeadline').value;
     const description = document.getElementById('editCardDescription').value.trim();
+    const deadline = document.getElementById('editCardDeadline').value || null;
     
     if (!title) {
-        alert('请输入任务标题');
+        alert('任务标题不能为空');
         return;
     }
     
-    // 发送到服务器
+    const updates = { title, description, deadline };
+    
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'update-card',
-            group: currentGroup,
+            projectId: currentProjectId,
+            boardName: currentBoardName,
             cardId: editingCardId,
-            updates: {
-                title: title,
-                deadline: deadline || null,
-                description: description
-            }
+            updates: updates
         }));
     }
     
@@ -543,29 +962,26 @@ function saveCard() {
 function deleteCard() {
     if (!editingCardId) return;
     
-    if (!confirm('确定要删除这个任务吗？')) return;
-    
-    // 发送到服务器
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'delete-card',
-            group: currentGroup,
-            cardId: editingCardId
-        }));
+    if (confirm('确定要删除这个任务吗？')) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'delete-card',
+                projectId: currentProjectId,
+                boardName: currentBoardName,
+                cardId: editingCardId
+            }));
+        }
+        closeEditModal();
     }
-    
-    closeEditModal();
 }
 
 // 关闭编辑模态框
 function closeEditModal() {
-    editModal.classList.add('hidden');
-    
-    // 通知停止编辑
     if (editingCardId && socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'card-editing',
-            group: currentGroup,
+            projectId: currentProjectId,
+            boardName: currentBoardName,
             cardId: editingCardId,
             user: currentUser,
             editing: false
@@ -573,104 +989,50 @@ function closeEditModal() {
     }
     
     editingCardId = null;
+    editModal.classList.add('hidden');
+}
+
+// 更新在线用户
+function updateOnlineUsers(users) {
+    document.getElementById('onlineCount').textContent = `在线用户: ${users.length}`;
+    document.getElementById('userList').innerHTML = users.map(user => 
+        `<span class="online-user">${escapeHtml(user)}</span>`
+    ).join('');
 }
 
 // 显示卡片编辑状态
 function showCardEditing(cardId, user, editing) {
     const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
-    if (!cardElement) return;
-    
-    if (editing) {
-        cardElement.classList.add('editing');
-        
-        // 添加编辑指示器
-        if (!cardElement.querySelector('.editing-indicator')) {
-            const indicator = document.createElement('div');
-            indicator.className = 'editing-indicator';
-            indicator.title = `${user} 正在编辑`;
-            cardElement.appendChild(indicator);
-        }
-    } else {
-        cardElement.classList.remove('editing');
-        const indicator = cardElement.querySelector('.editing-indicator');
-        if (indicator) {
-            indicator.remove();
+    if (cardElement) {
+        if (editing && user !== currentUser) {
+            cardElement.classList.add('editing');
+            cardElement.title = `${user} 正在编辑此任务`;
+        } else {
+            cardElement.classList.remove('editing');
+            cardElement.title = '';
         }
     }
 }
 
-// 更新在线用户
-function updateOnlineUsers(users) {
-    onlineCount.textContent = `在线用户: ${users.length}`;
-    userList.innerHTML = '';
-    
-    users.forEach(user => {
-        const userBadge = document.createElement('span');
-        userBadge.className = 'user-badge';
-        userBadge.textContent = user;
-        userList.appendChild(userBadge);
-    });
-}
-
-// 导出 Markdown
+// 导出Markdown
 async function exportMarkdown() {
     try {
-        const response = await fetch(`/api/export/${currentGroup}`);
-        const data = await response.json();
-        
-        if (data.success) {
-            // 创建下载链接
-            const blob = new Blob([data.markdown], { type: 'text/markdown' });
-            const url = URL.createObjectURL(blob);
+        const response = await fetch(`/api/export/${currentProjectId}/${encodeURIComponent(currentBoardName)}`);
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${currentGroup}-看板-${formatDate(new Date())}.md`;
+            a.download = `${currentProjectName}-${currentBoardName}.md`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } else {
-            alert(data.message || '导出失败');
+            window.URL.revokeObjectURL(url);
         }
     } catch (error) {
         console.error('Export error:', error);
         alert('导出失败');
     }
-}
-
-// 退出登录
-function logout() {
-    if (confirm('确定要退出吗？')) {
-        localStorage.removeItem('kanbanUser');
-        localStorage.removeItem('kanbanGroup');
-        
-        if (socket) {
-            socket.close();
-        }
-        
-        currentUser = null;
-        currentGroup = null;
-        boardData = { todo: [], doing: [], done: [], archived: [] };
-        
-        boardPage.classList.add('hidden');
-        archivePage.classList.add('hidden');
-        loginPage.classList.remove('hidden');
-        
-        // 重置表单
-        authForm.reset();
-    }
-}
-
-// 工具函数
-function formatDate(date) {
-    if (!date) return '';
-    return date.toLocaleDateString('zh-CN');
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 // 导入功能
@@ -725,7 +1087,6 @@ function parseMarkdownToBoard(markdown) {
         } else if (line.startsWith('## 📁 归档') || line.startsWith('## ARCHIVED')) {
             currentSection = 'archived';
         } else if (line.startsWith('### ') && currentSection) {
-            // 新的卡片
             const title = line.replace(/^### \d+\. /, '').trim();
             currentCard = {
                 id: Date.now() + Math.random().toString(),
@@ -753,7 +1114,8 @@ function confirmImport() {
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'import-board',
-            group: currentGroup,
+            projectId: currentProjectId,
+            boardName: currentBoardName,
             data: importFileData,
             mode: importMode
         }));
@@ -767,6 +1129,43 @@ function cancelImport() {
     importModal.classList.add('hidden');
     importFileData = null;
     document.getElementById('importFile').value = '';
+}
+
+// 退出登录
+function logout() {
+    if (socket) {
+        socket.close();
+        socket = null;
+    }
+    
+    currentUser = null;
+    currentProjectId = null;
+    currentProjectName = null;
+    currentBoardName = null;
+    boardData = { todo: [], doing: [], done: [], archived: [] };
+    
+    localStorage.removeItem('kanbanUser');
+    localStorage.removeItem('kanbanPageState');
+    localStorage.removeItem('kanbanCurrentProjectId');
+    localStorage.removeItem('kanbanCurrentProjectName');
+    localStorage.removeItem('kanbanCurrentBoardName');
+    
+    showLoginPage();
+    
+    // 重置表单
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+    formTitle.textContent = '登录';
+    submitBtn.textContent = '登录';
+    switchText.textContent = '还没有账号？';
+    switchMode.textContent = '注册';
+}
+
+// HTML转义
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // 页面卸载时清理
