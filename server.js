@@ -360,6 +360,9 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
                 if (card.description) {
                     markdown += `**描述:** ${card.description}\n\n`;
                 }
+                if (card.assignee) {
+                    markdown += `**分配给:** ${card.assignee}\n\n`;
+                }
                 if (card.deadline) {
                     markdown += `**截止日期:** ${card.deadline}\n\n`;
                 }

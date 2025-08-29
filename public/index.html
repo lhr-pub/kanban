@@ -153,9 +153,14 @@
                 <h3>待办 <span class="count" id="todoCount">0</span></h3>
                 <div class="cards" id="todoCards"></div>
                 <div class="add-card">
-                    <div class="input-row">
-                        <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newTodoTitle" required>
-                        <input type="date" id="newTodoDeadline" title="截止日期">
+                    <div class="input-row-inline">
+                        <div class="left-inputs">
+                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newTodoTitle" required class="task-title-input">
+                            <select id="newTodoAssignee" class="assignee-select" title="分配给">
+                                <option value="">未分配</option>
+                            </select>
+                        </div>
+                        <input type="date" id="newTodoDeadline" title="截止日期" class="date-input">
                     </div>
                     <button onclick="addCard('todo')">+ 添加任务</button>
                     <div class="keyboard-hint">按 Enter 快速添加</div>
@@ -167,9 +172,14 @@
                 <h3>进行中 <span class="count" id="doingCount">0</span></h3>
                 <div class="cards" id="doingCards"></div>
                 <div class="add-card">
-                    <div class="input-row">
-                        <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoingTitle" required>
-                        <input type="date" id="newDoingDeadline" title="截止日期">
+                    <div class="input-row-inline">
+                        <div class="left-inputs">
+                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoingTitle" required class="task-title-input">
+                            <select id="newDoingAssignee" class="assignee-select" title="分配给">
+                                <option value="">未分配</option>
+                            </select>
+                        </div>
+                        <input type="date" id="newDoingDeadline" title="截止日期" class="date-input">
                     </div>
                     <button onclick="addCard('doing')">+ 添加任务</button>
                     <div class="keyboard-hint">按 Enter 快速添加</div>
@@ -181,9 +191,14 @@
                 <h3>已完成 <span class="count" id="doneCount">0</span></h3>
                 <div class="cards" id="doneCards"></div>
                 <div class="add-card">
-                    <div class="input-row">
-                        <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoneTitle" required>
-                        <input type="date" id="newDoneDeadline" title="截止日期">
+                    <div class="input-row-inline">
+                        <div class="left-inputs">
+                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoneTitle" required class="task-title-input">
+                            <select id="newDoneAssignee" class="assignee-select" title="分配给">
+                                <option value="">未分配</option>
+                            </select>
+                        </div>
+                        <input type="date" id="newDoneDeadline" title="截止日期" class="date-input">
                     </div>
                     <button onclick="addCard('done')">+ 添加任务</button>
                     <div class="keyboard-hint">按 Enter 快速添加</div>
@@ -236,22 +251,47 @@
 
     <!-- 编辑卡片模态框 -->
     <div id="editModal" class="modal hidden">
-        <div class="modal-content">
-            <h3>编辑任务</h3>
-            <label>任务标题:</label>
-            <input type="text" id="editCardTitle" placeholder="任务标题" required>
-            <label>截止日期:</label>
-            <input type="date" id="editCardDeadline">
-            <label>任务描述:</label>
-            <textarea id="editCardDescription" placeholder="任务详细描述" rows="3"></textarea>
-            <div class="card-info">
-                <span id="editCardCreated"></span>
-                <span id="editCardAuthor"></span>
+        <div class="modal-content edit-modal">
+            <div class="modal-header">
+                <h3>编辑任务</h3>
+                <button class="close-btn" onclick="closeEditModal()" title="关闭">×</button>
             </div>
-            <div class="modal-actions">
-                <button onclick="saveCard()">保存</button>
-                <button onclick="deleteCard()" class="delete-btn">删除</button>
-                <button onclick="closeEditModal()">取消</button>
+            
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="editCardTitle">任务标题</label>
+                    <input type="text" id="editCardTitle" placeholder="输入任务标题..." required>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group flex-2">
+                        <label for="editCardAssignee">分配给</label>
+                        <select id="editCardAssignee">
+                            <option value="">未分配</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group flex-1">
+                        <label for="editCardDeadline">截止日期</label>
+                        <input type="date" id="editCardDeadline">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="editCardDescription">任务描述</label>
+                    <textarea id="editCardDescription" placeholder="详细描述任务内容..." rows="3"></textarea>
+                </div>
+                
+                <div class="card-info">
+                    <span id="editCardCreated"></span>
+                    <span id="editCardAuthor"></span>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button onclick="saveCard()" class="btn-primary">保存</button>
+                <button onclick="deleteCard()" class="btn-danger">删除</button>
+                <button onclick="closeEditModal()" class="btn-secondary">取消</button>
             </div>
         </div>
     </div>

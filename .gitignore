@@ -1,5 +1,6 @@
-# Aider工具文件
+# AI
 .aider*
+.specstory/
 
 # Node.js依赖
 node_modules/
