@@ -18,6 +18,9 @@ const boardTitle = document.getElementById('boardTitle');
 const onlineCount = document.getElementById('onlineCount');
 const userList = document.getElementById('userList');
 const editModal = document.getElementById('editModal');
+const archivePage = document.getElementById('archivePage');
+const importModal = document.getElementById('importModal');
+let importFileData = null;
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -37,6 +40,9 @@ document.addEventListener('DOMContentLoaded', function() {
     switchMode.addEventListener('click', toggleAuthMode);
     document.getElementById('logoutBtn').addEventListener('click', logout);
     document.getElementById('exportBtn').addEventListener('click', exportMarkdown);
+    document.getElementById('importBtn').addEventListener('click', importBoard);
+    document.getElementById('archiveBtn').addEventListener('click', showArchive);
+    document.getElementById('backToBoard').addEventListener('click', showBoard);
     
     // 绑定模态框事件
     editModal.addEventListener('click', function(e) {
@@ -47,8 +53,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 绑定键盘事件
     document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape' && !editModal.classList.contains('hidden')) {
-            closeEditModal();
+        if (e.key === 'Escape') {
+            if (!editModal.classList.contains('hidden')) {
+                closeEditModal();
+            }
+            if (!importModal.classList.contains('hidden')) {
+                cancelImport();
+            }
+        }
+    });
+    
+    // 为添加任务输入框绑定回车键事件
+    ['todo', 'doing', 'done'].forEach(status => {
+        const titleInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Title`);
+        if (titleInput) {
+            titleInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && this.value.trim()) {
+                    e.preventDefault();
+                    addCard(status);
+                }
+            });
         }
     });
 });
@@ -122,8 +146,31 @@ async function handleAuth(e) {
 function showBoard() {
     loginPage.classList.add('hidden');
     boardPage.classList.remove('hidden');
+    archivePage.classList.add('hidden');
     boardTitle.textContent = `${currentGroup} - 项目看板`;
     loadBoardData();
+}
+
+// 显示归档页面
+function showArchive() {
+    boardPage.classList.add('hidden');
+    archivePage.classList.remove('hidden');
+    renderArchive();
+}
+
+// 渲染归档页面
+function renderArchive() {
+    const archivedCards = document.getElementById('archivedCards');
+    const archivedCount = document.getElementById('archivedCount');
+    
+    archivedCards.innerHTML = '';
+    const cards = boardData.archived || [];
+    archivedCount.textContent = cards.length;
+    
+    cards.forEach(card => {
+        const cardElement = createCardElement(card, 'archived');
+        archivedCards.appendChild(cardElement);
+    });
 }
 
 // WebSocket 连接
@@ -178,6 +225,9 @@ function handleWebSocketMessage(data) {
                 showCardEditing(data.cardId, data.user, data.editing);
             }
             break;
+        case 'import-success':
+            alert(data.message);
+            break;
         case 'error':
             alert(data.message);
             break;
@@ -201,7 +251,7 @@ async function loadBoardData() {
 
 // 渲染看板
 function renderBoard() {
-    ['todo', 'doing', 'done', 'archived'].forEach(status => {
+    ['todo', 'doing', 'done'].forEach(status => {
         const cardsContainer = document.getElementById(`${status}Cards`);
         const countElement = document.getElementById(`${status}Count`);
         
@@ -214,6 +264,11 @@ function renderBoard() {
             cardsContainer.appendChild(cardElement);
         });
     });
+    
+    // 如果当前在归档页面，也更新归档显示
+    if (!archivePage.classList.contains('hidden')) {
+        renderArchive();
+    }
 }
 
 // 创建卡片元素
@@ -366,7 +421,7 @@ function moveCard(cardId, direction) {
     }
 }
 
-// 归档卡片
+// 归档卡片（直接执行，无需确认）
 function archiveCard(cardId) {
     // 只能归档已完成的任务
     const cardIndex = boardData.done.findIndex(card => card.id === cardId);
@@ -375,16 +430,14 @@ function archiveCard(cardId) {
         return;
     }
     
-    if (confirm('确定要归档这个已完成的任务吗？归档后可以在归档列中找到。')) {
-        // 发送到服务器
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'archive-card',
-                group: currentGroup,
-                cardId: cardId,
-                fromStatus: 'done'
-            }));
-        }
+    // 直接归档，无需确认
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'archive-card',
+            group: currentGroup,
+            cardId: cardId,
+            fromStatus: 'done'
+        }));
     }
 }
 
@@ -597,9 +650,10 @@ function logout() {
         
         currentUser = null;
         currentGroup = null;
-        boardData = { todo: [], doing: [], done: [] };
+        boardData = { todo: [], doing: [], done: [], archived: [] };
         
         boardPage.classList.add('hidden');
+        archivePage.classList.add('hidden');
         loginPage.classList.remove('hidden');
         
         // 重置表单
@@ -617,6 +671,102 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// 导入功能
+function importBoard() {
+    const fileInput = document.getElementById('importFile');
+    fileInput.click();
+}
+
+// 文件选择后处理
+document.getElementById('importFile').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        try {
+            let data;
+            if (file.name.endsWith('.json')) {
+                data = JSON.parse(event.target.result);
+            } else if (file.name.endsWith('.md')) {
+                data = parseMarkdownToBoard(event.target.result);
+            } else {
+                alert('不支持的文件格式，请选择 .json 或 .md 文件');
+                return;
+            }
+            
+            importFileData = data;
+            importModal.classList.remove('hidden');
+            
+        } catch (error) {
+            console.error('Import error:', error);
+            alert('文件格式错误，无法解析');
+        }
+    };
+    reader.readAsText(file);
+});
+
+// 解析 Markdown 为看板数据
+function parseMarkdownToBoard(markdown) {
+    const lines = markdown.split('\n');
+    const board = { todo: [], doing: [], done: [], archived: [] };
+    let currentSection = null;
+    let currentCard = null;
+    
+    for (const line of lines) {
+        if (line.startsWith('## 📋 待办') || line.startsWith('## TODO')) {
+            currentSection = 'todo';
+        } else if (line.startsWith('## 🔄 进行中') || line.startsWith('## DOING')) {
+            currentSection = 'doing';
+        } else if (line.startsWith('## ✅ 已完成') || line.startsWith('## DONE')) {
+            currentSection = 'done';
+        } else if (line.startsWith('## 📁 归档') || line.startsWith('## ARCHIVED')) {
+            currentSection = 'archived';
+        } else if (line.startsWith('### ') && currentSection) {
+            // 新的卡片
+            const title = line.replace(/^### \d+\. /, '').trim();
+            currentCard = {
+                id: Date.now() + Math.random().toString(),
+                title: title,
+                description: '',
+                author: currentUser,
+                created: new Date().toISOString(),
+                deadline: null
+            };
+            board[currentSection].push(currentCard);
+        } else if (line.startsWith('**描述:**') && currentCard) {
+            currentCard.description = line.replace('**描述:**', '').trim();
+        }
+    }
+    
+    return board;
+}
+
+// 确认导入
+function confirmImport() {
+    if (!importFileData) return;
+    
+    const importMode = document.querySelector('input[name="importMode"]:checked').value;
+    
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'import-board',
+            group: currentGroup,
+            data: importFileData,
+            mode: importMode
+        }));
+    }
+    
+    cancelImport();
+}
+
+// 取消导入
+function cancelImport() {
+    importModal.classList.add('hidden');
+    importFileData = null;
+    document.getElementById('importFile').value = '';
 }
 
 // 页面卸载时清理

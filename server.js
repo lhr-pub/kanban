@@ -330,6 +330,9 @@ function handleWebSocketMessage(ws, data) {
         case 'clear-archive':
             handleClearArchive(ws, data);
             break;
+        case 'import-board':
+            handleImportBoard(ws, data);
+            break;
         default:
             ws.send(JSON.stringify({
                 type: 'error',
@@ -524,6 +527,65 @@ function handleClearArchive(ws, data) {
             group: group,
             board: boardData
         });
+    }
+}
+
+// 处理导入看板
+function handleImportBoard(ws, data) {
+    const { group, data: importData, mode } = data;
+    let boardData = readBoardData(group);
+    
+    try {
+        if (mode === 'overwrite') {
+            // 覆盖模式：替换所有数据
+            boardData = {
+                todo: importData.todo || [],
+                doing: importData.doing || [],
+                done: importData.done || [],
+                archived: importData.archived || []
+            };
+        } else {
+            // 合并模式：添加到现有数据
+            boardData.todo = [...(boardData.todo || []), ...(importData.todo || [])];
+            boardData.doing = [...(boardData.doing || []), ...(importData.doing || [])];
+            boardData.done = [...(boardData.done || []), ...(importData.done || [])];
+            boardData.archived = [...(boardData.archived || []), ...(importData.archived || [])];
+        }
+        
+        // 确保所有导入的卡片有唯一ID
+        ['todo', 'doing', 'done', 'archived'].forEach(status => {
+            boardData[status] = boardData[status].map(card => ({
+                ...card,
+                id: card.id || (Date.now() + Math.random()).toString()
+            }));
+        });
+        
+        if (writeBoardData(group, boardData)) {
+            createBackup(group, boardData);
+            
+            broadcastToGroup(group, {
+                type: 'board-update',
+                group: group,
+                board: boardData
+            });
+            
+            // 发送成功消息给发起者
+            ws.send(JSON.stringify({
+                type: 'import-success',
+                message: mode === 'overwrite' ? '数据已覆盖导入' : '数据已合并导入'
+            }));
+        } else {
+            ws.send(JSON.stringify({
+                type: 'error',
+                message: '导入失败，无法保存数据'
+            }));
+        }
+    } catch (error) {
+        console.error('Import error:', error);
+        ws.send(JSON.stringify({
+            type: 'error',
+            message: '导入失败，数据格式错误'
+        }));
     }
 }
 
