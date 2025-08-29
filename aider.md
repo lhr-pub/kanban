@@ -1,41 +1,120 @@
 
-# Kanban Application Project Plan
+# 简易看板应用 v4.0
 
-## Core Features
-1. User System
-- Simple local storage-based authentication
-- JWT session management
-- Independent user board storage
+## 🎯 项目概述
+极简的个人看板工具，支持用户注册、JSON数据存储和Markdown导出。
 
-2. Board Features
-- Nested board support (similar to Obsidian)
-- Markdown card content
-- Column drag-and-drop functionality
-- Quick create/edit with keyboard shortcuts
-- Markdown import/export
+## 🏗️ 技术架构
 
-3. Storage Structure
+### 前端架构
+- **核心技术:** 原生JavaScript ES6+ + CSS Grid
+- **界面风格:** Obsidian暗色主题 + 极简设计
+- **状态管理:** 本地存储 + 内存同步
+- **交互设计:** 双击编辑 + 快捷键操作
+- **组件设计:** 轻量级模块化结构
+
+### 后端架构  
+- **服务端:** Node.js + Express
+- **用户系统:** 用户名密码 + Token认证
+- **数据存储:** 纯文本Markdown文件
+- **文件结构:** 用户目录 + 看板文件
+
+## 📋 核心功能模块
+
+### 1. 用户系统
+- 用户注册/登录表单
+- 简单session管理
+- 个人看板空间
+
+### 2. 看板功能
+- 三列布局（待办/进行中/已完成）
+- 表单添加/编辑卡片
+- 按钮移动卡片
+- 删除卡片
+
+### 3. 数据存储
+- JSON格式存储
+- 服务器文件系统
+- Markdown导出
+
+## 📁 项目结构
+
 ```
-users/
-  {username}/
-    boards/
-      main.board.md
-      projects/
-        project1.board.md
+kanban/
+├── public/
+│   ├── index.html         # 单页面应用
+│   ├── style.css          # 基础样式
+│   └── app.js             # 前端逻辑
+├── server.js              # Express服务器
+└── data.json              # 数据存储
 ```
 
-4. File Structure
-- index.html    # Main interface
-- auth.js       # Authentication logic
-- kanban.js     # Core kanban logic
-- markdown.js   # Markdown conversion
-- obsidian.css  # Minimalist styling
+## 💾 数据存储格式
 
-5. Development Standards
-- Code files use English naming and comments
-- Chinese UI localization
-- Plain text storage format
-- Follow Semver versioning
+### data.json 结构
+```json
+{
+  "users": {
+    "user1": {
+      "password": "hashed_password",
+      "boards": {
+        "主看板": {
+          "todo": [
+            {"id": 1, "text": "任务1", "created": "2024-01-01"}
+          ],
+          "doing": [
+            {"id": 2, "text": "任务2", "created": "2024-01-02"}
+          ],
+          "done": [
+            {"id": 3, "text": "任务3", "created": "2024-01-03"}
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+## 🚀 开发路线图
+
+### 第一阶段：核心功能（3-5天）
+- [ ] 创建基础HTML结构
+- [ ] 简单CSS样式
+- [ ] 用户登录/注册表单
+- [ ] Express服务器搭建
+- [ ] JSON数据存储
+
+### 第二阶段：看板功能（3-5天）
+- [ ] 三列看板布局
+- [ ] 添加/编辑/删除卡片
+- [ ] 卡片状态移动
+- [ ] 数据持久化
+
+### 第三阶段：Markdown导出（1-2天）
+- [ ] 生成Markdown格式
+- [ ] 文件下载功能
+- [ ] 基础错误处理
+
+## 🛠️ 开发规范
+
+### 代码标准
+- ES6+ 语法，模块化设计
+- 英文命名和注释
+- 中文界面本地化
+- ESLint + Prettier 格式化
+- 语义化版本控制
+
+### 测试策略
+- 单元测试覆盖核心逻辑
+- 端到端测试用户流程
+- 跨浏览器兼容性测试
+- 性能基准测试
+
+### 部署方案
+- 静态资源CDN分发
+- Docker容器化部署
+- 自动化CI/CD流程
+- 监控和日志收集
 
 何时建议执行 shell 命令：
 - 修改 HTML 文件后建议用浏览器打开查看

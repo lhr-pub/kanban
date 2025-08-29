@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简易看板</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 登录页面 -->
+    <div id="loginPage" class="page">
+        <div class="container">
+            <h1>多人协作看板</h1>
+            <div class="login-form">
+                <h2 id="formTitle">登录</h2>
+                <form id="authForm">
+                    <input type="text" id="username" placeholder="用户名" required>
+                    <input type="password" id="password" placeholder="密码" required>
+                    <input type="text" id="groupName" placeholder="项目组名称" required>
+                    <button type="submit" id="submitBtn">登录</button>
+                </form>
+                <p>
+                    <span id="switchText">还没有账号？</span>
+                    <a href="#" id="switchMode">注册</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 看板页面 -->
+    <div id="boardPage" class="page hidden">
+        <header class="header">
+            <h1 id="boardTitle">项目看板</h1>
+            <div class="header-actions">
+                <div class="online-users">
+                    <span id="onlineCount">在线用户: 0</span>
+                    <div id="userList"></div>
+                </div>
+                <button id="exportBtn">导出Markdown</button>
+                <button id="logoutBtn">退出</button>
+            </div>
+        </header>
+        
+        <main class="board-container">
+            <!-- 待办列 -->
+            <div class="column" data-status="todo">
+                <h3>待办 <span class="count" id="todoCount">0</span></h3>
+                <div class="cards" id="todoCards"></div>
+                <div class="add-card">
+                    <input type="text" placeholder="任务标题..." id="newTodoTitle" required>
+                    <input type="date" id="newTodoDeadline" title="截止日期">
+                    <button onclick="addCard('todo')">添加</button>
+                </div>
+            </div>
+
+            <!-- 进行中列 -->
+            <div class="column" data-status="doing">
+                <h3>进行中 <span class="count" id="doingCount">0</span></h3>
+                <div class="cards" id="doingCards"></div>
+                <div class="add-card">
+                    <input type="text" placeholder="任务标题..." id="newDoingTitle" required>
+                    <input type="date" id="newDoingDeadline" title="截止日期">
+                    <button onclick="addCard('doing')">添加</button>
+                </div>
+            </div>
+
+            <!-- 已完成列 -->
+            <div class="column" data-status="done">
+                <h3>已完成 <span class="count" id="doneCount">0</span></h3>
+                <div class="cards" id="doneCards"></div>
+                <div class="add-card">
+                    <input type="text" placeholder="任务标题..." id="newDoneTitle" required>
+                    <input type="date" id="newDoneDeadline" title="截止日期">
+                    <button onclick="addCard('done')">添加</button>
+                </div>
+            </div>
+
+            <!-- 归档列 -->
+            <div class="column" data-status="archived">
+                <h3>归档 <span class="count" id="archivedCount">0</span></h3>
+                <div class="cards" id="archivedCards"></div>
+                <div class="archive-actions">
+                    <button onclick="clearArchive()" class="clear-archive-btn">清空归档</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 编辑卡片模态框 -->
+    <div id="editModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>编辑任务</h3>
+            <label>任务标题:</label>
+            <input type="text" id="editCardTitle" placeholder="任务标题" required>
+            <label>截止日期:</label>
+            <input type="date" id="editCardDeadline">
+            <label>任务描述:</label>
+            <textarea id="editCardDescription" placeholder="任务详细描述" rows="3"></textarea>
+            <div class="card-info">
+                <span id="editCardCreated"></span>
+                <span id="editCardAuthor"></span>
+            </div>
+            <div class="modal-actions">
+                <button onclick="saveCard()">保存</button>
+                <button onclick="deleteCard()" class="delete-btn">删除</button>
+                <button onclick="closeEditModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
