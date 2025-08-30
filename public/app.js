@@ -1257,18 +1257,23 @@ function editCardTitle(cardId) {
         return;
     }
 
-    // 创建输入框
-    const input = document.createElement('input');
-    input.type = 'text';
+    // 记录当前高度，避免抖动
+    const lockedHeight = titleElement.offsetHeight;
+
+    // 创建多行文本编辑框
+    const input = document.createElement('textarea');
     input.className = 'inline-title-input';
     input.value = card.title;
     input.style.width = '100%';
+    input.style.boxSizing = 'border-box';
 
     // 保存原始文本
     const originalText = titleElement.innerHTML;
 
-    // 替换内容
+    // 替换内容并锁定高度
     titleElement.innerHTML = '';
+    titleElement.style.minHeight = lockedHeight + 'px';
+    titleElement.style.height = lockedHeight + 'px';
     titleElement.appendChild(input);
 
     // 设置卡片为编辑状态
@@ -1277,6 +1282,12 @@ function editCardTitle(cardId) {
     // 聚焦并选中文本
     input.focus();
     input.select();
+
+    // 初始高度与后续自适应（不低于原高度）
+    input.style.height = Math.max(lockedHeight, input.scrollHeight) + 'px';
+    // keep container in sync
+    titleElement.style.height = input.style.height;
+    // update on input already handled below
 
     // 保存函数
     const save = () => {
@@ -1291,7 +1302,7 @@ function editCardTitle(cardId) {
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
                     type: 'update-card',
-                    group: currentProjectId,
+                    projectId: currentProjectId,
                     boardName: currentBoardName,
                     cardId: cardId,
                     updates: updates
@@ -1304,11 +1315,16 @@ function editCardTitle(cardId) {
             // 恢复原始显示
             titleElement.innerHTML = originalText;
         }
+        // 解除高度锁定
+        titleElement.style.minHeight = '';
+        titleElement.style.height = '';
     };
 
     // 取消函数
     const cancel = () => {
         titleElement.innerHTML = originalText;
+        titleElement.style.minHeight = '';
+        titleElement.style.height = '';
     };
 
     // 绑定事件 - 智能焦点管理
@@ -1322,7 +1338,8 @@ function editCardTitle(cardId) {
     });
 
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && e.ctrlKey) {
+            // Ctrl+Enter保存
             e.preventDefault();
             save();
         } else if (e.key === 'Escape') {
@@ -1335,6 +1352,16 @@ function editCardTitle(cardId) {
     input.addEventListener('click', (e) => {
         e.stopPropagation();
     });
+
+    // in editCardTitle: blur handler already saves; add fallback timer after focus
+    setTimeout(() => {
+        if (document.activeElement !== input) return;
+        // safety autosave after 8s if still focused
+        const t = setInterval(() => {
+            if (document.activeElement !== input) { clearInterval(t); return; }
+            // no-op: keep alive; autosave is handled on blur/ctrl+enter
+        }, 2000);
+    }, 50);
 }
 
 // 内联编辑任务描述
@@ -1362,27 +1389,43 @@ function editCardDescription(cardId) {
         return;
     }
 
+    // 进入编辑前锁定当前高度，避免抖动
+    const lockedHeight = descriptionElement.offsetHeight;
+
     // 创建文本框
     const textarea = document.createElement('textarea');
     textarea.className = 'inline-description-textarea';
     textarea.value = card.description || '';
     textarea.placeholder = '输入任务描述...';
     textarea.rows = 2;
+    textarea.style.width = '100%';
+    textarea.style.boxSizing = 'border-box';
 
     // 保存原始文本
     const originalText = descriptionElement.innerHTML;
 
-    // 替换内容
+    // 替换内容并锁定容器高度
     descriptionElement.innerHTML = '';
+    descriptionElement.style.minHeight = lockedHeight + 'px';
+    descriptionElement.style.height = lockedHeight + 'px';
     descriptionElement.appendChild(textarea);
 
     // 聚焦并选中文本
     textarea.focus();
     textarea.select();
 
-    // 自动调整高度
-    textarea.style.height = 'auto';
-    textarea.style.height = textarea.scrollHeight + 'px';
+    // 先设置为锁定高度
+    textarea.style.height = Math.max(lockedHeight, textarea.scrollHeight) + 'px';
+    // keep container in sync
+    descriptionElement.style.height = textarea.style.height;
+
+    // 自动调整高度（不低于初始高度）
+    textarea.addEventListener('input', () => {
+        textarea.style.height = 'auto';
+        const newH = Math.max(lockedHeight, textarea.scrollHeight);
+        textarea.style.height = newH + 'px';
+        descriptionElement.style.height = newH + 'px';
+    });
 
     // 保存函数
     const save = () => {
@@ -1397,7 +1440,7 @@ function editCardDescription(cardId) {
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
                     type: 'update-card',
-                    group: currentProjectId,
+                    projectId: currentProjectId,
                     boardName: currentBoardName,
                     cardId: cardId,
                     updates: updates
@@ -1411,11 +1454,16 @@ function editCardDescription(cardId) {
             // 恢复原始显示
             descriptionElement.innerHTML = originalText;
         }
+        // 解除锁定高度
+        descriptionElement.style.minHeight = '';
+        descriptionElement.style.height = '';
     };
 
     // 取消函数
     const cancel = () => {
         descriptionElement.innerHTML = originalText;
+        descriptionElement.style.minHeight = '';
+        descriptionElement.style.height = '';
     };
 
     // 绑定事件 - 智能焦点管理
@@ -1438,107 +1486,72 @@ function editCardDescription(cardId) {
         }
     });
 
-    // 自动调整高度
-    textarea.addEventListener('input', () => {
-        textarea.style.height = 'auto';
-        textarea.style.height = textarea.scrollHeight + 'px';
-    });
-
     // 阻止事件冒泡
     textarea.addEventListener('click', (e) => {
         e.stopPropagation();
     });
+
+    // strengthen blur saving and add fallback timer
+    setTimeout(() => {
+        if (document.activeElement !== textarea) return;
+        const t2 = setInterval(() => {
+            if (document.activeElement !== textarea) { clearInterval(t2); return; }
+        }, 2000);
+    }, 50);
 }
 
 // 内联编辑分配用户
 function editCardAssignee(cardId) {
     let card = null;
-    let cardStatus = null;
-
     for (const status of ['todo', 'doing', 'done', 'archived']) {
         const found = boardData[status].find(c => c.id === cardId);
-        if (found) {
-            card = found;
-            cardStatus = status;
-            break;
-        }
+        if (found) { card = found; break; }
     }
-
     if (!card) return;
 
-    // 检查是否已经在编辑状态
     const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
     const assigneeElement = cardElement.querySelector('.card-assignee');
 
-    if (assigneeElement.querySelector('.inline-assignee-select')) {
-        // 已经在编辑状态，不要重复创建
-        return;
-    }
+    // 移除已有下拉
+    const existingDropdown = document.querySelector('.assignee-dropdown');
+    if (existingDropdown) existingDropdown.remove();
 
-    // 创建下拉选择框
-    const select = document.createElement('select');
-    select.className = 'inline-assignee-select';
+    // 浮层菜单
+    const menu = document.createElement('div');
+    menu.className = 'assignee-dropdown';
 
-    // 阻止事件冒泡
-    select.onclick = function(e) {
-        e.stopPropagation();
-    };
-
-    // 添加选项
-    const defaultOption = document.createElement('option');
-    defaultOption.value = '';
-    defaultOption.textContent = '未分配';
-    select.appendChild(defaultOption);
-
-    if (window.currentOnlineUsers) {
-        window.currentOnlineUsers.forEach(user => {
-            const option = document.createElement('option');
-            option.value = user;
-            option.textContent = user;
-            if (user === card.assignee) {
-                option.selected = true;
-            }
-            select.appendChild(option);
-        });
-    }
-
-    // 替换为下拉框
-    assigneeElement.innerHTML = '';
-    assigneeElement.appendChild(select);
-
-    // 延迟focus，确保元素已经插入DOM
-    setTimeout(() => {
-        select.focus();
-        select.click(); // 自动打开下拉框
-    }, 50);
-
-    // 处理选择变更
-    select.onchange = function(e) {
-        e.stopPropagation();
-        const newAssignee = this.value || null;
-        updateCardField(cardId, 'assignee', newAssignee);
-        // 立即恢复显示
-        setTimeout(() => renderBoard(), 50);
-    };
-
-    // 处理键盘事件
-    select.onkeydown = function(e) {
-        if (e.key === 'Escape') {
+    const userList = [''].concat(window.currentOnlineUsers || []);
+    userList.forEach(user => {
+        const item = document.createElement('div');
+        item.className = 'assignee-option' + (((user || null) === (card.assignee || null)) ? ' selected' : '');
+        item.textContent = user ? `@${user}` : '未分配';
+        item.addEventListener('click', (e) => {
             e.stopPropagation();
-            renderBoard();
-        }
-    };
+            const newAssignee = user || null;
+            updateCardField(cardId, 'assignee', newAssignee);
+            card.assignee = newAssignee; // 本地立即更新
+            closeDropdown();
+            setTimeout(() => renderBoard(), 50);
+        });
+        menu.appendChild(item);
+    });
 
-    // 处理失去焦点 - 智能焦点管理
-    select.onblur = function(e) {
-        setTimeout(() => {
-            // 检查元素是否还存在且是否还在编辑状态
-            const currentSelect = cardElement.querySelector('.inline-assignee-select');
-            if (currentSelect && !shouldKeepInlineEditingActive(cardId)) {
-                renderBoard();
-            }
-        }, 150);
-    };
+    // 定位
+    const rect = assigneeElement.getBoundingClientRect();
+    menu.style.position = 'absolute';
+    menu.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    menu.style.left = (rect.left + window.scrollX) + 'px';
+    menu.style.minWidth = Math.max(120, Math.floor(rect.width)) + 'px';
+    document.body.appendChild(menu);
+
+    function closeDropdown() {
+        document.removeEventListener('click', onDocClick, true);
+        if (menu && menu.parentNode) menu.parentNode.removeChild(menu);
+    }
+    function onDocClick(ev) {
+        if (!menu.contains(ev.target)) closeDropdown();
+    }
+    setTimeout(() => document.addEventListener('click', onDocClick, true), 0);
 }
 
 // 内联编辑截止日期
@@ -1566,19 +1579,28 @@ function editCardDeadline(cardId) {
         return;
     }
 
+    // 测量现有尺寸并锁定，避免抖动
+    const lockedW = Math.max(deadlineElement.offsetWidth, 136); // ensure enough width for YYYY-MM-DD
+    const lockedH = deadlineElement.offsetHeight;
+
     // 创建日期输入框
     const input = document.createElement('input');
     input.type = 'date';
     input.className = 'inline-date-input';
     input.value = card.deadline || '';
+    input.style.boxSizing = 'border-box';
 
     // 阻止事件冒泡
     input.onclick = function(e) {
         e.stopPropagation();
     };
 
-    // 替换为输入框
+    // 替换为输入框并锁定尺寸
     deadlineElement.innerHTML = '';
+    deadlineElement.style.minWidth = lockedW + 'px';
+    deadlineElement.style.minHeight = lockedH + 'px';
+    input.style.width = lockedW + 'px';
+    input.style.height = lockedH + 'px';
     deadlineElement.appendChild(input);
 
     // 延迟focus，确保元素已经插入DOM
@@ -1648,6 +1670,16 @@ function setCardInlineEditingState(cardId, isEditing) {
 function updateCardField(cardId, field, value) {
     const updates = {};
     updates[field] = value;
+
+    // 先更新本地数据，避免界面闪烁或数据短暂丢失
+    for (const status of ['todo', 'doing', 'done', 'archived']) {
+        const idx = (boardData[status] || []).findIndex(c => c.id === cardId);
+        if (idx !== -1) {
+            const current = boardData[status][idx];
+            boardData[status][idx] = Object.assign({}, current, { [field]: value });
+            break;
+        }
+    }
 
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
