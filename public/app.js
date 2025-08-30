@@ -38,21 +38,32 @@ document.addEventListener('DOMContentLoaded', function() {
     // 渲染静态图标
     renderIconsInDom(document);
 
+    // 邮箱验证成功提示
+    try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.get('verified') === '1') {
+            const authMessage = document.getElementById('authMessage');
+            if (authMessage) {
+                authMessage.textContent = '邮箱验证成功，请登录。';
+            }
+            // 清除参数，避免刷新重复提示
+            url.searchParams.delete('verified');
+            window.history.replaceState({}, document.title, url.pathname + url.search);
+        }
+    } catch {}
+
     // 检查是否已登录
     const savedUser = localStorage.getItem('kanbanUser');
     if (savedUser) {
         currentUser = savedUser;
-
         // 恢复页面状态
         const savedPageState = localStorage.getItem('kanbanPageState');
         const savedCurrentProjectId = localStorage.getItem('kanbanCurrentProjectId');
         const savedCurrentProjectName = localStorage.getItem('kanbanCurrentProjectName');
         const savedCurrentBoardName = localStorage.getItem('kanbanCurrentBoardName');
-
         if (savedPageState && savedCurrentProjectId && savedCurrentProjectName) {
             currentProjectId = savedCurrentProjectId;
             currentProjectName = savedCurrentProjectName;
-
             if (savedPageState === 'boardSelect') {
                 showBoardSelectPage();
             } else if (savedPageState === 'board' && savedCurrentBoardName) {
@@ -237,11 +248,15 @@ function toggleAuthMode(e) {
         submitBtn.textContent = '注册';
         switchText.textContent = '已有账号？';
         switchMode.textContent = '登录';
+        const emailInput = document.getElementById('email');
+        if (emailInput) emailInput.style.display = '';
     } else {
         formTitle.textContent = '登录';
         submitBtn.textContent = '登录';
         switchText.textContent = '还没有账号？';
         switchMode.textContent = '注册';
+        const emailInput = document.getElementById('email');
+        if (emailInput) emailInput.style.display = 'none';
     }
 }
 
@@ -251,10 +266,20 @@ async function handleAuth(e) {
 
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
+    const emailInput = document.getElementById('email');
+    const email = emailInput ? emailInput.value.trim() : '';
     const isLogin = submitBtn.textContent === '登录';
 
-    if (!username || !password) {
-        alert('请填写用户名和密码');
+    const authMessage = document.getElementById('authMessage');
+    const resendContainer = document.getElementById('resendContainer');
+    const resendStatus = document.getElementById('resendStatus');
+    const resendLink = document.getElementById('resendLink');
+    if (authMessage) authMessage.textContent = '';
+    if (resendContainer) resendContainer.style.display = 'none';
+    if (resendStatus) resendStatus.textContent = '';
+
+    if (!username || !password || (!isLogin && !email)) {
+        alert(isLogin ? '请填写用户名和密码' : '请填写用户名、邮箱和密码');
         return;
     }
 
@@ -264,20 +289,57 @@ async function handleAuth(e) {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-                username,
-                password
-            })
+            body: JSON.stringify(isLogin ? { username, password } : { username, password, email })
         });
 
         const result = await response.json();
 
         if (response.ok) {
-            currentUser = username;
-            localStorage.setItem('kanbanUser', username);
-            showProjectPage();
+            if (isLogin) {
+                currentUser = username;
+                localStorage.setItem('kanbanUser', username);
+                showProjectPage();
+            } else {
+                if (authMessage) {
+                    authMessage.textContent = '注册成功，请前往邮箱验证后再登录。';
+                } else {
+                    alert('注册成功，请前往邮箱验证后再登录。');
+                }
+                formTitle.textContent = '登录';
+                submitBtn.textContent = '登录';
+                switchText.textContent = '还没有账号？';
+                switchMode.textContent = '注册';
+                if (emailInput) emailInput.style.display = 'none';
+            }
         } else {
-            alert(result.message || `${isLogin ? '登录' : '注册'}失败`);
+            const msg = result && result.message ? result.message : `${isLogin ? '登录' : '注册'}失败`;
+            if (isLogin && msg.includes('邮箱未验证')) {
+                if (authMessage) authMessage.textContent = msg;
+                if (resendContainer) resendContainer.style.display = '';
+                if (resendLink) {
+                    resendLink.onclick = async (evt) => {
+                        evt.preventDefault();
+                        resendStatus.textContent = '发送中...';
+                        try {
+                            const rs = await fetch('/api/resend-verification', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ username })
+                            });
+                            const rj = await rs.json().catch(() => ({}));
+                            if (rs.ok) {
+                                resendStatus.textContent = '已发送，请查收邮箱。';
+                            } else {
+                                resendStatus.textContent = rj.message || '发送失败，请稍后再试。';
+                            }
+                        } catch (e) {
+                            resendStatus.textContent = '网络错误，请稍后再试。';
+                        }
+                    };
+                }
+            } else {
+                alert(msg);
+            }
         }
     } catch (error) {
         console.error('Auth error:', error);

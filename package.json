@@ -1,6 +1,10 @@
 {
   "dependencies": {
     "express": "^5.1.0",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "dotenv": "^16.4.5"
+  },
+  "scripts": {
+    "start": "node -r dotenv/config server.js"
   }
 }

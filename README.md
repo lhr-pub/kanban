@@ -61,17 +61,32 @@ kanban/
 npm install
 ```
 
-### 2) 启动服务
+### 2) 启动服务（推荐）
 ```bash
-# 默认端口 3000
-node server.js
+cp .env.example .env
+# 编辑 .env 中的环境变量（如 PORT、NODE_ENV）
+npm start
+```
 
-# 或指定端口
+如需临时指定端口，也可使用：
+```bash
 PORT=3001 node server.js
 ```
 
 ### 3) 访问应用
 在浏览器打开 `http://localhost:3000`
+
+## ⚙️ 环境变量 (.env)
+
+在项目根目录创建 `.env` 文件（可从 `.env.example` 拷贝）：
+
+```
+PORT=3000
+NODE_ENV=development
+```
+
+- `PORT`：服务监听端口，默认 3000
+- `NODE_ENV`：运行环境（development/production）
 
 ## 🧭 使用指南
 
@@ -234,12 +249,12 @@ PORT=3001 node server.js
 ## 📐 项目规范（Project Standards）
 
 ### 运行与端口
-- 本地启动：`node server.js`
-- 默认监听端口：`3000`（可通过 `PORT` 覆盖）
+- 本地启动：`npm start`（自动加载 `.env`）
+- 也可：`node server.js` 或 `PORT=xxxx node server.js`
 
 ### 提交与版本管理
 - 提交信息：简明清晰，说明动机与影响（如：fix/ui: 稳定内联编辑宽度，去除右侧间距）
-- 请勿提交本地个性化设置文件，例如：`.claude/settings.local.json`
+- 请勿提交本地个性化设置文件，例如：`.claude/settings.local.json`、`.env`
 - 功能分支命名：`feature/<name>`，修复分支：`fix/<name>`
 
 ### 代码风格与可读性
