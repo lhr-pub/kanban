@@ -679,8 +679,8 @@ h1 {
     position: absolute;
     top: 0;
     left: 32px; /* Match card-title padding-left */
-    right: 140px; /* Increase further to prevent protrusion */
-    width: calc(100% - 32px - 140px);
+    right: 40px; /* Reduced to better utilize space */ 
+    width: calc(100% - 32px - 40px);
     height: 100%;
     overflow: auto;
     background: white;
@@ -719,8 +719,8 @@ h1 {
     position: absolute;
     top: 0;
     left: 32px;
-    right: 120px;
-    width: calc(100% - 32px - 120px);
+    right: 40px;
+    width: calc(100% - 32px - 40px);
     height: 100%;
     overflow: auto;
     background: white;
