@@ -15,8 +15,14 @@
             <h1>多人协作看板</h1>
             <div class="login-form">
                 <h2 id="formTitle">登录</h2>
+                <div id="authMessage"></div>
+                <div id="resendContainer" style="display:none; font-size: 0.9em; color: #666;">
+                    未收到邮件？<a href="#" id="resendLink">重新发送验证邮件</a>
+                    <span id="resendStatus" style="margin-left:.5rem;"></span>
+                </div>
                 <form id="authForm">
                     <input type="text" id="username" placeholder="用户名" required>
+                    <input type="email" id="email" placeholder="邮箱（用于验证）" style="display:none">
                     <input type="password" id="password" placeholder="密码" required>
                     <button type="submit" id="submitBtn">登录</button>
                 </form>

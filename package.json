@@ -2,6 +2,7 @@
   "dependencies": {
     "express": "^5.1.0",
     "ws": "^8.18.3",
+    "nodemailer": "^6.9.14",
     "dotenv": "^16.4.5"
   },
   "scripts": {

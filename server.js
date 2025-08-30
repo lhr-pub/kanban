@@ -1,9 +1,11 @@
+require('dotenv').config();
 const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const server = http.createServer(app);
@@ -27,6 +29,145 @@ if (!fs.existsSync(backupsDir)) {
 
 // 内存中的WebSocket连接管理
 const connections = new Map();
+
+// 管理员会话（内存）
+const adminSessions = new Map(); // token -> { username, expiresAt }
+
+function createAdminToken(username) {
+    const token = crypto.randomBytes(24).toString('hex');
+    const expiresAt = Date.now() + (2 * 60 * 60 * 1000); // 2小时
+    adminSessions.set(token, { username, expiresAt });
+    return token;
+}
+
+function verifyAdminToken(req, res, next) {
+    const authHeader = req.headers['authorization'] || '';
+    const parts = authHeader.split(' ');
+    if (parts.length !== 2 || parts[0] !== 'Bearer') {
+        return res.status(401).json({ message: '未授权' });
+    }
+    const token = parts[1];
+    const session = adminSessions.get(token);
+    if (!session) return res.status(401).json({ message: '无效令牌' });
+    if (session.expiresAt < Date.now()) {
+        adminSessions.delete(token);
+        return res.status(401).json({ message: '令牌已过期' });
+    }
+    // 滚动过期
+    session.expiresAt = Date.now() + (2 * 60 * 60 * 1000);
+    req.adminUsername = session.username;
+    req.adminToken = token;
+    next();
+}
+
+function ensureAdminUser() {
+    try {
+        const usersFile = path.join(dataDir, 'users.json');
+        const users = readJsonFile(usersFile, {});
+        const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+        const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+        const adminEmail = process.env.ADMIN_EMAIL || '';
+
+        const existing = users[adminUsername];
+        if (!existing) {
+            const hashedPassword = crypto.createHash('sha256').update(adminPassword).digest('hex');
+            users[adminUsername] = {
+                password: hashedPassword,
+                email: adminEmail,
+                verified: true,
+                admin: true,
+                projects: [],
+                created: new Date().toISOString()
+            };
+            writeJsonFile(usersFile, users);
+            console.log(`[BOOTSTRAP] 已创建管理员账户: ${adminUsername}`);
+        } else if (!existing.admin) {
+            existing.admin = true;
+            writeJsonFile(usersFile, users);
+            console.log(`[BOOTSTRAP] 已提升为管理员: ${adminUsername}`);
+        }
+    } catch (e) {
+        console.error('Admin bootstrap error:', e);
+    }
+}
+
+ensureAdminUser();
+
+// 邮件发送配置（通过环境变量）
+const emailConfig = {
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: (process.env.SMTP_USER && process.env.SMTP_PASS)
+        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+        : undefined
+};
+const emailEnabled = Boolean(emailConfig.host && emailConfig.auth && emailConfig.auth.user && emailConfig.auth.pass);
+const mailTransporter = emailEnabled ? nodemailer.createTransport(emailConfig) : null;
+if (emailEnabled) {
+    mailTransporter.verify().then(() => {
+        console.log('[MAIL] SMTP 连接验证成功');
+    }).catch(err => {
+        console.error('[MAIL] SMTP 连接验证失败:', err && err.message ? err.message : err);
+    });
+}
+
+async function sendVerificationEmail(toEmail, username, token, baseUrl) {
+    const verifyUrl = `${baseUrl}/api/verify?token=${encodeURIComponent(token)}`;
+
+    // 优先使用显式配置的 SMTP
+    if (emailEnabled && mailTransporter) {
+        const from = process.env.MAIL_FROM || (emailConfig.auth ? emailConfig.auth.user : 'no-reply@example.com');
+        try {
+            const info = await mailTransporter.sendMail({
+                from,
+                to: toEmail,
+                subject: '看板 - 邮箱验证',
+                text: `您好 ${username}，\n\n请点击以下链接验证您的邮箱：\n${verifyUrl}\n\n如果非本人操作请忽略。`,
+                html: `<p>您好 <b>${username}</b>，</p><p>请点击以下链接验证您的邮箱：</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>如果非本人操作请忽略。</p>`
+            });
+            console.log(`[MAIL] 已发送验证邮件至 ${toEmail}. messageId=${info && info.messageId}`);
+            return;
+        } catch (e) {
+            console.error('[MAIL] 发送失败（SMTP）:', e && e.message ? e.message : e);
+            // 若 SMTP 发送失败，不再降级到 Ethereal，避免意外泄漏。仅提示日志与手动链接。
+            console.log(`[DEV] Verification link for ${username}: ${verifyUrl}`);
+            return;
+        }
+    }
+
+    // 开发环境 Ethereal 回退（预览邮箱，不会真正投递）
+    const useEtherealDefault = (process.env.NODE_ENV || 'development') !== 'production';
+    const useEthereal = (process.env.USE_ETHEREAL || (useEtherealDefault ? 'true' : 'false')) === 'true';
+    if (useEthereal) {
+        try {
+            const testAccount = await nodemailer.createTestAccount();
+            const etherealTransporter = nodemailer.createTransport({
+                host: testAccount.smtp.host,
+                port: testAccount.smtp.port,
+                secure: testAccount.smtp.secure,
+                auth: { user: testAccount.user, pass: testAccount.pass }
+            });
+            const info = await etherealTransporter.sendMail({
+                from: testAccount.user,
+                to: toEmail,
+                subject: '看板 - 邮箱验证 (Ethereal 测试)',
+                text: `您好 ${username}，\n\n请点击以下链接验证您的邮箱：\n${verifyUrl}\n\n如果非本人操作请忽略。`,
+                html: `<p>您好 <b>${username}</b>，</p><p>请点击以下链接验证您的邮箱：</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>如果非本人操作请忽略。</p>`
+            });
+            const preview = nodemailer.getTestMessageUrl(info);
+            console.log(`[MAIL][ETHEREAL] 预览链接: ${preview}`);
+            return;
+        } catch (e) {
+            console.error('[MAIL][ETHEREAL] 发送失败:', e && e.message ? e.message : e);
+            console.log(`[DEV] Verification link for ${username}: ${verifyUrl}`);
+            return;
+        }
+    }
+
+    // 最终回退：仅控制台输出链接
+    console.log(`[DEV] Verification link for ${username}: ${verifyUrl}`);
+}
 
 // 生成邀请码
 function generateInviteCode() {
@@ -67,11 +208,11 @@ function writeJsonFile(filePath, data) {
 }
 
 // 用户认证API
-app.post('/api/register', (req, res) => {
-    const { username, password } = req.body;
+app.post('/api/register', async (req, res) => {
+    const { username, password, email } = req.body;
 
-    if (!username || !password) {
-        return res.status(400).json({ message: '用户名和密码不能为空' });
+    if (!username || !password || !email) {
+        return res.status(400).json({ message: '用户名、密码和邮箱不能为空' });
     }
 
     const usersFile = path.join(dataDir, 'users.json');
@@ -81,19 +222,42 @@ app.post('/api/register', (req, res) => {
         return res.status(400).json({ message: '用户名已存在' });
     }
 
+    // 邮箱是否已被使用
+    const emailTaken = Object.values(users).some(u => (u && u.email && u.email.toLowerCase && u.email.toLowerCase() === String(email).toLowerCase()));
+    if (emailTaken) {
+        return res.status(400).json({ message: '邮箱已被使用' });
+    }
+
     // 密码哈希
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
 
+    // 生成邮箱验证令牌
+    const verifyToken = crypto.randomBytes(32).toString('hex');
+    const verifyTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24小时
+
     users[username] = {
         password: hashedPassword,
+        email,
+        verified: false,
+        verifyToken,
+        verifyTokenExpires,
         projects: [],
         created: new Date().toISOString()
     };
 
-    if (writeJsonFile(usersFile, users)) {
-        res.json({ message: '注册成功', username });
-    } else {
-        res.status(500).json({ message: '注册失败，请稍后重试' });
+    if (!writeJsonFile(usersFile, users)) {
+        return res.status(500).json({ message: '注册失败，请稍后重试' });
+    }
+
+    try {
+        const proto = (req.headers['x-forwarded-proto'] || req.protocol);
+        const host = req.get('host');
+        const baseUrl = `${proto}://${host}`;
+        await sendVerificationEmail(email, username, verifyToken, baseUrl);
+        return res.json({ message: '注册成功，请前往邮箱验证后登录', username });
+    } catch (err) {
+        console.error('Error sending verification email:', err);
+        return res.status(500).json({ message: '注册成功，但发送验证邮件失败，请稍后重试' });
     }
 });
 
@@ -112,12 +276,208 @@ app.post('/api/login', (req, res) => {
         return res.status(400).json({ message: '用户不存在' });
     }
 
+    // 未验证邮箱的用户禁止登录（兼容老数据：仅当明确为 false 时拦截）
+    if (user.verified === false) {
+        return res.status(403).json({ message: '邮箱未验证，请先完成邮箱验证' });
+    }
+
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
     if (user.password !== hashedPassword) {
         return res.status(400).json({ message: '密码错误' });
     }
 
     res.json({ message: '登录成功', username });
+});
+
+// 邮箱验证回调
+app.get('/api/verify', (req, res) => {
+    const { token } = req.query;
+    if (!token || typeof token !== 'string') {
+        return res.status(400).send('无效的验证链接');
+    }
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+
+    let matchedUser = null;
+    for (const [uname, u] of Object.entries(users)) {
+        if (u && u.verifyToken === token) {
+            // 检查是否过期
+            if (u.verifyTokenExpires && new Date(u.verifyTokenExpires) < new Date()) {
+                return res.status(400).send('验证链接已过期');
+            }
+            matchedUser = uname;
+            break;
+        }
+    }
+
+    if (!matchedUser) {
+        return res.status(400).send('验证链接无效');
+    }
+
+    users[matchedUser].verified = true;
+    delete users[matchedUser].verifyToken;
+    delete users[matchedUser].verifyTokenExpires;
+
+    if (!writeJsonFile(usersFile, users)) {
+        return res.status(500).send('服务器错误，请稍后重试');
+    }
+
+    // 验证成功后跳转到登录页
+    return res.redirect('/?verified=1');
+});
+
+// 重新发送验证邮件（登录受阻时调用）
+app.post('/api/resend-verification', async (req, res) => {
+    const { username } = req.body || {};
+    if (!username) return res.status(400).json({ message: '缺少用户名' });
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    if (user.verified === true) return res.status(400).json({ message: '用户已验证' });
+    if (!user.email) return res.status(400).json({ message: '缺少用户邮箱' });
+
+    // 频率限制：60秒一次
+    const now = Date.now();
+    const lastSent = user.lastVerificationSentAt ? new Date(user.lastVerificationSentAt).getTime() : 0;
+    if (now - lastSent < 60 * 1000) {
+        const wait = Math.ceil((60 * 1000 - (now - lastSent)) / 1000);
+        return res.status(429).json({ message: `请稍后再试（${wait}s）` });
+    }
+
+    // 若令牌不存在或已过期，则生成新令牌并延长过期时间
+    let token = user.verifyToken;
+    const isExpired = !user.verifyTokenExpires || new Date(user.verifyTokenExpires).getTime() < now;
+    if (!token || isExpired) {
+        token = crypto.randomBytes(32).toString('hex');
+        user.verifyToken = token;
+        user.verifyTokenExpires = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+    }
+    user.lastVerificationSentAt = new Date(now).toISOString();
+
+    if (!writeJsonFile(usersFile, users)) {
+        return res.status(500).json({ message: '保存失败，请稍后重试' });
+    }
+
+    try {
+        const proto = (req.headers['x-forwarded-proto'] || req.protocol);
+        const host = req.get('host');
+        const baseUrl = `${proto}://${host}`;
+        await sendVerificationEmail(user.email, username, token, baseUrl);
+        return res.json({ message: '验证邮件已发送，请查收' });
+    } catch (e) {
+        console.error('Resend verification error:', e);
+        return res.status(500).json({ message: '发送失败，请稍后重试' });
+    }
+});
+
+// 管理员登录（独立）
+app.post('/api/admin/login', (req, res) => {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+        return res.status(400).json({ message: '用户名和密码不能为空' });
+    }
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user || user.admin !== true) {
+        return res.status(403).json({ message: '无权访问' });
+    }
+    const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
+    if (user.password !== hashedPassword) {
+        return res.status(400).json({ message: '密码错误' });
+    }
+    const token = createAdminToken(username);
+    res.json({ message: '登录成功', token, username });
+});
+
+app.post('/api/admin/logout', verifyAdminToken, (req, res) => {
+    if (req.adminToken) adminSessions.delete(req.adminToken);
+    res.json({ message: '已退出' });
+});
+
+// 管理用户列表（仅管理员）
+app.get('/api/admin/users', verifyAdminToken, (req, res) => {
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const result = Object.entries(users).map(([uname, u]) => ({
+        username: uname,
+        email: u.email || '',
+        verified: u.verified !== false,
+        admin: u.admin === true,
+        projects: Array.isArray(u.projects) ? u.projects.length : 0,
+        created: u.created || ''
+    }));
+    res.json(result);
+});
+
+// 更新用户属性：verified/admin/password（仅管理员）
+app.patch('/api/admin/users/:username', verifyAdminToken, (req, res) => {
+    const { username } = req.params;
+    const { verified, admin, password } = req.body || {};
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+
+    if (typeof verified === 'boolean') {
+        user.verified = verified;
+        if (verified) {
+            delete user.verifyToken;
+            delete user.verifyTokenExpires;
+        }
+    }
+    if (typeof admin === 'boolean') {
+        user.admin = admin;
+    }
+    if (typeof password === 'string' && password.trim()) {
+        user.password = crypto.createHash('sha256').update(password.trim()).digest('hex');
+    }
+
+    if (!writeJsonFile(usersFile, users)) {
+        return res.status(500).json({ message: '保存失败' });
+    }
+    res.json({ message: '更新成功' });
+});
+
+// 删除用户（仅管理员）。若为项目所有者则阻止删除
+app.delete('/api/admin/users/:username', verifyAdminToken, (req, res) => {
+    const { username } = req.params;
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+
+    if (!users[username]) return res.status(404).json({ message: '用户不存在' });
+
+    // 若是任一项目所有者，阻止删除
+    const owning = Object.values(projects).some(p => p && p.owner === username);
+    if (owning) {
+        return res.status(400).json({ message: '用户是某项目的所有者，无法删除' });
+    }
+
+    // 从各项目成员中移除
+    for (const proj of Object.values(projects)) {
+        if (proj && Array.isArray(proj.members)) {
+            const idx = proj.members.indexOf(username);
+            if (idx !== -1) proj.members.splice(idx, 1);
+        }
+    }
+
+    delete users[username];
+
+    if (!writeJsonFile(projectsFile, projects) || !writeJsonFile(usersFile, users)) {
+        return res.status(500).json({ message: '删除失败' });
+    }
+    res.json({ message: '已删除用户' });
+});
+
+// 提供管理员页面 URL
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // 项目管理API
