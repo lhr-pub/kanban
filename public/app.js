@@ -7,6 +7,12 @@ let currentBoardName = null;
 let boardData = { todo: [], doing: [], done: [], archived: [] };
 let editingCardId = null;
 let previousPage = null; // 记录上一个页面
+let lastEditTime = 0;
+let pendingBoardUpdate = false;
+let pendingRenderTimer = null;
+let inlineEditorOpening = false;
+let pendingFocusSelector = null;
+let pendingFocusCaretIndex = null;
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -105,7 +111,7 @@ document.addEventListener('DOMContentLoaded', function() {
             titleInput.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter' && this.value.trim()) {
                     e.preventDefault();
-                    addCard(status);
+                    addCard(status, 'bottom');
                 }
             });
         }
@@ -668,7 +674,8 @@ function handleWebSocketMessage(data) {
         case 'board-update':
             if (data.projectId === currentProjectId && data.boardName === currentBoardName) {
                 boardData = data.board;
-                renderBoard();
+                pendingBoardUpdate = true;
+                scheduleDeferredRender();
             }
             break;
         case 'user-list':
@@ -709,23 +716,73 @@ function renderBoard() {
         const cardsContainer = document.getElementById(`${status}Cards`);
         const countElement = document.getElementById(`${status}Count`);
 
+        // Add top add row if not present
+        ensureTopAddRow(status);
+
         cardsContainer.innerHTML = '';
         const cards = boardData[status] || [];
         countElement.textContent = cards.length;
 
-        // 按创建时间正序排序（最新的在后面）
-        const sortedCards = cards.slice().sort((a, b) => {
-            return new Date(a.created) - new Date(b.created);
-        });
+        // 保持当前顺序渲染
+        const sortedCards = cards.slice();
 
         sortedCards.forEach(card => {
             const cardElement = createCardElement(card, status);
             cardsContainer.appendChild(cardElement);
         });
+
+        // enable drag for this column
+        enableColumnDrag(status);
     });
 
     if (!archivePage.classList.contains('hidden')) {
         renderArchive();
+    }
+}
+
+function ensureTopAddRow(status) {
+    const columnEl = document.querySelector(`.column[data-status="${status}"]`);
+    if (!columnEl) return;
+    let topAdd = columnEl.querySelector('.add-card-top');
+    if (!topAdd) {
+        const assigneeId = `new${status.charAt(0).toUpperCase() + status.slice(1)}TopAssignee`;
+        const titleId = `new${status.charAt(0).toUpperCase() + status.slice(1)}TopTitle`;
+        const deadlineId = `new${status.charAt(0).toUpperCase() + status.slice(1)}TopDeadline`;
+        topAdd = document.createElement('div');
+        topAdd.className = 'add-card add-card-top';
+        topAdd.innerHTML = `
+            <div class="input-row-inline">
+                <div class="left-inputs">
+                    <input type="text" placeholder="在上方添加任务..." id="${titleId}" required class="task-title-input">
+                    <select id="${assigneeId}" class="assignee-select" title="分配给"><option value="">未分配</option></select>
+                </div>
+                <input type="date" id="${deadlineId}" title="截止日期" class="date-input">
+            </div>
+        `;
+        const cardsContainer = columnEl.querySelector('.cards');
+        columnEl.insertBefore(topAdd, cardsContainer);
+
+        // 绑定回车添加（上方）
+        const topTitleInput = document.getElementById(titleId);
+        if (topTitleInput) {
+            topTitleInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && this.value.trim()) {
+                    e.preventDefault();
+                    addCard(status, 'top');
+                }
+            });
+        }
+    }
+    // sync members into top select
+    const topSelect = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}TopAssignee`);
+    if (topSelect) {
+        const prev = topSelect.value;
+        topSelect.innerHTML = '<option value="">未分配</option>';
+        (window.currentOnlineUsers || window.currentProjectMembers || []).forEach(u => {
+            const op = document.createElement('option');
+            op.value = u; op.textContent = u; topSelect.appendChild(op);
+        });
+        topSelect.value = prev;
     }
 }
 
@@ -738,10 +795,8 @@ function renderArchive() {
     const cards = boardData.archived || [];
     archivedCount.textContent = cards.length;
 
-    // 按创建时间正序排序（最新的在后面）
-    const sortedCards = cards.slice().sort((a, b) => {
-        return new Date(a.created) - new Date(b.created);
-    });
+    // 保持当前顺序
+    const sortedCards = cards.slice();
 
     sortedCards.forEach(card => {
         const cardElement = createCardElement(card, 'archived');
@@ -761,19 +816,20 @@ function createCardElement(card, status) {
     if (isOverdue) cardElement.classList.add('overdue');
     if (isEditing) cardElement.classList.add('editing');
 
-    let actionsHtml = '';
+    let leftActions = '';
+    let rightActions = '';
     if (status !== 'archived') {
         if (status !== 'todo') {
-            actionsHtml += `<button class="action-btn move-left" onclick="moveCard('${card.id}', 'left')" title="向左移动">←</button>`;
+            leftActions = `<button class="action-btn move-left" onclick="moveCard('${card.id}', 'left')" title="向左移动">←</button>`;
         }
         if (status !== 'done') {
-            actionsHtml += `<button class="action-btn move-right" onclick="moveCard('${card.id}', 'right')" title="向右移动">→</button>`;
+            rightActions = `<button class="action-btn move-right" onclick="moveCard('${card.id}', 'right')" title="向右移动">→</button>`;
         }
         if (status === 'done') {
-            actionsHtml += `<button class="archive-btn" onclick="archiveCard('${card.id}')" title="归档">📁</button>`;
+            rightActions = `<button class="archive-btn" onclick="archiveCard('${card.id}')" title="归档">📁</button>`;
         }
     } else {
-        actionsHtml = `<button class="restore-btn" onclick="restoreCard('${card.id}')" title="还原到待办">↶</button>`;
+        rightActions = `<button class="restore-btn" onclick="restoreCard('${card.id}')" title="还原到待办">↶</button>`;
     }
 
     const assigneeHtml = card.assignee ?
@@ -784,13 +840,17 @@ function createCardElement(card, status) {
         `<span class="card-deadline clickable unset" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击设置截止日期">📅 设置</span>`;
 
     cardElement.innerHTML = `
-        <div class="card-actions">${actionsHtml}</div>
-        <h4 class="card-title clickable" onclick="event.stopPropagation(); editCardTitle('${card.id}')" title="点击编辑标题"><span class="title-text">${escapeHtml(card.title)}</span></h4>
-        <p class="card-description clickable" onclick="event.stopPropagation(); editCardDescription('${card.id}')" title="点击编辑描述"><span class="description-text">${escapeHtml(card.description || '点击添加描述...')}</span></p>
-        <div class="card-footer" onclick="openEditModal('${card.id}')">
+        <h4 class="card-title"><span class="title-text clickable" onmousedown="editCardTitle('${card.id}', event)" title="点击编辑标题"><span class="title-span">${escapeHtml(card.title)}</span></span></h4>
+        <p class="card-description"><span class="description-text clickable" onmousedown="editCardDescription('${card.id}', event)" title="点击编辑描述"><span class="description-span">${escapeHtml(card.description || '点击添加描述...')}</span></span></p>
+        <div class="card-footer">
             <div class="card-footer-top">
                 <div class="card-left-info">
                     ${assigneeHtml}
+                </div>
+                <div class="card-center-actions">
+                    ${leftActions}
+                    <button class="detail-btn" onclick="openEditModal('${card.id}')" title="查看详情">📋</button>
+                    ${rightActions}
                 </div>
                 <div class="card-right-info">
                     ${deadlineHtml}
@@ -803,10 +863,12 @@ function createCardElement(card, status) {
 }
 
 // 添加卡片
-function addCard(status) {
-    const titleInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Title`);
-    const assigneeInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Assignee`);
-    const deadlineInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Deadline`);
+function addCard(status, position = 'bottom') {
+    const base = `new${status.charAt(0).toUpperCase() + status.slice(1)}`;
+    const isTop = position === 'top';
+    const titleInput = document.getElementById(`${base}${isTop ? 'Top' : ''}Title`);
+    const assigneeInput = document.getElementById(`${base}${isTop ? 'Top' : ''}Assignee`);
+    const deadlineInput = document.getElementById(`${base}${isTop ? 'Top' : ''}Deadline`);
 
     const title = titleInput.value.trim();
     if (!title) {
@@ -830,9 +892,19 @@ function addCard(status) {
             projectId: currentProjectId,
             boardName: currentBoardName,
             status: status,
-            card: card
+            card: card,
+            position: isTop ? 'top' : 'bottom'
         }));
     }
+
+    // 本地立即更新以确保位置正确反馈
+    if (!Array.isArray(boardData[status])) boardData[status] = [];
+    if (isTop) {
+        boardData[status] = [card, ...boardData[status]];
+    } else {
+        boardData[status] = [...boardData[status], card];
+    }
+    renderBoard();
 
     titleInput.value = '';
     assigneeInput.value = '';
@@ -1233,7 +1305,13 @@ function logout() {
 }
 
 // 内联编辑任务标题
-function editCardTitle(cardId) {
+function editCardTitle(cardId, clickEvent) {
+    clickEvent.preventDefault();
+    clickEvent.stopPropagation();
+
+    if (Date.now() - lastEditTime < 30) return;
+    lastEditTime = Date.now();
+
     let card = null;
     let cardStatus = null;
 
@@ -1248,14 +1326,31 @@ function editCardTitle(cardId) {
 
     if (!card) return;
 
+    // 标记：正在打开新的内联编辑器，避免WS渲染打断
+    inlineEditorOpening = true;
+
     // 检查是否已经在编辑状态
     const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
     const titleElement = cardElement.querySelector('.card-title');
+    const titleSpan = titleElement.querySelector('.title-span');
 
     if (titleElement.querySelector('.inline-title-input')) {
         // 已经在编辑状态，不要重复创建
         return;
     }
+
+    // 先基于原始span计算光标位置
+    const targetCaretIndex = getCaretIndexFromSpan(titleSpan, clickEvent.clientX, clickEvent.clientY);
+    // 设置待聚焦目标为即将创建的标题输入框
+    pendingFocusSelector = `[data-card-id="${cardId}"] .inline-title-input`;
+    pendingFocusCaretIndex = targetCaretIndex;
+
+    // 测量span的精确位置和尺寸
+    const containerRect = titleElement.getBoundingClientRect();
+    const spanRect = titleSpan.getBoundingClientRect();
+
+    const relativeLeft = spanRect.left - containerRect.left;
+    const relativeHeight = spanRect.height;
 
     // 记录当前高度，避免抖动
     const lockedHeight = titleElement.offsetHeight;
@@ -1264,33 +1359,63 @@ function editCardTitle(cardId) {
     const input = document.createElement('textarea');
     input.className = 'inline-title-input';
     input.value = card.title;
+    // 不设置width，让CSS样式控制宽度以防止突出
+
+    // 先设置样式，包括隐藏
+    titleElement.style.position = 'relative'; // 确保容器是relative
+    input.style.position = 'absolute';
+    input.style.left = '0px';
     input.style.width = '100%';
-    input.style.boxSizing = 'border-box';
+    input.style.visibility = 'hidden';
 
-    // 保存原始文本
-    const originalText = titleElement.innerHTML;
-
-    // 替换内容并锁定高度
-    titleElement.innerHTML = '';
-    titleElement.style.minHeight = lockedHeight + 'px';
-    titleElement.style.height = lockedHeight + 'px';
+    // 添加到DOM
     titleElement.appendChild(input);
 
-    // 设置卡片为编辑状态
-    setCardInlineEditingState(cardId, true);
+    // 使用requestAnimationFrame进行交换和聚焦
+    requestAnimationFrame(() => {
+        // 显示编辑器并隐藏原文本
+        titleSpan.style.visibility = 'hidden';
+        input.style.visibility = 'visible';
 
-    // 聚焦并选中文本
-    input.focus();
-    input.select();
+        // 锁定容器高度
+        titleElement.style.minHeight = lockedHeight + 'px';
+        titleElement.style.height = lockedHeight + 'px';
 
-    // 初始高度与后续自适应（不低于原高度）
-    input.style.height = Math.max(lockedHeight, input.scrollHeight) + 'px';
-    // keep container in sync
-    titleElement.style.height = input.style.height;
-    // update on input already handled below
+        // 设置卡片为编辑状态
+        setCardInlineEditingState(cardId, true);
+
+        // 使用计算得到的光标位置聚焦
+        const caretIndex = Math.max(0, Math.min(input.value.length, targetCaretIndex));
+        focusWithCaret(input, caretIndex);
+
+        // 初始高度与后续自适应（不低于原高度）
+        input.style.height = Math.max(lockedHeight, input.scrollHeight) + 'px';
+        // keep container in sync
+        titleElement.style.height = input.style.height;
+
+        // 添加全局点击监听
+        const ignoreClicksUntil = Date.now() + 140; // 忽略打开本编辑器的首次点击
+        function onDocClick(ev) {
+            if (Date.now() < ignoreClicksUntil) return;
+            if (!input.contains(ev.target)) {
+                let delay = 0;
+                if (ev.target.closest('.inline-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown') || ev.target.closest('.title-text, .description-text, .card-deadline, .card-assignee')) {
+                    delay = 80;
+                }
+                setTimeout(() => {
+                    save();
+                }, delay);
+                document.removeEventListener('click', onDocClick, true);
+            }
+        }
+        setTimeout(() => document.addEventListener('click', onDocClick, true), 0);
+
+        // 新编辑器已完成展示与聚焦，释放"打开中"标记
+        setTimeout(() => { inlineEditorOpening = false; }, 0);
+    });
 
     // 保存函数
-    const save = () => {
+    const save = async () => {
         const newTitle = input.value.trim();
         if (newTitle && newTitle !== card.title) {
             // 更新本地数据
@@ -1310,33 +1435,56 @@ function editCardTitle(cardId) {
             }
 
             // 显示新标题
-            titleElement.innerHTML = escapeHtml(newTitle);
-        } else {
-            // 恢复原始显示
-            titleElement.innerHTML = originalText;
+            titleSpan.innerHTML = escapeHtml(newTitle);
         }
-        // 解除高度锁定
+
+        // 记录当前聚焦的内联编辑器（如果不是自己），以便保存后还原
+        const preserveFocusEl = (document.activeElement && document.activeElement !== input &&
+            (document.activeElement.classList.contains('inline-title-input') ||
+             document.activeElement.classList.contains('inline-description-textarea') ||
+             document.activeElement.classList.contains('inline-date-input') ||
+             document.activeElement.classList.contains('inline-assignee-select')))
+            ? document.activeElement : null;
+
+        // 让位给事件循环，确保新编辑器先完成聚焦
+        await new Promise(r => setTimeout(r, 0));
+
+        // 清理自身输入框
+        input.remove();
+        titleSpan.style.visibility = 'visible';
         titleElement.style.minHeight = '';
         titleElement.style.height = '';
+        titleElement.style.position = '';
+        titleElement.style.width = '';
+
+        // 如果有其他内联编辑器保持激活，主动还原其焦点
+        if (preserveFocusEl && document.body.contains(preserveFocusEl)) {
+            setTimeout(() => { try { preserveFocusEl.focus(); } catch (e) {} }, 0);
+        }
+        // 如果预先声明了待聚焦的目标，尝试恢复
+        setTimeout(() => restorePendingFocusIfAny(), 0);
+
+        // Check if no other inline editors active
+        setTimeout(() => {
+            const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
+            if (cardElement && !cardElement.querySelector('.inline-description-textarea') && !cardElement.querySelector('.inline-date-input') && !cardElement.querySelector('.inline-assignee-select')) {
+                setCardInlineEditingState(cardId, false);
+            }
+        }, 50);
     };
 
     // 取消函数
     const cancel = () => {
-        titleElement.innerHTML = originalText;
+        setCardInlineEditingState(cardId, false);
+        input.remove();
+        titleSpan.style.visibility = 'visible';
         titleElement.style.minHeight = '';
         titleElement.style.height = '';
+        titleElement.style.position = '';
+        titleElement.style.width = '';
     };
 
     // 绑定事件 - 智能焦点管理
-    input.addEventListener('blur', (e) => {
-        setTimeout(() => {
-            if (!shouldKeepInlineEditingActive(cardId)) {
-                setCardInlineEditingState(cardId, false);
-                save();
-            }
-        }, 150);
-    });
-
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && e.ctrlKey) {
             // Ctrl+Enter保存
@@ -1365,7 +1513,13 @@ function editCardTitle(cardId) {
 }
 
 // 内联编辑任务描述
-function editCardDescription(cardId) {
+function editCardDescription(cardId, clickEvent) {
+    clickEvent.preventDefault();
+    clickEvent.stopPropagation();
+
+    if (Date.now() - lastEditTime < 30) return;
+    lastEditTime = Date.now();
+
     let card = null;
     let cardStatus = null;
 
@@ -1380,14 +1534,31 @@ function editCardDescription(cardId) {
 
     if (!card) return;
 
+    // 标记：正在打开新的内联编辑器，避免WS渲染打断
+    inlineEditorOpening = true;
+
     // 检查是否已经在编辑状态
     const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
     const descriptionElement = cardElement.querySelector('.card-description');
+    const descriptionSpan = descriptionElement.querySelector('.description-span');
 
     if (descriptionElement.querySelector('.inline-description-textarea')) {
         // 已经在编辑状态，不要重复创建
         return;
     }
+
+    // 基于原始span计算光标位置
+    const targetCaretIndex = getCaretIndexFromSpan(descriptionSpan, clickEvent.clientX, clickEvent.clientY);
+    // 设置待聚焦目标为即将创建的描述输入框
+    pendingFocusSelector = `[data-card-id="${cardId}"] .inline-description-textarea`;
+    pendingFocusCaretIndex = targetCaretIndex;
+
+    // 测量span的精确位置和尺寸
+    const containerRect = descriptionElement.getBoundingClientRect();
+    const spanRect = descriptionSpan.getBoundingClientRect();
+
+    const relativeLeft = spanRect.left - containerRect.left;
+    const relativeHeight = spanRect.height;
 
     // 进入编辑前锁定当前高度，避免抖动
     const lockedHeight = descriptionElement.offsetHeight;
@@ -1397,37 +1568,68 @@ function editCardDescription(cardId) {
     textarea.className = 'inline-description-textarea';
     textarea.value = card.description || '';
     textarea.placeholder = '输入任务描述...';
+    // 不设置width，让CSS样式控制宽度以防止突出
+
+    // 先设置样式，包括隐藏
+    descriptionElement.style.position = 'relative'; // 确保容器是relative
+    textarea.style.position = 'absolute';
+    textarea.style.left = '0px';
     textarea.style.width = '100%';
-    textarea.style.boxSizing = 'border-box';
+    textarea.style.visibility = 'hidden';
 
-    // 保存原始文本
-    const originalText = descriptionElement.innerHTML;
-
-    // 替换内容并锁定容器高度
-    descriptionElement.innerHTML = '';
-    descriptionElement.style.minHeight = lockedHeight + 'px';
-    descriptionElement.style.height = lockedHeight + 'px';
+    // 添加到DOM
     descriptionElement.appendChild(textarea);
 
-    // 聚焦并选中文本
-    textarea.focus();
-    textarea.select();
+    // 使用requestAnimationFrame进行交换和聚焦
+    requestAnimationFrame(() => {
+        // 显示编辑器并隐藏原文本
+        descriptionSpan.style.visibility = 'hidden';
+        textarea.style.visibility = 'visible';
 
-    // 先设置为锁定高度
-    textarea.style.height = Math.max(lockedHeight, textarea.scrollHeight) + 'px';
-    // keep container in sync
-    descriptionElement.style.height = textarea.style.height;
+        // 锁定容器高度
+        descriptionElement.style.minHeight = lockedHeight + 'px';
+        descriptionElement.style.height = lockedHeight + 'px';
 
-    // 自动调整高度（不低于初始高度）
-    textarea.addEventListener('input', () => {
-        textarea.style.height = 'auto';
-        const newH = Math.max(lockedHeight, textarea.scrollHeight);
-        textarea.style.height = newH + 'px';
-        descriptionElement.style.height = newH + 'px';
+        // 使用计算得到的光标位置聚焦
+        const caretIndex = Math.max(0, Math.min(textarea.value.length, targetCaretIndex));
+        focusWithCaret(textarea, caretIndex);
+
+        // 先设置为锁定高度
+        textarea.style.height = Math.max(lockedHeight, textarea.scrollHeight) + 'px';
+        // keep container in sync
+        descriptionElement.style.height = textarea.style.height;
+
+        // 自动调整高度（不低于初始高度）
+        textarea.addEventListener('input', () => {
+            textarea.style.height = 'auto';
+            const newH = Math.max(lockedHeight, textarea.scrollHeight);
+            textarea.style.height = newH + 'px';
+            descriptionElement.style.height = newH + 'px';
+        });
+
+        // 添加全局点击监听
+        const ignoreClicksUntil = Date.now() + 140; // 忽略打开本编辑器的首次点击
+        function onDocClick(ev) {
+            if (Date.now() < ignoreClicksUntil) return;
+            if (!textarea.contains(ev.target)) {
+                let delay = 0;
+                if (ev.target.closest('.inline-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown') || ev.target.closest('.title-text, .description-text, .card-deadline, .card-assignee')) {
+                    delay = 80;
+                }
+                setTimeout(() => {
+                    save();
+                }, delay);
+                document.removeEventListener('click', onDocClick, true);
+            }
+        }
+        setTimeout(() => document.addEventListener('click', onDocClick, true), 0);
+
+        // 新编辑器已完成展示与聚焦，释放"打开中"标记
+        setTimeout(() => { inlineEditorOpening = false; }, 0);
     });
 
     // 保存函数
-    const save = () => {
+    const save = async () => {
         const newDescription = textarea.value.trim();
         if (newDescription !== card.description) {
             // 更新本地数据
@@ -1448,32 +1650,56 @@ function editCardDescription(cardId) {
 
             // 显示新描述
             const displayText = newDescription || '点击添加描述...';
-            descriptionElement.innerHTML = escapeHtml(displayText);
-        } else {
-            // 恢复原始显示
-            descriptionElement.innerHTML = originalText;
+            descriptionSpan.innerHTML = escapeHtml(displayText);
         }
-        // 解除锁定高度
+
+        // 记录当前聚焦的内联编辑器（如果不是自己），以便保存后还原
+        const preserveFocusEl = (document.activeElement && document.activeElement !== textarea &&
+            (document.activeElement.classList.contains('inline-title-input') ||
+             document.activeElement.classList.contains('inline-description-textarea') ||
+             document.activeElement.classList.contains('inline-date-input') ||
+             document.activeElement.classList.contains('inline-assignee-select')))
+            ? document.activeElement : null;
+
+        // 让位给事件循环，确保新编辑器先完成聚焦
+        await new Promise(r => setTimeout(r, 0));
+
+        // 清理自身输入框
+        textarea.remove();
+        descriptionSpan.style.visibility = 'visible';
         descriptionElement.style.minHeight = '';
         descriptionElement.style.height = '';
+        descriptionElement.style.position = '';
+        descriptionElement.style.width = '';
+
+        // 如果有其他内联编辑器保持激活，主动还原其焦点
+        if (preserveFocusEl && document.body.contains(preserveFocusEl)) {
+            setTimeout(() => { try { preserveFocusEl.focus(); } catch (e) {} }, 0);
+        }
+        // 如果预先声明了待聚焦的目标，尝试恢复
+        setTimeout(() => restorePendingFocusIfAny(), 0);
+
+        // Check if no other inline editors active
+        setTimeout(() => {
+            const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
+            if (cardElement && !cardElement.querySelector('.inline-title-input') && !cardElement.querySelector('.inline-date-input') && !cardElement.querySelector('.inline-assignee-select')) {
+                setCardInlineEditingState(cardId, false);
+            }
+        }, 50);
     };
 
     // 取消函数
     const cancel = () => {
-        descriptionElement.innerHTML = originalText;
+        setCardInlineEditingState(cardId, false);
+        textarea.remove();
+        descriptionSpan.style.visibility = 'visible';
         descriptionElement.style.minHeight = '';
         descriptionElement.style.height = '';
+        descriptionElement.style.position = '';
+        descriptionElement.style.width = '';
     };
 
     // 绑定事件 - 智能焦点管理
-    textarea.addEventListener('blur', (e) => {
-        setTimeout(() => {
-            if (!shouldKeepInlineEditingActive(cardId)) {
-                save();
-            }
-        }, 150);
-    });
-
     textarea.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && e.ctrlKey) {
             // Ctrl+Enter保存
@@ -1529,8 +1755,18 @@ function editCardAssignee(cardId) {
             const newAssignee = user || null;
             updateCardField(cardId, 'assignee', newAssignee);
             card.assignee = newAssignee; // 本地立即更新
+
+            // 更新DOM而不重新渲染整个板
+            if (newAssignee) {
+                assigneeElement.textContent = `@${escapeHtml(newAssignee)}`;
+                assigneeElement.classList.remove('unassigned');
+            } else {
+                assigneeElement.textContent = '未分配';
+                assigneeElement.classList.add('unassigned');
+            }
+
             closeDropdown();
-            setTimeout(() => renderBoard(), 50);
+            // 移除 setTimeout(() => renderBoard(), 50);
         });
         menu.appendChild(item);
     });
@@ -1609,34 +1845,97 @@ function editCardDeadline(cardId) {
     }, 50);
 
     // 处理日期变更
-    input.onchange = function(e) {
+    input.onchange = async function(e) {
         e.stopPropagation();
+        const preserveFocusEl = (document.activeElement && document.activeElement !== input &&
+            (document.activeElement.classList.contains('inline-title-input') ||
+             document.activeElement.classList.contains('inline-description-textarea') ||
+             document.activeElement.classList.contains('inline-date-input') ||
+             document.activeElement.classList.contains('inline-assignee-select')))
+            ? document.activeElement : null;
+
         const newDeadline = this.value || null;
+        // 让位给事件循环，确保新目标编辑器的聚焦先完成
+        await new Promise(r => setTimeout(r, 0));
         updateCardField(cardId, 'deadline', newDeadline);
-        // 立即恢复显示
-        setTimeout(() => renderBoard(), 50);
+        // 立即更新DOM而不重新渲染整个板
+        deadlineElement.innerHTML = newDeadline ? `📅 ${newDeadline}` : '📅 设置';
+        if (!newDeadline) deadlineElement.classList.add('unset');
+        else deadlineElement.classList.remove('unset');
+
+        if (preserveFocusEl && document.body.contains(preserveFocusEl)) {
+            setTimeout(() => { try { preserveFocusEl.focus(); } catch (e) {} }, 0);
+        }
+        // 如果预先声明了待聚焦的目标，尝试恢复
+        setTimeout(() => restorePendingFocusIfAny(), 0);
+        // 移除 setTimeout(() => renderBoard(), 50);
     };
 
     // 处理键盘事件
     input.onkeydown = function(e) {
         if (e.key === 'Escape') {
             e.stopPropagation();
-            renderBoard();
+            const preserveFocusEl = (document.activeElement && document.activeElement !== input &&
+                (document.activeElement.classList.contains('inline-title-input') ||
+                 document.activeElement.classList.contains('inline-description-textarea') ||
+                 document.activeElement.classList.contains('inline-date-input') ||
+                 document.activeElement.classList.contains('inline-assignee-select')))
+                ? document.activeElement : null;
+
+            deadlineElement.innerHTML = card.deadline ? `📅 ${card.deadline}` : '📅 设置';
+            if (!card.deadline) deadlineElement.classList.add('unset');
+            else deadlineElement.classList.remove('unset');
+
+            if (preserveFocusEl && document.body.contains(preserveFocusEl)) {
+                setTimeout(() => { try { preserveFocusEl.focus(); } catch (e) {} }, 0);
+            }
+            setTimeout(() => restorePendingFocusIfAny(), 0);
         } else if (e.key === 'Enter') {
             e.stopPropagation();
+            const preserveFocusEl = (document.activeElement && document.activeElement !== input &&
+                (document.activeElement.classList.contains('inline-title-input') ||
+                 document.activeElement.classList.contains('inline-description-textarea') ||
+                 document.activeElement.classList.contains('inline-date-input') ||
+                 document.activeElement.classList.contains('inline-assignee-select')))
+                ? document.activeElement : null;
+
             const newDeadline = this.value || null;
             updateCardField(cardId, 'deadline', newDeadline);
-            setTimeout(() => renderBoard(), 50);
+            deadlineElement.innerHTML = newDeadline ? `📅 ${newDeadline}` : '📅 设置';
+            if (!newDeadline) deadlineElement.classList.add('unset');
+            else deadlineElement.classList.remove('unset');
+
+            if (preserveFocusEl && document.body.contains(preserveFocusEl)) {
+                setTimeout(() => { try { preserveFocusEl.focus(); } catch (e) {} }, 0);
+            }
+            setTimeout(() => restorePendingFocusIfAny(), 0);
         }
     };
 
     // 处理失去焦点 - 智能焦点管理
     input.onblur = function(e) {
-        setTimeout(() => {
-            // 检查元素是否还存在且是否还在编辑状态
-            const currentInput = cardElement.querySelector('.inline-date-input');
-            if (currentInput && !shouldKeepInlineEditingActive(cardId)) {
-                renderBoard();
+        setTimeout(async () => {
+            // 检查当前焦点是否还在当前的日期输入框上
+            if (document.activeElement !== input) {
+                const preserveFocusEl = (document.activeElement && document.activeElement !== input &&
+                    (document.activeElement.classList.contains('inline-title-input') ||
+                     document.activeElement.classList.contains('inline-description-textarea') ||
+                     document.activeElement.classList.contains('inline-date-input') ||
+                     document.activeElement.classList.contains('inline-assignee-select')))
+                    ? document.activeElement : null;
+
+                const newDeadline = input.value || null;
+                // 让位给事件循环，确保新目标编辑器的聚焦先完成
+                await new Promise(r => setTimeout(r, 0));
+                updateCardField(cardId, 'deadline', newDeadline);
+                deadlineElement.innerHTML = newDeadline ? `📅 ${newDeadline}` : '📅 设置';
+                if (!newDeadline) deadlineElement.classList.add('unset');
+                else deadlineElement.classList.remove('unset');
+
+                if (preserveFocusEl && document.body.contains(preserveFocusEl)) {
+                    setTimeout(() => { try { preserveFocusEl.focus(); } catch (e) {} }, 0);
+                }
+                setTimeout(() => restorePendingFocusIfAny(), 0);
             }
         }, 150);
     };
@@ -1651,6 +1950,44 @@ function shouldKeepInlineEditingActive(cardId) {
             activeElement.classList.contains('inline-assignee-select') ||
             activeElement.classList.contains('inline-title-input') ||
             activeElement.classList.contains('inline-description-textarea'));
+}
+
+// 检测是否有任何内联编辑控件正在打开
+function isAnyInlineEditorOpen() {
+    return !!document.querySelector('.inline-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
+}
+
+// 恢复待聚焦的编辑器（带重试）
+function restorePendingFocusIfAny(retries = 6) {
+    if (!pendingFocusSelector) return;
+    const el = document.querySelector(pendingFocusSelector);
+    if (el) {
+        const caret = typeof pendingFocusCaretIndex === 'number' ? Math.max(0, Math.min((el.value || '').length, pendingFocusCaretIndex)) : (el.value || '').length;
+        focusWithCaret(el, caret);
+        pendingFocusSelector = null;
+        pendingFocusCaretIndex = null;
+    } else if (retries > 0) {
+        setTimeout(() => restorePendingFocusIfAny(retries - 1), 25);
+    }
+}
+
+// 在编辑期间延迟渲染，避免新焦点被旧渲染打断
+function scheduleDeferredRender() {
+    if (pendingRenderTimer) {
+        clearTimeout(pendingRenderTimer);
+        pendingRenderTimer = null;
+    }
+    pendingRenderTimer = setTimeout(function check() {
+        if (isAnyInlineEditorOpen() || inlineEditorOpening) {
+            pendingRenderTimer = setTimeout(check, 60);
+            return;
+        }
+        if (pendingBoardUpdate) {
+            pendingBoardUpdate = false;
+            renderBoard();
+        }
+        pendingRenderTimer = null;
+    }, 60);
 }
 
 // 管理卡片的内联编辑状态
@@ -1704,3 +2041,169 @@ window.addEventListener('beforeunload', function() {
         socket.close();
     }
 });
+
+// 新增函数：获取点击位置对应的字符索引
+function getCaretIndex(element, clientX, clientY) {
+    // 创建镜像元素并对齐到元素的屏幕位置
+    const mirror = document.createElement('span');
+    const style = window.getComputedStyle(element);
+    ['font', 'fontSize', 'fontFamily', 'fontWeight', 'letterSpacing', 'wordSpacing', 'whiteSpace', 'lineHeight', 'padding', 'border', 'boxSizing', 'textTransform', 'wordBreak', 'overflowWrap', 'width'].forEach(prop => {
+        mirror.style[prop] = style[prop];
+    });
+    mirror.style.position = 'absolute';
+    mirror.style.visibility = 'hidden';
+    const er = element.getBoundingClientRect();
+    mirror.style.left = (er.left + window.scrollX) + 'px';
+    mirror.style.top = (er.top + window.scrollY) + 'px';
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.wordBreak = 'break-word';
+    mirror.textContent = element.value + ' ';
+    document.body.appendChild(mirror);
+
+    let closestIndex = 0;
+    let minDistance = Infinity;
+
+    for (let i = 0; i <= element.value.length; i++) {
+        const range = document.createRange();
+        range.setStart(mirror.firstChild, i);
+        range.setEnd(mirror.firstChild, i);
+        const rects = range.getClientRects();
+        if (rects.length > 0) {
+            const rect = rects[0];
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const dx = clientX - cx;
+            const dy = clientY - cy;
+            const dist = dx * dx + dy * dy;
+            if (dist < minDistance) {
+                minDistance = dist;
+                closestIndex = i;
+            }
+        }
+    }
+
+    document.body.removeChild(mirror);
+    return closestIndex;
+}
+
+// 新增函数：聚焦并设置光标，带重试
+function focusWithCaret(element, caretIndex) {
+    let attempts = 0;
+    function tryFocus() {
+        attempts++;
+        element.focus();
+        try {
+            element.setSelectionRange(caretIndex, caretIndex);
+        } catch (e) {
+            element.selectionStart = caretIndex;
+            element.selectionEnd = caretIndex;
+        }
+        if (document.activeElement !== element && attempts < 6) {
+            setTimeout(tryFocus, 30);
+        }
+    }
+    // 下一tick后开始尝试，避免与当前click冲突
+    setTimeout(tryFocus, 0);
+}
+
+// 根据原span内容与点击坐标，获取字符索引
+function getCaretIndexFromSpan(spanEl, clientX, clientY) {
+    if (!spanEl) return 0;
+    const textLen = (spanEl.textContent || '').length;
+
+    // 兼容两种API
+    function rangeFromPoint(x, y) {
+        if (document.caretRangeFromPoint) {
+            return document.caretRangeFromPoint(x, y);
+        }
+        if (document.caretPositionFromPoint) {
+            const pos = document.caretPositionFromPoint(x, y);
+            if (!pos) return null;
+            const r = document.createRange();
+            r.setStart(pos.offsetNode, pos.offset);
+            r.setEnd(pos.offsetNode, pos.offset);
+            return r;
+        }
+        return null;
+    }
+
+    let range = rangeFromPoint(clientX, clientY);
+    if (!range) return textLen;
+
+    // 如果不在span内，返回最近端
+    if (!spanEl.contains(range.startContainer)) {
+        const rect = spanEl.getBoundingClientRect();
+        if (clientX <= rect.left) return 0;
+        return textLen;
+    }
+
+    // 计算相对于整个文本的偏移
+    let index = 0;
+    const walker = document.createTreeWalker(spanEl, NodeFilter.SHOW_TEXT, null);
+    let node;
+    while ((node = walker.nextNode())) {
+        if (node === range.startContainer) {
+            index += Math.min(range.startOffset, node.nodeValue.length);
+            break;
+        } else {
+            index += node.nodeValue.length;
+        }
+    }
+    return Math.max(0, Math.min(textLen, index));
+}
+
+// 列内拖拽排序
+function enableColumnDrag(status) {
+    const container = document.getElementById(`${status}Cards`);
+    if (!container) return;
+    container.querySelectorAll('.card').forEach(makeDraggable);
+
+    container.ondragover = (e) => {
+        e.preventDefault();
+        const afterEl = getDragAfterElement(container, e.clientY);
+        const dragging = document.querySelector('.card.dragging');
+        if (!dragging) return;
+        if (afterEl == null) {
+            container.appendChild(dragging);
+        } else {
+            container.insertBefore(dragging, afterEl);
+        }
+    };
+
+    container.ondrop = () => {
+        // 发送新顺序
+        const orderedIds = Array.from(container.querySelectorAll('.card')).map(el => el.dataset.cardId);
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'reorder-cards',
+                projectId: currentProjectId,
+                boardName: currentBoardName,
+                status: status,
+                orderedIds
+            }));
+        }
+    };
+}
+
+function makeDraggable(cardEl) {
+    cardEl.setAttribute('draggable', 'true');
+    cardEl.ondragstart = () => {
+        cardEl.classList.add('dragging');
+    };
+    cardEl.ondragend = () => {
+        cardEl.classList.remove('dragging');
+    };
+}
+
+function getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.card:not(.dragging)')];
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}

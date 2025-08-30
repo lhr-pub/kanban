@@ -69,27 +69,27 @@ function writeJsonFile(filePath, data) {
 // 用户认证API
 app.post('/api/register', (req, res) => {
     const { username, password } = req.body;
-    
+
     if (!username || !password) {
         return res.status(400).json({ message: '用户名和密码不能为空' });
     }
-    
+
     const usersFile = path.join(dataDir, 'users.json');
     const users = readJsonFile(usersFile, {});
-    
+
     if (users[username]) {
         return res.status(400).json({ message: '用户名已存在' });
     }
-    
+
     // 密码哈希
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
-    
+
     users[username] = {
         password: hashedPassword,
         projects: [],
         created: new Date().toISOString()
     };
-    
+
     if (writeJsonFile(usersFile, users)) {
         res.json({ message: '注册成功', username });
     } else {
@@ -99,46 +99,46 @@ app.post('/api/register', (req, res) => {
 
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    
+
     if (!username || !password) {
         return res.status(400).json({ message: '用户名和密码不能为空' });
     }
-    
+
     const usersFile = path.join(dataDir, 'users.json');
     const users = readJsonFile(usersFile, {});
-    
+
     const user = users[username];
     if (!user) {
         return res.status(400).json({ message: '用户不存在' });
     }
-    
+
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
     if (user.password !== hashedPassword) {
         return res.status(400).json({ message: '密码错误' });
     }
-    
+
     res.json({ message: '登录成功', username });
 });
 
 // 项目管理API
 app.get('/api/user-projects/:username', (req, res) => {
     const { username } = req.params;
-    
+
     const usersFile = path.join(dataDir, 'users.json');
     const projectsFile = path.join(dataDir, 'projects.json');
-    
+
     const users = readJsonFile(usersFile, {});
     const projects = readJsonFile(projectsFile, {});
-    
+
     const user = users[username];
     if (!user) {
         return res.status(404).json({ message: '用户不存在' });
     }
-    
+
     const userProjects = user.projects.map(projectId => {
         const project = projects[projectId];
         if (!project) return null;
-        
+
         return {
             id: projectId,
             name: project.name,
@@ -148,30 +148,30 @@ app.get('/api/user-projects/:username', (req, res) => {
             created: project.created
         };
     }).filter(Boolean);
-    
+
     res.json(userProjects);
 });
 
 app.post('/api/create-project', (req, res) => {
     const { username, projectName } = req.body;
-    
+
     if (!username || !projectName) {
         return res.status(400).json({ message: '用户名和项目名称不能为空' });
     }
-    
+
     const projectId = generateProjectId();
     const inviteCode = generateInviteCode();
-    
+
     const usersFile = path.join(dataDir, 'users.json');
     const projectsFile = path.join(dataDir, 'projects.json');
-    
+
     const users = readJsonFile(usersFile, {});
     const projects = readJsonFile(projectsFile, {});
-    
+
     if (!users[username]) {
         return res.status(404).json({ message: '用户不存在' });
     }
-    
+
     // 创建项目
     projects[projectId] = {
         name: projectName,
@@ -181,10 +181,10 @@ app.post('/api/create-project', (req, res) => {
         members: [username],
         boards: ['默认看板'] // 创建项目时自动创建默认看板
     };
-    
+
     // 更新用户项目列表
     users[username].projects.push(projectId);
-    
+
     // 创建默认看板文件
     const boardFile = path.join(dataDir, `${projectId}_默认看板.json`);
     const defaultBoard = {
@@ -193,14 +193,14 @@ app.post('/api/create-project', (req, res) => {
         done: [],
         archived: []
     };
-    
-    if (writeJsonFile(projectsFile, projects) && 
-        writeJsonFile(usersFile, users) && 
+
+    if (writeJsonFile(projectsFile, projects) &&
+        writeJsonFile(usersFile, users) &&
         writeJsonFile(boardFile, defaultBoard)) {
-        res.json({ 
-            message: '项目创建成功', 
-            projectId, 
-            inviteCode 
+        res.json({
+            message: '项目创建成功',
+            projectId,
+            inviteCode
         });
     } else {
         res.status(500).json({ message: '创建项目失败' });
@@ -209,25 +209,25 @@ app.post('/api/create-project', (req, res) => {
 
 app.post('/api/join-project', (req, res) => {
     const { username, inviteCode } = req.body;
-    
+
     if (!username || !inviteCode) {
         return res.status(400).json({ message: '用户名和邀请码不能为空' });
     }
-    
+
     const usersFile = path.join(dataDir, 'users.json');
     const projectsFile = path.join(dataDir, 'projects.json');
-    
+
     const users = readJsonFile(usersFile, {});
     const projects = readJsonFile(projectsFile, {});
-    
+
     if (!users[username]) {
         return res.status(404).json({ message: '用户不存在' });
     }
-    
+
     // 查找项目
     let projectId = null;
     let project = null;
-    
+
     for (const [id, proj] of Object.entries(projects)) {
         if (proj.inviteCode === inviteCode.toUpperCase()) {
             projectId = id;
@@ -235,20 +235,20 @@ app.post('/api/join-project', (req, res) => {
             break;
         }
     }
-    
+
     if (!project) {
         return res.status(404).json({ message: '邀请码无效' });
     }
-    
+
     // 检查用户是否已经在项目中
     if (project.members.includes(username)) {
         return res.status(400).json({ message: '您已经是该项目的成员' });
     }
-    
+
     // 添加用户到项目
     project.members.push(username);
     users[username].projects.push(projectId);
-    
+
     if (writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users)) {
         res.json({ message: '成功加入项目' });
     } else {
@@ -258,15 +258,15 @@ app.post('/api/join-project', (req, res) => {
 
 app.get('/api/project-boards/:projectId', (req, res) => {
     const { projectId } = req.params;
-    
+
     const projectsFile = path.join(dataDir, 'projects.json');
     const projects = readJsonFile(projectsFile, {});
-    
+
     const project = projects[projectId];
     if (!project) {
         return res.status(404).json({ message: '项目不存在' });
     }
-    
+
     res.json({
         inviteCode: project.inviteCode,
         members: project.members,
@@ -276,23 +276,23 @@ app.get('/api/project-boards/:projectId', (req, res) => {
 
 app.post('/api/create-board', (req, res) => {
     const { projectId, boardName } = req.body;
-    
+
     if (!projectId || !boardName) {
         return res.status(400).json({ message: '项目ID和看板名称不能为空' });
     }
-    
+
     const projectsFile = path.join(dataDir, 'projects.json');
     const projects = readJsonFile(projectsFile, {});
-    
+
     const project = projects[projectId];
     if (!project) {
         return res.status(404).json({ message: '项目不存在' });
     }
-    
+
     if (project.boards.includes(boardName)) {
         return res.status(400).json({ message: '看板名称已存在' });
     }
-    
+
     // 创建看板文件
     const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
     const defaultBoard = {
@@ -301,9 +301,9 @@ app.post('/api/create-board', (req, res) => {
         done: [],
         archived: []
     };
-    
-    project.boards.push(boardName);
-    
+
+    project.boards.unshift(boardName);
+
     if (writeJsonFile(projectsFile, projects) && writeJsonFile(boardFile, defaultBoard)) {
         res.json({ message: '看板创建成功' });
     } else {
@@ -314,34 +314,34 @@ app.post('/api/create-board', (req, res) => {
 // 删除看板API
 app.delete('/api/delete-board', (req, res) => {
     const { projectId, boardName } = req.body;
-    
+
     if (!projectId || !boardName) {
         return res.status(400).json({ message: '项目ID和看板名称不能为空' });
     }
-    
+
     const projectsFile = path.join(dataDir, 'projects.json');
     const projects = readJsonFile(projectsFile, {});
-    
+
     const project = projects[projectId];
     if (!project) {
         return res.status(404).json({ message: '项目不存在' });
     }
-    
+
     const boardIndex = project.boards.indexOf(boardName);
     if (boardIndex === -1) {
         return res.status(404).json({ message: '看板不存在' });
     }
-    
+
     // 删除看板文件
     const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
     try {
         if (fs.existsSync(boardFile)) {
             fs.unlinkSync(boardFile);
         }
-        
+
         // 从项目中移除看板
         project.boards.splice(boardIndex, 1);
-        
+
         if (writeJsonFile(projectsFile, projects)) {
             res.json({ message: '看板删除成功' });
         } else {
@@ -357,14 +357,14 @@ app.delete('/api/delete-board', (req, res) => {
 app.get('/api/board/:projectId/:boardName', (req, res) => {
     const { projectId, boardName } = req.params;
     const boardFile = path.join(dataDir, `${projectId}_${decodeURIComponent(boardName)}.json`);
-    
+
     const boardData = readJsonFile(boardFile, {
         todo: [],
         doing: [],
         done: [],
         archived: []
     });
-    
+
     res.json(boardData);
 });
 
@@ -373,27 +373,27 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
     const { projectId, boardName } = req.params;
     const decodedBoardName = decodeURIComponent(boardName);
     const boardFile = path.join(dataDir, `${projectId}_${decodedBoardName}.json`);
-    
+
     const boardData = readJsonFile(boardFile, {
         todo: [],
         doing: [],
         done: [],
         archived: []
     });
-    
+
     let markdown = `# ${decodedBoardName}\n\n`;
-    
+
     const sections = [
         { key: 'todo', title: '📋 待办', icon: '⭕' },
         { key: 'doing', title: '🔄 进行中', icon: '🔄' },
         { key: 'done', title: '✅ 已完成', icon: '✅' },
         { key: 'archived', title: '📁 归档', icon: '📁' }
     ];
-    
+
     sections.forEach(section => {
         const cards = boardData[section.key] || [];
         markdown += `## ${section.title}\n\n`;
-        
+
         if (cards.length === 0) {
             markdown += '_暂无任务_\n\n';
         } else {
@@ -413,7 +413,7 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
             });
         }
     });
-    
+
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${decodedBoardName}.md"`);
     res.send(markdown);
@@ -422,7 +422,7 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
 // WebSocket处理
 wss.on('connection', (ws) => {
     console.log('New WebSocket connection');
-    
+
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
@@ -435,7 +435,7 @@ wss.on('connection', (ws) => {
             }));
         }
     });
-    
+
     ws.on('close', () => {
         // 从连接管理中移除用户
         for (const [key, connData] of connections.entries()) {
@@ -462,6 +462,9 @@ function handleWebSocketMessage(ws, data) {
             break;
         case 'move-card':
             handleMoveCard(ws, data);
+            break;
+        case 'reorder-cards':
+            handleReorderCards(ws, data);
             break;
         case 'delete-card':
             handleDeleteCard(ws, data);
@@ -492,7 +495,7 @@ function handleWebSocketMessage(ws, data) {
 function handleJoin(ws, data) {
     const { user, projectId, boardName } = data;
     const connectionKey = `${user}-${projectId}-${boardName}`;
-    
+
     connections.set(connectionKey, {
         ws,
         user,
@@ -500,7 +503,7 @@ function handleJoin(ws, data) {
         boardName,
         joinTime: Date.now()
     });
-    
+
     // 发送当前看板数据
     const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
     const boardData = readJsonFile(boardFile, {
@@ -509,21 +512,21 @@ function handleJoin(ws, data) {
         done: [],
         archived: []
     });
-    
+
     ws.send(JSON.stringify({
         type: 'board-update',
         projectId,
         boardName,
         board: boardData
     }));
-    
+
     updateOnlineUsers(projectId, boardName);
 }
 
 function handleAddCard(ws, data) {
-    const { projectId, boardName, status, card } = data;
+    const { projectId, boardName, status, card, position } = data;
     const boardData = readBoardData(projectId, boardName);
-    
+
     if (!boardData[status]) {
         ws.send(JSON.stringify({
             type: 'error',
@@ -531,9 +534,14 @@ function handleAddCard(ws, data) {
         }));
         return;
     }
-    
-    boardData[status].push(card);
-    
+
+    // 支持顶部/底部添加
+    if (position === 'top') {
+        boardData[status].unshift(card);
+    } else {
+        boardData[status].push(card);
+    }
+
     if (writeBoardData(projectId, boardName, boardData)) {
         createBackup(projectId, boardName, boardData);
         broadcastToBoard(projectId, boardName, {
@@ -548,7 +556,7 @@ function handleAddCard(ws, data) {
 function handleUpdateCard(ws, data) {
     const { projectId, boardName, cardId, updates } = data;
     const boardData = readBoardData(projectId, boardName);
-    
+
     let updated = false;
     for (const status of ['todo', 'doing', 'done', 'archived']) {
         const cardIndex = boardData[status].findIndex(card => card.id === cardId);
@@ -558,7 +566,7 @@ function handleUpdateCard(ws, data) {
             break;
         }
     }
-    
+
     if (updated && writeBoardData(projectId, boardName, boardData)) {
         createBackup(projectId, boardName, boardData);
         broadcastToBoard(projectId, boardName, {
@@ -573,7 +581,7 @@ function handleUpdateCard(ws, data) {
 function handleMoveCard(ws, data) {
     const { projectId, boardName, cardId, fromStatus, toStatus } = data;
     const boardData = readBoardData(projectId, boardName);
-    
+
     const cardIndex = boardData[fromStatus].findIndex(card => card.id === cardId);
     if (cardIndex === -1) {
         ws.send(JSON.stringify({
@@ -582,10 +590,50 @@ function handleMoveCard(ws, data) {
         }));
         return;
     }
-    
+
     const card = boardData[fromStatus].splice(cardIndex, 1)[0];
     boardData[toStatus].push(card);
-    
+
+    if (writeBoardData(projectId, boardName, boardData)) {
+        createBackup(projectId, boardName, boardData);
+        broadcastToBoard(projectId, boardName, {
+            type: 'board-update',
+            projectId,
+            boardName,
+            board: boardData
+        });
+    }
+}
+
+function handleReorderCards(ws, data) {
+    const { projectId, boardName, status, orderedIds } = data;
+    const boardData = readBoardData(projectId, boardName);
+
+    if (!Array.isArray(boardData[status])) {
+        ws.send(JSON.stringify({ type: 'error', message: '无效的状态' }));
+        return;
+    }
+    if (!Array.isArray(orderedIds)) {
+        ws.send(JSON.stringify({ type: 'error', message: '无效的排序参数' }));
+        return;
+    }
+
+    const existing = boardData[status];
+    const map = new Map(existing.map(c => [c.id, c]));
+
+    const reordered = [];
+    orderedIds.forEach(id => {
+        const c = map.get(id);
+        if (c) {
+            reordered.push(c);
+            map.delete(id);
+        }
+    });
+    // 追加任何缺失的卡片，保证不丢数据
+    existing.forEach(c => { if (map.has(c.id)) reordered.push(c); });
+
+    boardData[status] = reordered;
+
     if (writeBoardData(projectId, boardName, boardData)) {
         createBackup(projectId, boardName, boardData);
         broadcastToBoard(projectId, boardName, {
@@ -600,7 +648,7 @@ function handleMoveCard(ws, data) {
 function handleDeleteCard(ws, data) {
     const { projectId, boardName, cardId } = data;
     const boardData = readBoardData(projectId, boardName);
-    
+
     let deleted = false;
     for (const status of ['todo', 'doing', 'done', 'archived']) {
         const cardIndex = boardData[status].findIndex(card => card.id === cardId);
@@ -610,7 +658,7 @@ function handleDeleteCard(ws, data) {
             break;
         }
     }
-    
+
     if (deleted && writeBoardData(projectId, boardName, boardData)) {
         createBackup(projectId, boardName, boardData);
         broadcastToBoard(projectId, boardName, {
@@ -625,7 +673,7 @@ function handleDeleteCard(ws, data) {
 function handleArchiveCard(ws, data) {
     const { projectId, boardName, cardId, fromStatus } = data;
     const boardData = readBoardData(projectId, boardName);
-    
+
     const cardIndex = boardData[fromStatus].findIndex(card => card.id === cardId);
     if (cardIndex === -1) {
         ws.send(JSON.stringify({
@@ -634,13 +682,13 @@ function handleArchiveCard(ws, data) {
         }));
         return;
     }
-    
+
     const card = boardData[fromStatus].splice(cardIndex, 1)[0];
     if (!boardData.archived) {
         boardData.archived = [];
     }
     boardData.archived.push(card);
-    
+
     if (writeBoardData(projectId, boardName, boardData)) {
         createBackup(projectId, boardName, boardData);
         broadcastToBoard(projectId, boardName, {
@@ -655,7 +703,7 @@ function handleArchiveCard(ws, data) {
 function handleRestoreCard(ws, data) {
     const { projectId, boardName, cardId } = data;
     const boardData = readBoardData(projectId, boardName);
-    
+
     const cardIndex = boardData.archived.findIndex(card => card.id === cardId);
     if (cardIndex === -1) {
         ws.send(JSON.stringify({
@@ -664,10 +712,10 @@ function handleRestoreCard(ws, data) {
         }));
         return;
     }
-    
+
     const card = boardData.archived.splice(cardIndex, 1)[0];
     boardData.todo.push(card);
-    
+
     if (writeBoardData(projectId, boardName, boardData)) {
         createBackup(projectId, boardName, boardData);
         broadcastToBoard(projectId, boardName, {
@@ -682,9 +730,9 @@ function handleRestoreCard(ws, data) {
 function handleClearArchive(ws, data) {
     const { projectId, boardName } = data;
     const boardData = readBoardData(projectId, boardName);
-    
+
     boardData.archived = [];
-    
+
     if (writeBoardData(projectId, boardName, boardData)) {
         createBackup(projectId, boardName, boardData);
         broadcastToBoard(projectId, boardName, {
@@ -699,7 +747,7 @@ function handleClearArchive(ws, data) {
 function handleImportBoard(ws, data) {
     const { projectId, boardName, data: importData, mode } = data;
     let boardData = readBoardData(projectId, boardName);
-    
+
     try {
         if (mode === 'overwrite') {
             boardData = {
@@ -714,7 +762,7 @@ function handleImportBoard(ws, data) {
             boardData.done = [...(boardData.done || []), ...(importData.done || [])];
             boardData.archived = [...(boardData.archived || []), ...(importData.archived || [])];
         }
-        
+
         // 确保所有导入的卡片有唯一ID
         ['todo', 'doing', 'done', 'archived'].forEach(status => {
             boardData[status] = boardData[status].map(card => ({
@@ -722,17 +770,17 @@ function handleImportBoard(ws, data) {
                 id: card.id || (Date.now() + Math.random()).toString()
             }));
         });
-        
+
         if (writeBoardData(projectId, boardName, boardData)) {
             createBackup(projectId, boardName, boardData);
-            
+
             broadcastToBoard(projectId, boardName, {
                 type: 'board-update',
                 projectId,
                 boardName,
                 board: boardData
             });
-            
+
             ws.send(JSON.stringify({
                 type: 'import-success',
                 message: mode === 'overwrite' ? '数据已覆盖导入' : '数据已合并导入'
@@ -774,8 +822,8 @@ function writeBoardData(projectId, boardName, data) {
 
 function broadcastToBoard(projectId, boardName, message, excludeWs = null) {
     for (const [key, connData] of connections.entries()) {
-        if (connData.projectId === projectId && 
-            connData.boardName === boardName && 
+        if (connData.projectId === projectId &&
+            connData.boardName === boardName &&
             connData.ws !== excludeWs &&
             connData.ws.readyState === WebSocket.OPEN) {
             connData.ws.send(JSON.stringify(message));
@@ -790,7 +838,7 @@ function updateOnlineUsers(projectId, boardName) {
             users.push(connData.user);
         }
     }
-    
+
     const uniqueUsers = [...new Set(users)];
     broadcastToBoard(projectId, boardName, {
         type: 'user-list',
@@ -805,7 +853,7 @@ function createBackup(projectId, boardName, data) {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const backupFile = path.join(backupsDir, `${projectId}_${boardName}_${timestamp}.json`);
         writeJsonFile(backupFile, data);
-        
+
         // 清理旧备份（保留最近50个）
         cleanOldBackups(projectId, boardName);
     } catch (error) {
@@ -820,7 +868,7 @@ function cleanOldBackups(projectId, boardName) {
             .filter(file => file.startsWith(prefix))
             .sort()
             .reverse();
-        
+
         // 保留最近50个备份
         for (let i = 50; i < files.length; i++) {
             fs.unlinkSync(path.join(backupsDir, files[i]));
@@ -835,7 +883,7 @@ setInterval(() => {
     try {
         const projectsFile = path.join(dataDir, 'projects.json');
         const projects = readJsonFile(projectsFile, {});
-        
+
         for (const [projectId, project] of Object.entries(projects)) {
             project.boards.forEach(boardName => {
                 cleanOldBackups(projectId, boardName);
@@ -885,7 +933,7 @@ process.on('uncaughtException', (err) => {
 // Handle server errors
 server.on('error', (error) => {
     if (error.syscall !== 'listen') throw error;
-    
+
     console.error(`Server error: ${error}`);
     process.exit(1);
 });

@@ -27,15 +27,6 @@
     --border-radius-lg: 8px;
     --border-radius-xl: 12px;
     --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-
-    /* 统一的编辑区域变量 - 去掉左右边距 */
-    --text-area-left: 0px;
-    --text-area-right: 0px;
-    --text-area-width: 100%;
-
-    /* 待办列的变量（没有左侧按钮） */
-    --text-area-todo-left: 0px;
-    --text-area-todo-width: calc(100% - var(--text-area-todo-left) - var(--text-area-right));
 }
 
 /* 全局样式 */
@@ -414,78 +405,100 @@ h1 {
 }
 
 .card:hover {
-    /* 移除卡片整体的hover效果，避免与内部元素冲突 */
+    background: rgba(255, 255, 255, 0.98);
+    border-color: var(--primary-light);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(15px);
 }
 
 .card-title {
-    margin-left: 0;
-    width: 100%;
     font-weight: 600;
     margin-bottom: 0.5rem;
     color: var(--gray-900);
     word-wrap: break-word;
     white-space: pre-wrap;
     line-height: 1.4;
+    padding-left: 32px; /* 为左侧按钮留出空间 */
+    padding-right: 60px; /* 为右侧按钮留出空间 */
     font-size: 0.95rem;
+    border: 2px solid transparent; /* Reserve space */
     position: relative; /* allow absolute inline editor without layout change */
-    min-height: 1.5rem; /* 确保有足够高度容纳绝对定位的可点击区域 */
-    box-sizing: border-box;
 }
 
-/* 标题点击区域 - 简单的相对定位 */
-.title-text.clickable {
+/* 标题点击区域特殊处理 */
+.card-title.clickable {
     position: relative;
-    display: block;
-    width: 100%;
     border-radius: var(--border-radius-sm);
     transition: var(--transition);
-    cursor: pointer;
 }
 
-.title-text.clickable:hover {
-    background: #dbeafe !important;
+.card-title.clickable::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    left: 50px; /* Further increase to avoid covering left buttons */
+    right: 80px; /* Further increase to avoid covering right buttons */
+    border-radius: var(--border-radius-sm);
+    pointer-events: none;
+}
+
+.card-title.clickable:hover {
+    color: var(--primary-color);
+    background: rgba(59, 130, 246, 0.05);
+}
+
+/* 待办列和归档列的标题点击区域调整 */
+.column[data-status="todo"] .card-title.clickable::after,
+.archive-column .card-title.clickable::after {
+    left: 0; /* 待办列没有左侧按钮 */
 }
 
 .card-description {
-    margin-left: 0;
-    width: 100%;
     font-size: 0.875rem;
     color: var(--gray-600);
     margin-bottom: 0.75rem;
     line-height: 1.5;
     word-wrap: break-word;
-    min-height: 1.5rem; /* 增加最小高度，确保有足够高度容纳绝对定位的可点击区域 */
+    min-height: 1.25rem;
     white-space: pre-wrap;
     max-height: 120px;
     overflow-y: auto;
+    padding-left: 32px; /* 为左侧按钮留出空间 */
+    padding-right: 60px; /* 为右侧按钮留出空间 */
+    border: 2px solid transparent; /* Reserve space */
     position: relative; /* allow absolute overlay */
-    box-sizing: border-box;
 }
 
-/* 描述点击区域 - 简单的相对定位 */
-.description-text.clickable {
+/* 描述点击区域特殊处理 */
+.card-description.clickable {
     position: relative;
-    display: block;
-    width: 100%;
     border-radius: var(--border-radius-sm);
     transition: var(--transition);
-    cursor: pointer;
 }
 
-.description-text.clickable:hover {
-    background: #dbeafe !important;
+.card-description.clickable::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    left: 32px; /* 避开左侧按钮区域 */
+    right: 60px; /* 避开右侧按钮区域 */
+    border-radius: var(--border-radius-sm);
+    pointer-events: none;
 }
 
-/* 待办列和归档列维持无左偏移 */
-.column[data-status="todo"] .card-title,
-.column[data-status="todo"] .card-description,
-.archive-column .card-title,
-.archive-column .card-description {
-    margin-left: 0;
-    width: 100%;
+.card-description.clickable:hover {
+    color: var(--gray-700);
+    background: rgba(59, 130, 246, 0.03);
 }
 
-/* 移除待办列的特殊处理，保持简单 */
+/* 待办列和归档列的描述点击区域调整 */
+.column[data-status="todo"] .card-description.clickable::after,
+.archive-column .card-description.clickable::after {
+    left: 0; /* 待办列没有左侧按钮 */
+}
 
 .card-meta {
     display: flex;
@@ -517,14 +530,15 @@ h1 {
     transition: color 0.2s;
 }
 
+.card-footer:hover {
+    color: #6b7280;
+}
+
 .card-footer-top {
-    position: relative;
     display: flex;
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    gap: 0.5rem;
-    min-height: 32px;
 }
 
 .card-left-info {
@@ -533,35 +547,12 @@ h1 {
     align-items: center;
 }
 
-.card-center-actions {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    display: inline-flex;
-    visibility: hidden;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.card:hover .card-center-actions {
-    visibility: visible;
-}
-
-.card-center-actions .action-btn,
-.card-center-actions .archive-btn,
-.card-center-actions .restore-btn,
-.card-center-actions .detail-btn {
-    pointer-events: auto;
-}
-
 .card-right-info {
     display: flex;
     gap: 0.5rem;
     align-items: center;
+    margin-left: auto;
     flex-wrap: wrap;
-    justify-content: flex-end;
-    margin-left: auto; /* push deadline to the right in flex layout */
 }
 
 .card-assignee {
@@ -587,10 +578,23 @@ h1 {
     position: relative;
 }
 
-/* 移除伪元素扩大点击区域，避免焦点切换闪烁 */
+.card-assignee.clickable::after,
+.card-deadline.clickable::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
+    min-width: 32px;
+    min-height: 28px;
+    border-radius: 16px;
+    pointer-events: none;
+}
 
 .card-assignee.clickable:hover {
     background: #dbeafe !important;
+    transform: scale(1.02) !important;
 }
 
 .card-assignee.unassigned.clickable:hover {
@@ -614,6 +618,7 @@ h1 {
 
 .card-deadline.clickable:hover {
     background: var(--gray-200) !important;
+    transform: scale(1.02) !important;
 }
 
 .card-deadline.unset {
@@ -673,21 +678,15 @@ h1 {
 .inline-title-input {
     position: absolute;
     top: 0;
-    left: 0;
-    width: 100%;
+    left: 32px; /* Match card-title padding-left */
+    right: 140px; /* Increase further to prevent protrusion */
+    width: calc(100% - 32px - 140px);
     height: 100%;
     overflow: auto;
     background: white;
-    margin: 0;
     padding: 0;
-    box-sizing: border-box;
-    font-weight: 600; /* 匹配 .card-title */
-    font-size: 0.95rem; /* 匹配 .card-title */
-    line-height: 1.4; /* 匹配 .card-title */
-    font-family: inherit;
+    margin: 0;
 }
-
-/* 移除待办列特殊处理，编辑框现在自动适应父容器宽度 */
 
 .inline-date-input {
     position: absolute;
@@ -719,23 +718,22 @@ h1 {
 .inline-description-textarea {
     position: absolute;
     top: 0;
-    left: 0;
-    width: 100%;
+    left: 32px;
+    right: 120px;
+    width: calc(100% - 32px - 120px);
     height: 100%;
     overflow: auto;
     background: white;
-    margin: 0;
     padding: 0;
-    box-sizing: border-box;
+    margin: 0;
 }
-
-/* 移除待办列特殊处理，编辑框现在自动适应父容器宽度 */
 
 .inline-assignee-select:focus,
 .inline-date-input:focus,
 .inline-title-input:focus,
 .inline-description-textarea:focus {
-    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    outline-color: var(--primary-dark);
 }
 
 .card-author {
@@ -766,12 +764,17 @@ h1 {
 
 /* 编辑中的卡片 */
 .card.editing {
-    /* 移除编辑状态的特殊颜色 */
+    border-color: var(--success-color);
+    background: #f0fdf4;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
 }
 
 /* 内联编辑模式的卡片 */
 .card.inline-editing {
-    /* 移除内联编辑状态的特殊颜色 */
+    border-color: var(--primary-color);
+    background: rgba(239, 246, 255, 0.5);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    transform: translateY(-1px);
 }
 
 .editing-indicator {
@@ -1017,34 +1020,46 @@ h1 {
 /* 卡片移动按钮 */
 .card-actions {
     display: none;
-    position: relative;
-    margin-top: 0.5rem;
-    padding: 0;
-    justify-content: center;
-    align-items: center;
-    gap: 0.5rem;
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    right: 0.5rem;
+    justify-content: space-between;
     pointer-events: none;
-    width: 100%; /* center within full footer width */
 }
 
 .card-actions .action-btn,
 .card-actions .archive-btn,
-.card-actions .restore-btn,
-.card-actions .detail-btn {
+.card-actions .restore-btn {
     pointer-events: auto;
 }
 
-/* 所有按钮现在都居中显示，有统一间距 */
+/* 待办列只有向右按钮，应该在右边 */
+.column[data-status="todo"] .card-actions {
+    justify-content: flex-end;
+}
+
+/* 进行中列有左右两个按钮，分散两端 */
+.column[data-status="doing"] .card-actions {
+    justify-content: space-between;
+}
+
+/* 已完成列有向左按钮和归档按钮，分散两端 */
+.column[data-status="done"] .card-actions {
+    justify-content: space-between;
+}
+
+/* 归档页面的还原按钮应该在右边 */
+.archive-container .card-actions {
+    justify-content: flex-end;
+}
 
 
 .card:hover .card-actions {
     display: flex;
 }
 
-.action-btn,
-.archive-btn,
-.restore-btn,
-.detail-btn {
+.action-btn {
     width: 24px;
     height: 24px;
     border: none;
@@ -1055,8 +1070,6 @@ h1 {
     align-items: center;
     justify-content: center;
     transition: all 0.2s;
-    padding: 0; /* ensure no extra padding */
-    box-sizing: border-box; /* include borders in size */
 }
 
 .move-left {
@@ -1072,26 +1085,34 @@ h1 {
 .archive-btn {
     background: #f59e0b;
     color: white;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
 }
 
 .restore-btn {
     background: #8b5cf6;
     color: white;
-}
-
-.card-detail-center {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
     display: flex;
+    align-items: center;
     justify-content: center;
-    margin: 0.75rem 0;
+    transition: all 0.2s;
 }
 
-.detail-btn {
-    background: #6366f1;
-    color: white;
-    box-shadow: 0 2px 4px rgba(99, 102, 241, 0.2);
-}
-
-.action-btn:hover, .archive-btn:hover, .restore-btn:hover, .detail-btn:hover {
+.action-btn:hover, .archive-btn:hover, .restore-btn:hover {
     transform: scale(1.1);
 }
 
@@ -1374,7 +1395,13 @@ h1 {
     background: #e5e7eb;
 }
 
-/* 所有列的卡片现在都没有左侧间距，因为移动按钮已移到底部 */
+/* 待办列特殊样式：没有左侧按钮 */
+.column[data-status="todo"] .card-title,
+.column[data-status="todo"] .card-description,
+.archive-column .card-title,
+.archive-column .card-description {
+    padding-left: 0;
+}
 
 /* 导入选项样式 */
 .import-options {
@@ -2310,15 +2337,23 @@ h1 {
     font-weight: 600;
 }
 
+/* Limit clickable areas to text only */
+.card-title-text.clickable,
+.card-description-text.clickable {
+    position: relative;
+    display: inline; /* match text size */
+}
 
-/* 待办列和归档列的编辑框精确匹配原文本 */
-.column[data-status="todo"] .inline-title-input,
-.archive-column .inline-title-input,
-.column[data-status="todo"] .inline-description-textarea,
-.archive-column .inline-description-textarea {
-    left: 0;
-    width: 100%;
-    margin: 0;
+.card-title-text.clickable::after,
+.card-description-text.clickable::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    left: -2px;
+    right: -2px;
+    border-radius: 3px;
+    pointer-events: none;
 }
 
 /* Prevent inline editors from expanding width */

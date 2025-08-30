@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>简易看板</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <!-- 登录页面 -->
     <div id="loginPage" class="page">
@@ -36,7 +38,7 @@
                     <button id="logoutFromProject" class="logout-btn">退出登录</button>
                 </div>
             </header>
-            
+
             <!-- 所有看板 -->
             <div class="dashboard-section">
                 <h2>📋 所有看板</h2>
@@ -44,7 +46,7 @@
                     <!-- 看板快速访问将动态生成 -->
                 </div>
             </div>
-            
+
             <!-- 项目管理 -->
             <div class="dashboard-section">
                 <div class="projects-header">
@@ -61,7 +63,7 @@
                 <div id="projectsList" class="projects-grid">
                     <!-- 项目列表将动态生成 -->
                 </div>
-                
+
                 <!-- 创建项目表单 -->
                 <div id="createProjectForm" class="create-form hidden">
                     <div class="form-card">
@@ -73,7 +75,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- 加入项目表单 -->
                 <div id="joinProjectForm" class="create-form hidden">
                     <div class="form-card">
@@ -87,6 +89,7 @@
                     </div>
                 </div>
             </div>
+            <div class="new-hello-world">Hello World!</div>
         </div>
     </div>
 
@@ -102,19 +105,19 @@
                     <button id="logoutFromBoard" class="logout-btn">退出登录</button>
                 </div>
             </header>
-            
+
             <div class="project-info">
                 <p><strong>邀请码：</strong><span id="projectInviteCode" class="invite-code">------</span></p>
                 <p><strong>项目成员：</strong><span id="projectMembers">loading...</span></p>
             </div>
-            
+
             <div class="board-section">
                 <h2>选择看板</h2>
                 <div id="boardList" class="quick-boards-grid">
                     <!-- 看板列表将动态生成 -->
                 </div>
             </div>
-            
+
             <div class="board-section">
                 <h2>创建新看板</h2>
                 <div class="create-board-form">
@@ -130,7 +133,8 @@
         <header class="header">
             <div class="board-header-left">
                 <h1 class="board-breadcrumb">
-                    <span id="currentProjectName" class="project-link" onclick="goToProjectBoards()">项目名</span> / <span id="currentBoardName">看板名</span>
+                    <span id="currentProjectName" class="project-link" onclick="goToProjectBoards()">项目名</span> / <span
+                        id="currentBoardName">看板名</span>
                 </h1>
             </div>
             <div class="header-actions">
@@ -146,7 +150,7 @@
                 <button id="logoutBtn">退出</button>
             </div>
         </header>
-        
+
         <main class="board-container">
             <!-- 待办列 -->
             <div class="column" data-status="todo">
@@ -155,7 +159,8 @@
                 <div class="add-card">
                     <div class="input-row-inline">
                         <div class="left-inputs">
-                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newTodoTitle" required class="task-title-input">
+                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newTodoTitle" required
+                                class="task-title-input">
                             <select id="newTodoAssignee" class="assignee-select" title="分配给">
                                 <option value="">未分配</option>
                             </select>
@@ -174,7 +179,8 @@
                 <div class="add-card">
                     <div class="input-row-inline">
                         <div class="left-inputs">
-                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoingTitle" required class="task-title-input">
+                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoingTitle" required
+                                class="task-title-input">
                             <select id="newDoingAssignee" class="assignee-select" title="分配给">
                                 <option value="">未分配</option>
                             </select>
@@ -193,7 +199,8 @@
                 <div class="add-card">
                     <div class="input-row-inline">
                         <div class="left-inputs">
-                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoneTitle" required class="task-title-input">
+                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoneTitle" required
+                                class="task-title-input">
                             <select id="newDoneAssignee" class="assignee-select" title="分配给">
                                 <option value="">未分配</option>
                             </select>
@@ -216,7 +223,7 @@
                 <button onclick="clearArchive()" class="clear-archive-btn">清空归档</button>
             </div>
         </header>
-        
+
         <main class="archive-container">
             <div class="archive-column">
                 <h3>归档任务 <span class="count" id="archivedCount">0</span></h3>
@@ -256,13 +263,13 @@
                 <h3>编辑任务</h3>
                 <button class="close-btn" onclick="closeEditModal()" title="关闭">×</button>
             </div>
-            
+
             <div class="modal-body">
                 <div class="form-group">
                     <label for="editCardTitle">任务标题</label>
                     <input type="text" id="editCardTitle" placeholder="输入任务标题..." required>
                 </div>
-                
+
                 <div class="form-row">
                     <div class="form-group flex-2">
                         <label for="editCardAssignee">分配给</label>
@@ -270,24 +277,24 @@
                             <option value="">未分配</option>
                         </select>
                     </div>
-                    
+
                     <div class="form-group flex-1">
                         <label for="editCardDeadline">截止日期</label>
                         <input type="date" id="editCardDeadline">
                     </div>
                 </div>
-                
+
                 <div class="form-group">
                     <label for="editCardDescription">任务描述</label>
                     <textarea id="editCardDescription" placeholder="详细描述任务内容..." rows="3"></textarea>
                 </div>
-                
+
                 <div class="card-info">
                     <span id="editCardCreated"></span>
                     <span id="editCardAuthor"></span>
                 </div>
             </div>
-            
+
             <div class="modal-footer">
                 <button onclick="saveCard()" class="btn-primary">保存</button>
                 <button onclick="deleteCard()" class="btn-danger">删除</button>
@@ -298,4 +305,5 @@
 
     <script src="app.js"></script>
 </body>
+
 </html>
