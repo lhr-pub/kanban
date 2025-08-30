@@ -1,3 +1,34 @@
+/* CSS Variables for consistent theming */
+:root {
+    --primary-color: #3b82f6;
+    --primary-dark: #2563eb;
+    --primary-light: #60a5fa;
+    --success-color: #10b981;
+    --success-dark: #059669;
+    --warning-color: #f59e0b;
+    --danger-color: #ef4444;
+    --danger-dark: #dc2626;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
+    --gray-400: #9ca3af;
+    --gray-500: #6b7280;
+    --gray-600: #4b5563;
+    --gray-700: #374151;
+    --gray-800: #1f2937;
+    --gray-900: #111827;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --border-radius-sm: 4px;
+    --border-radius: 6px;
+    --border-radius-lg: 8px;
+    --border-radius-xl: 12px;
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* 全局样式 */
 * {
     margin: 0;
@@ -6,11 +37,72 @@
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-    color: #333;
+    color: var(--gray-800);
     width: 100%;
     min-height: 100vh;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* 自定义滚动条样式 */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--gray-100);
+    border-radius: var(--border-radius-sm);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--gray-300);
+    border-radius: var(--border-radius-sm);
+    transition: var(--transition);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--gray-400);
+}
+
+/* Firefox滚动条 */
+html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--gray-300) var(--gray-100);
+}
+
+/* 通用聚焦样式 */
+*:focus {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+}
+
+*:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+    border-radius: var(--border-radius-sm);
+}
+
+/* 改善点击目标和触摸友好性 */
+.clickable {
+    cursor: pointer;
+    position: relative;
+    transition: var(--transition);
+}
+
+.clickable::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
+    min-width: 44px;
+    min-height: 44px;
+    pointer-events: none;
 }
 
 /* 页面切换 */
@@ -33,59 +125,85 @@ body {
 
 /* 登录页面特殊样式 */
 #loginPage .container {
-    max-width: 400px;
+    max-width: 420px;
     margin: 0 auto;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(10px);
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 #loginPage {
     display: flex;
     align-items: center;
     justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 h1 {
     text-align: center;
     margin-bottom: 1.5rem;
-    color: #2563eb;
+    color: var(--primary-color);
+    font-weight: 700;
+    font-size: 1.875rem;
+    letter-spacing: -0.025em;
 }
 
 .login-form h2 {
     margin-bottom: 1rem;
-    color: #374151;
+    color: var(--gray-700);
+    font-weight: 600;
+    font-size: 1.25rem;
 }
 
 .login-form input {
     width: 100%;
-    padding: 0.75rem;
+    padding: 0.875rem 1rem;
     margin-bottom: 1rem;
-    border: 2px solid #e5e7eb;
-    border-radius: 6px;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--border-radius-lg);
     font-size: 1rem;
-    transition: border-color 0.2s;
+    transition: var(--transition);
+    background: var(--gray-50);
+    font-weight: 400;
 }
 
 .login-form input:focus {
     outline: none;
-    border-color: #2563eb;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    background: white;
+    transform: translateY(-1px);
+}
+
+.login-form input::placeholder {
+    color: var(--gray-400);
 }
 
 .login-form button {
     width: 100%;
-    padding: 0.75rem;
-    background: #2563eb;
+    padding: 0.875rem 1rem;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
     color: white;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--border-radius-lg);
     font-size: 1rem;
+    font-weight: 600;
     cursor: pointer;
-    transition: background 0.2s;
+    transition: var(--transition);
+    box-shadow: var(--shadow-sm);
 }
 
 .login-form button:hover {
-    background: #1d4ed8;
+    background: linear-gradient(135deg, var(--primary-dark) 0%, #1e40af 100%);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.login-form button:active {
+    transform: translateY(0);
+    box-shadow: var(--shadow-sm);
 }
 
 .login-form p {
@@ -275,44 +393,107 @@ h1 {
 
 /* 卡片样式 */
 .card {
-    background: #fafbfc;
-    border: 1px solid #e1e5e9;
-    border-radius: 6px;
-    padding: 0.75rem;
+    background: white;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--border-radius-lg);
+    padding: 1rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: var(--transition);
     position: relative;
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: blur(10px);
 }
 
 .card:hover {
-    background: #f1f5f9;
-    border-color: #2563eb;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.98);
+    border-color: var(--primary-light);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: blur(15px);
 }
 
 .card-title {
-    font-weight: 500;
+    font-weight: 600;
     margin-bottom: 0.5rem;
-    color: #374151;
+    color: var(--gray-900);
     word-wrap: break-word;
     white-space: pre-wrap;
     line-height: 1.4;
     padding-left: 32px; /* 为左侧按钮留出空间 */
     padding-right: 60px; /* 为右侧按钮留出空间 */
+    font-size: 0.95rem;
+}
+
+/* 标题点击区域特殊处理 */
+.card-title.clickable {
+    position: relative;
+    border-radius: var(--border-radius-sm);
+    transition: var(--transition);
+}
+
+.card-title.clickable::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    left: 32px; /* 避开左侧按钮区域 */
+    right: 60px; /* 避开右侧按钮区域 */
+    border-radius: var(--border-radius-sm);
+    pointer-events: none;
+}
+
+.card-title.clickable:hover {
+    color: var(--primary-color);
+    background: rgba(59, 130, 246, 0.05);
+}
+
+/* 待办列和归档列的标题点击区域调整 */
+.column[data-status="todo"] .card-title.clickable::after,
+.archive-column .card-title.clickable::after {
+    left: 0; /* 待办列没有左侧按钮 */
 }
 
 .card-description {
     font-size: 0.875rem;
-    color: #6b7280;
-    margin-bottom: 0.5rem;
-    line-height: 1.4;
+    color: var(--gray-600);
+    margin-bottom: 0.75rem;
+    line-height: 1.5;
     word-wrap: break-word;
+    min-height: 1.25rem;
     white-space: pre-wrap;
     max-height: 120px;
     overflow-y: auto;
     padding-left: 32px; /* 为左侧按钮留出空间 */
     padding-right: 60px; /* 为右侧按钮留出空间 */
+}
+
+/* 描述点击区域特殊处理 */
+.card-description.clickable {
+    position: relative;
+    border-radius: var(--border-radius-sm);
+    transition: var(--transition);
+}
+
+.card-description.clickable::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    bottom: -2px;
+    left: 32px; /* 避开左侧按钮区域 */
+    right: 60px; /* 避开右侧按钮区域 */
+    border-radius: var(--border-radius-sm);
+    pointer-events: none;
+}
+
+.card-description.clickable:hover {
+    color: var(--gray-700);
+    background: rgba(59, 130, 246, 0.03);
+}
+
+/* 待办列和归档列的描述点击区域调整 */
+.column[data-status="todo"] .card-description.clickable::after,
+.archive-column .card-description.clickable::after {
+    left: 0; /* 待办列没有左侧按钮 */
 }
 
 .card-meta {
@@ -372,80 +553,121 @@ h1 {
 
 .card-assignee {
     font-weight: 500;
-    color: #2563eb;
+    color: var(--primary-dark);
     background: #eff6ff;
     padding: 0.25rem 0.5rem;
     border-radius: 12px;
     font-size: 0.7rem;
+    transition: var(--transition);
 }
 
 .card-assignee.unassigned {
-    color: #9ca3af;
-    background: #f3f4f6;
+    color: var(--gray-400);
+    background: var(--gray-100);
 }
 
-.clickable {
+/* 小元素的特殊clickable样式 - 覆盖通用样式 */
+.card-assignee.clickable,
+.card-deadline.clickable {
     cursor: pointer;
-    transition: all 0.2s;
+    position: relative;
 }
 
-.clickable:hover {
-    background: #e2e8f0 !important;
-    transform: scale(1.05);
+.card-assignee.clickable::after,
+.card-deadline.clickable::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
+    min-width: 32px;
+    min-height: 28px;
+    border-radius: 16px;
+    pointer-events: none;
+}
+
+.card-assignee.clickable:hover {
+    background: #dbeafe !important;
+    transform: scale(1.02) !important;
+}
+
+.card-assignee.unassigned.clickable:hover {
+    background: var(--gray-200) !important;
+}
+
+.card-deadline {
+    background: var(--gray-100);
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.7rem;
+    transition: var(--transition);
+    color: var(--gray-600);
+}
+
+.card-deadline.clickable:hover {
+    background: var(--gray-200) !important;
+    transform: scale(1.02) !important;
 }
 
 .card-deadline.unset {
-    color: #9ca3af;
-    background: #f3f4f6;
+    color: var(--gray-400);
+    background: var(--gray-100);
     padding: 0.25rem 0.5rem;
     border-radius: 12px;
     font-size: 0.7rem;
 }
 
-/* 内联编辑样式 */
+/* 内联编辑样式 - 统一设计 */
+.inline-assignee-select,
+.inline-date-input,
+.inline-title-input,
+.inline-description-textarea {
+    background: white;
+    border: 2px solid var(--primary-color);
+    border-radius: var(--border-radius);
+    outline: none;
+    font-family: inherit;
+    transition: var(--transition);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-sizing: border-box;
+}
+
 .inline-assignee-select,
 .inline-date-input {
-    background: white;
-    border: 1px solid #3b82f6;
-    border-radius: 4px;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.7rem;
-    outline: none;
+    padding: 0.375rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
     min-width: 80px;
 }
 
 .inline-title-input {
-    background: white;
-    border: 1px solid #3b82f6;
-    border-radius: 4px;
-    padding: 0.25rem 0.5rem;
-    font-size: 1rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.95rem;
     font-weight: 600;
-    outline: none;
     width: 100%;
-    box-sizing: border-box;
+    margin-left: -0.75rem; /* 对齐标题文字的开始位置 */
+    margin-right: -0.75rem; /* 对齐标题文字的结束位置 */
 }
 
 .inline-description-textarea {
-    background: white;
-    border: 1px solid #3b82f6;
-    border-radius: 4px;
-    padding: 0.5rem;
+    padding: 0.75rem;
     font-size: 0.875rem;
-    outline: none;
+    font-weight: 400;
     width: 100%;
-    box-sizing: border-box;
     resize: vertical;
-    min-height: 60px;
-    font-family: inherit;
-    line-height: 1.4;
+    min-height: 80px;
+    line-height: 1.5;
+    margin-left: -0.75rem; /* 对齐描述文字的开始位置 */
+    margin-right: -0.75rem; /* 对齐描述文字的结束位置 */
 }
 
 .inline-assignee-select:focus,
 .inline-date-input:focus,
 .inline-title-input:focus,
 .inline-description-textarea:focus {
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    border-color: var(--primary-dark);
 }
 
 .card-author {
@@ -476,8 +698,17 @@ h1 {
 
 /* 编辑中的卡片 */
 .card.editing {
-    border-color: #10b981;
+    border-color: var(--success-color);
     background: #f0fdf4;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.1);
+}
+
+/* 内联编辑模式的卡片 */
+.card.inline-editing {
+    border-color: var(--primary-color);
+    background: rgba(239, 246, 255, 0.5);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    transform: translateY(-1px);
 }
 
 .editing-indicator {
@@ -546,14 +777,17 @@ h1 {
 
 .add-card input[type="text"],
 .task-title-input {
-    padding: 0.75rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    transition: all 0.2s;
+    padding: 0.875rem 1rem;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--border-radius-lg);
+    font-size: 0.875rem;
+    transition: var(--transition);
     background: white;
     font-family: inherit;
     flex: 1;
+    box-shadow: var(--shadow-sm);
+    font-weight: 400;
+    outline: none;
 }
 
 .task-title-input {
@@ -561,56 +795,64 @@ h1 {
     min-width: 0;
 }
 
-.add-card input[type="text"]:focus {
+.add-card input[type="text"]:focus,
+.task-title-input:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: var(--primary-color);
+    box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.1);
     transform: translateY(-1px);
 }
 
-.add-card input[type="text"]::placeholder {
-    color: #94a3b8;
+.add-card input[type="text"]::placeholder,
+.task-title-input::placeholder {
+    color: var(--gray-400);
     font-style: italic;
+    font-weight: 400;
 }
 
 .assignee-select {
-    padding: 0.5rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
+    padding: 0.75rem 0.875rem;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--border-radius);
     background: white;
-    color: #374151;
-    font-size: 0.9rem;
-    transition: all 0.2s;
+    color: var(--gray-700);
+    font-size: 0.8rem;
+    transition: var(--transition);
     cursor: pointer;
     min-width: 80px;
     max-width: 100px;
     font-family: inherit;
+    font-weight: 500;
+    box-shadow: var(--shadow-sm);
 }
 
 .assignee-select:hover,
 .assignee-select:focus {
-    border-color: #3b82f6;
+    border-color: var(--primary-color);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .date-input {
-    padding: 0.5rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
+    padding: 0.75rem 0.875rem;
+    border: 2px solid var(--gray-200);
+    border-radius: var(--border-radius);
     background: white;
-    font-size: 0.9rem;
-    transition: all 0.2s;
+    font-size: 0.8rem;
+    transition: var(--transition);
     cursor: pointer;
     width: 120px;
     font-family: inherit;
+    font-weight: 500;
+    box-shadow: var(--shadow-sm);
+    outline: none;
 }
 
 .date-input:hover,
 .date-input:focus {
-    border-color: #3b82f6;
+    border-color: var(--primary-color);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .add-card input[type="date"] {
@@ -652,27 +894,38 @@ h1 {
 }
 
 .add-card button {
-    padding: 0.75rem 1rem;
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    padding: 0.875rem 1.25rem;
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
     color: white;
     border: none;
-    border-radius: 8px;
+    border-radius: var(--border-radius-lg);
     cursor: pointer;
     font-size: 0.875rem;
-    font-weight: 500;
-    transition: all 0.2s;
-    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+    font-weight: 600;
+    transition: var(--transition);
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    margin-top: 0.5rem;
 }
 
 .add-card button:hover {
-    background: linear-gradient(135deg, #1d4ed8, #1e40af);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, var(--primary-dark), #1e40af);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
 }
 
 .add-card button:active {
     transform: translateY(0);
-    box-shadow: 0 2px 4px rgba(59, 130, 246, 0.2);
+    box-shadow: var(--shadow);
+}
+
+.add-card button:focus {
+    outline: none;
+    box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.3);
 }
 
 .add-card button:disabled {
@@ -685,10 +938,17 @@ h1 {
 /* 快捷键提示 */
 .keyboard-hint {
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: var(--gray-400);
     text-align: center;
-    margin-top: 0.25rem;
+    margin-top: 0.5rem;
     font-style: italic;
+    opacity: 0.8;
+    transition: var(--transition);
+}
+
+.add-card:hover .keyboard-hint {
+    opacity: 1;
+    color: var(--gray-500);
 }
 
 /* 卡片移动按钮 */
@@ -813,13 +1073,15 @@ h1 {
 
 .modal-content {
     background: white;
-    border-radius: 16px;
+    border-radius: var(--border-radius-xl);
     width: 90%;
-    max-width: 520px;
+    max-width: 540px;
     max-height: 90vh;
     overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    animation: slideUp 0.3s ease-out;
+    box-shadow: var(--shadow-lg);
+    animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 @keyframes slideUp {

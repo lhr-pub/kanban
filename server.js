@@ -311,6 +311,48 @@ app.post('/api/create-board', (req, res) => {
     }
 });
 
+// 删除看板API
+app.delete('/api/delete-board', (req, res) => {
+    const { projectId, boardName } = req.body;
+    
+    if (!projectId || !boardName) {
+        return res.status(400).json({ message: '项目ID和看板名称不能为空' });
+    }
+    
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+    
+    const project = projects[projectId];
+    if (!project) {
+        return res.status(404).json({ message: '项目不存在' });
+    }
+    
+    const boardIndex = project.boards.indexOf(boardName);
+    if (boardIndex === -1) {
+        return res.status(404).json({ message: '看板不存在' });
+    }
+    
+    // 删除看板文件
+    const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
+    try {
+        if (fs.existsSync(boardFile)) {
+            fs.unlinkSync(boardFile);
+        }
+        
+        // 从项目中移除看板
+        project.boards.splice(boardIndex, 1);
+        
+        if (writeJsonFile(projectsFile, projects)) {
+            res.json({ message: '看板删除成功' });
+        } else {
+            res.status(500).json({ message: '删除看板失败' });
+        }
+    } catch (error) {
+        console.error('Delete board error:', error);
+        res.status(500).json({ message: '删除看板失败' });
+    }
+});
+
 // 看板数据API
 app.get('/api/board/:projectId/:boardName', (req, res) => {
     const { projectId, boardName } = req.params;

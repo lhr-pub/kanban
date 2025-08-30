@@ -1280,6 +1280,9 @@ function editCardTitle(cardId) {
     titleElement.innerHTML = '';
     titleElement.appendChild(input);
     
+    // 设置卡片为编辑状态
+    setCardInlineEditingState(cardId, true);
+    
     // 聚焦并选中文本
     input.focus();
     input.select();
@@ -1317,9 +1320,14 @@ function editCardTitle(cardId) {
         titleElement.innerHTML = originalText;
     };
     
-    // 绑定事件
-    input.addEventListener('blur', () => {
-        setTimeout(save, 200);
+    // 绑定事件 - 智能焦点管理
+    input.addEventListener('blur', (e) => {
+        setTimeout(() => {
+            if (!shouldKeepInlineEditingActive(cardId)) {
+                setCardInlineEditingState(cardId, false);
+                save();
+            }
+        }, 150);
     });
     
     input.addEventListener('keydown', (e) => {
@@ -1419,9 +1427,13 @@ function editCardDescription(cardId) {
         descriptionElement.innerHTML = originalText;
     };
     
-    // 绑定事件
-    textarea.addEventListener('blur', () => {
-        setTimeout(save, 200);
+    // 绑定事件 - 智能焦点管理
+    textarea.addEventListener('blur', (e) => {
+        setTimeout(() => {
+            if (!shouldKeepInlineEditingActive(cardId)) {
+                save();
+            }
+        }, 150);
     });
     
     textarea.addEventListener('keydown', (e) => {
@@ -1526,15 +1538,15 @@ function editCardAssignee(cardId) {
         }
     };
     
-    // 处理失去焦点 - 延长时间避免点击选项时触发
-    select.onblur = function() {
+    // 处理失去焦点 - 智能焦点管理
+    select.onblur = function(e) {
         setTimeout(() => {
             // 检查元素是否还存在且是否还在编辑状态
             const currentSelect = cardElement.querySelector('.inline-assignee-select');
-            if (currentSelect) {
+            if (currentSelect && !shouldKeepInlineEditingActive(cardId)) {
                 renderBoard();
             }
-        }, 200);
+        }, 150);
     };
 }
 
@@ -1606,16 +1618,39 @@ function editCardDeadline(cardId) {
         }
     };
     
-    // 处理失去焦点 - 延长时间避免日期选择器交互时触发
-    input.onblur = function() {
+    // 处理失去焦点 - 智能焦点管理
+    input.onblur = function(e) {
         setTimeout(() => {
             // 检查元素是否还存在且是否还在编辑状态
             const currentInput = cardElement.querySelector('.inline-date-input');
-            if (currentInput) {
+            if (currentInput && !shouldKeepInlineEditingActive(cardId)) {
                 renderBoard();
             }
-        }, 200);
+        }, 150);
     };
+}
+
+// 智能焦点管理辅助函数
+function shouldKeepInlineEditingActive(cardId) {
+    const activeElement = document.activeElement;
+    return activeElement && 
+           activeElement.closest(`[data-card-id="${cardId}"]`) && 
+           (activeElement.classList.contains('inline-date-input') || 
+            activeElement.classList.contains('inline-assignee-select') ||
+            activeElement.classList.contains('inline-title-input') ||
+            activeElement.classList.contains('inline-description-textarea'));
+}
+
+// 管理卡片的内联编辑状态
+function setCardInlineEditingState(cardId, isEditing) {
+    const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
+    if (cardElement) {
+        if (isEditing) {
+            cardElement.classList.add('inline-editing');
+        } else {
+            cardElement.classList.remove('inline-editing');
+        }
+    }
 }
 
 // 更新卡片字段
