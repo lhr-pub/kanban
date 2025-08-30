@@ -274,6 +274,120 @@ app.get('/api/project-boards/:projectId', (req, res) => {
     });
 });
 
+// 新增：重命名项目API
+app.post('/api/rename-project', (req, res) => {
+    const { projectId, newName } = req.body;
+
+    if (!projectId || !newName) {
+        return res.status(400).json({ message: '项目ID和新名称不能为空' });
+    }
+
+    const sanitized = String(newName).trim();
+    if (!sanitized) {
+        return res.status(400).json({ message: '新名称不能为空' });
+    }
+
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+
+    const project = projects[projectId];
+    if (!project) {
+        return res.status(404).json({ message: '项目不存在' });
+    }
+
+    project.name = sanitized;
+
+    if (writeJsonFile(projectsFile, projects)) {
+        // 通知该项目下所有看板的参与者
+        try {
+            (project.boards || []).forEach(boardName => {
+                broadcastToBoard(projectId, boardName, {
+                    type: 'project-renamed',
+                    projectId,
+                    newName: sanitized
+                });
+            });
+        } catch (e) {
+            console.warn('Broadcast project-renamed warning:', e.message);
+        }
+        return res.json({ message: '项目重命名成功' });
+    } else {
+        return res.status(500).json({ message: '保存项目数据失败' });
+    }
+});
+
+// 新增：删除项目API
+app.delete('/api/delete-project', (req, res) => {
+    const { projectId } = req.body;
+
+    if (!projectId) {
+        return res.status(400).json({ message: '项目ID不能为空' });
+    }
+
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const usersFile = path.join(dataDir, 'users.json');
+
+    const projects = readJsonFile(projectsFile, {});
+    const users = readJsonFile(usersFile, {});
+
+    const project = projects[projectId];
+    if (!project) {
+        return res.status(404).json({ message: '项目不存在' });
+    }
+
+    try {
+        // 广播项目删除（通知所有看板参与者）
+        try {
+            (project.boards || []).forEach(boardName => {
+                broadcastToBoard(projectId, boardName, {
+                    type: 'project-deleted',
+                    projectId
+                });
+            });
+        } catch (e) {
+            console.warn('Broadcast project-deleted warning:', e.message);
+        }
+
+        // 删除所有看板文件
+        (project.boards || []).forEach(boardName => {
+            const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
+            if (fs.existsSync(boardFile)) {
+                try { fs.unlinkSync(boardFile); } catch (e) { console.warn('Remove board file warning:', boardFile, e.message); }
+            }
+        });
+
+        // 删除备份文件
+        try {
+            const prefix = `${projectId}_`;
+            const files = fs.readdirSync(backupsDir).filter(f => f.startsWith(prefix));
+            files.forEach(f => {
+                try { fs.unlinkSync(path.join(backupsDir, f)); } catch (e) { console.warn('Remove backup warning:', f, e.message); }
+            });
+        } catch (e) {
+            console.warn('Clean backups warning:', e.message);
+        }
+
+        // 从所有用户中移除此项目
+        for (const [username, user] of Object.entries(users)) {
+            if (Array.isArray(user.projects)) {
+                users[username].projects = user.projects.filter(id => id !== projectId);
+            }
+        }
+
+        // 从项目列表中删除
+        delete projects[projectId];
+
+        if (writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users)) {
+            return res.json({ message: '项目删除成功' });
+        } else {
+            return res.status(500).json({ message: '删除项目失败：无法保存数据' });
+        }
+    } catch (error) {
+        console.error('Delete project error:', error);
+        return res.status(500).json({ message: '删除项目失败' });
+    }
+});
+
 app.post('/api/create-board', (req, res) => {
     const { projectId, boardName } = req.body;
 
@@ -350,6 +464,84 @@ app.delete('/api/delete-board', (req, res) => {
     } catch (error) {
         console.error('Delete board error:', error);
         res.status(500).json({ message: '删除看板失败' });
+    }
+});
+
+// 新增：重命名看板API
+app.post('/api/rename-board', (req, res) => {
+    const { projectId, oldName, newName } = req.body;
+
+    if (!projectId || !oldName || !newName) {
+        return res.status(400).json({ message: '项目ID、旧名称和新名称不能为空' });
+    }
+
+    const sanitizedNew = String(newName).trim();
+    if (!sanitizedNew) {
+        return res.status(400).json({ message: '新名称不能为空' });
+    }
+
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+
+    const project = projects[projectId];
+    if (!project) {
+        return res.status(404).json({ message: '项目不存在' });
+    }
+
+    const idx = project.boards.indexOf(oldName);
+    if (idx === -1) {
+        return res.status(404).json({ message: '原看板不存在' });
+    }
+
+    if (project.boards.includes(sanitizedNew)) {
+        return res.status(400).json({ message: '新看板名称已存在' });
+    }
+
+    const oldFile = path.join(dataDir, `${projectId}_${oldName}.json`);
+    const newFile = path.join(dataDir, `${projectId}_${sanitizedNew}.json`);
+
+    try {
+        // 如果旧文件存在则重命名，否则创建空文件
+        if (fs.existsSync(oldFile)) {
+            fs.renameSync(oldFile, newFile);
+        } else {
+            writeJsonFile(newFile, readJsonFile(oldFile, { todo: [], doing: [], done: [], archived: [] }));
+        }
+
+        // 更新项目中的名称
+        project.boards[idx] = sanitizedNew;
+
+        if (!writeJsonFile(projectsFile, projects)) {
+            // 回滚文件名
+            try { if (fs.existsSync(newFile)) fs.renameSync(newFile, oldFile); } catch (e) {}
+            return res.status(500).json({ message: '保存项目数据失败' });
+        }
+
+        // 重命名对应备份文件前缀（尽力而为，不影响主流程）
+        try {
+            const oldPrefix = `${projectId}_${oldName}_`;
+            const newPrefix = `${projectId}_${sanitizedNew}_`;
+            const files = fs.readdirSync(backupsDir).filter(f => f.startsWith(oldPrefix));
+            files.forEach(f => {
+                const newBackup = path.join(backupsDir, f.replace(oldPrefix, newPrefix));
+                fs.renameSync(path.join(backupsDir, f), newBackup);
+            });
+        } catch (e) {
+            console.warn('Rename backups warning:', e.message);
+        }
+
+        // 通知旧看板参与者
+        broadcastToBoard(projectId, oldName, {
+            type: 'board-renamed',
+            projectId,
+            oldName,
+            newName: sanitizedNew
+        });
+
+        res.json({ message: '重命名成功' });
+    } catch (error) {
+        console.error('Rename board error:', error);
+        return res.status(500).json({ message: '重命名失败' });
     }
 });
 

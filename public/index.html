@@ -41,7 +41,7 @@
 
             <!-- 所有看板 -->
             <div class="dashboard-section">
-                <h2>📋 所有看板</h2>
+                <h2><span data-icon="boards"></span> 所有看板</h2>
                 <div id="quickAccessBoards" class="quick-boards-grid">
                     <!-- 看板快速访问将动态生成 -->
                 </div>
@@ -50,14 +50,12 @@
             <!-- 项目管理 -->
             <div class="dashboard-section">
                 <div class="projects-header">
-                    <h2>📁 项目管理</h2>
+                    <h2><span data-icon="folder"></span> 项目管理</h2>
                     <div class="header-actions">
-                        <button class="btn-primary" onclick="showCreateProjectForm()">
-                            <i>➕</i> 创建项目
-                        </button>
-                        <button class="btn-secondary" onclick="showJoinProjectForm()">
-                            <i>🔗</i> 加入项目
-                        </button>
+                        <button class="btn-primary" onclick="showCreateProjectForm()"><span class="btn-icon"
+                                data-icon="plus"></span> 创建项目</button>
+                        <button class="btn-secondary" onclick="showJoinProjectForm()"><span class="btn-icon"
+                                data-icon="link"></span> 加入项目</button>
                     </div>
                 </div>
                 <div id="projectsList" class="projects-grid">
@@ -89,7 +87,6 @@
                     </div>
                 </div>
             </div>
-            <div class="new-hello-world">Hello World!</div>
         </div>
     </div>
 
@@ -131,23 +128,25 @@
     <!-- 看板页面 -->
     <div id="boardPage" class="page hidden">
         <header class="header">
-            <div class="board-header-left">
-                <h1 class="board-breadcrumb">
-                    <span id="currentProjectName" class="project-link" onclick="goToProjectBoards()">项目名</span> / <span
-                        id="currentBoardName">看板名</span>
-                </h1>
-            </div>
-            <div class="header-actions">
-                <div class="online-users">
-                    <span id="onlineCount">在线用户: 0</span>
-                    <div id="userList"></div>
+            <div class="container">
+                <div class="board-header-left">
+                    <h1 class="board-breadcrumb">
+                        <span id="currentProjectName" class="project-link" onclick="goToProjectBoards()">项目名</span> /
+                        <span id="currentBoardName">看板名</span>
+                    </h1>
                 </div>
-                <input type="file" id="importFile" accept=".md,.json" hidden>
-                <button id="importBtn">导入</button>
-                <button id="exportBtn">导出Markdown</button>
-                <button id="archiveBtn">归档管理</button>
-                <button id="backToBoardSelect">返回</button>
-                <button id="logoutBtn">退出</button>
+                <div class="header-actions">
+                    <div class="online-users">
+                        <span id="onlineCount">在线用户: 0</span>
+                        <div id="userList"></div>
+                    </div>
+                    <input type="file" id="importFile" accept=".md,.json" hidden>
+                    <button id="importBtn">导入</button>
+                    <button id="exportBtn">导出Markdown</button>
+                    <button id="archiveBtn">归档管理</button>
+                    <button id="backToBoardSelect">返回</button>
+                    <button id="logoutBtn">退出</button>
+                </div>
             </div>
         </header>
 
@@ -167,8 +166,6 @@
                         </div>
                         <input type="date" id="newTodoDeadline" title="截止日期" class="date-input">
                     </div>
-                    <button onclick="addCard('todo')">+ 添加任务</button>
-                    <div class="keyboard-hint">按 Enter 快速添加</div>
                 </div>
             </div>
 
@@ -187,8 +184,6 @@
                         </div>
                         <input type="date" id="newDoingDeadline" title="截止日期" class="date-input">
                     </div>
-                    <button onclick="addCard('doing')">+ 添加任务</button>
-                    <div class="keyboard-hint">按 Enter 快速添加</div>
                 </div>
             </div>
 
@@ -207,8 +202,6 @@
                         </div>
                         <input type="date" id="newDoneDeadline" title="截止日期" class="date-input">
                     </div>
-                    <button onclick="addCard('done')">+ 添加任务</button>
-                    <div class="keyboard-hint">按 Enter 快速添加</div>
                 </div>
             </div>
         </main>
@@ -217,10 +210,12 @@
     <!-- 归档页面 -->
     <div id="archivePage" class="page hidden">
         <header class="header">
-            <h1>归档任务</h1>
-            <div class="header-actions">
-                <button id="backToBoard">返回看板</button>
-                <button onclick="clearArchive()" class="clear-archive-btn">清空归档</button>
+            <div class="container">
+                <h1>归档任务</h1>
+                <div class="header-actions">
+                    <button id="backToBoard">返回看板</button>
+                    <button onclick="clearArchive()" class="clear-archive-btn">清空归档</button>
+                </div>
             </div>
         </header>
 
@@ -234,24 +229,29 @@
 
     <!-- 导入选项模态框 -->
     <div id="importModal" class="modal hidden">
-        <div class="modal-content">
-            <h3>导入选项</h3>
-            <p>选择导入方式：</p>
-            <div class="import-options">
-                <label>
-                    <input type="radio" name="importMode" value="merge" checked>
-                    <span>合并导入</span>
-                    <small>将导入的任务添加到现有任务中</small>
-                </label>
-                <label>
-                    <input type="radio" name="importMode" value="overwrite">
-                    <span>覆盖导入</span>
-                    <small>清空现有任务，替换为导入的任务</small>
-                </label>
+        <div class="modal-content edit-modal">
+            <div class="modal-header">
+                <h3>导入选项</h3>
+                <button class="close-btn" onclick="cancelImport()" title="关闭">×</button>
             </div>
-            <div class="modal-actions">
-                <button onclick="confirmImport()">确认导入</button>
-                <button onclick="cancelImport()">取消</button>
+            <div class="modal-body">
+                <p>选择导入方式：</p>
+                <div class="import-options">
+                    <label>
+                        <input type="radio" name="importMode" value="merge" checked>
+                        <span>合并导入</span>
+                        <small>将导入的任务添加到现有任务中</small>
+                    </label>
+                    <label>
+                        <input type="radio" name="importMode" value="overwrite">
+                        <span>覆盖导入</span>
+                        <small>清空现有任务，替换为导入的任务</small>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="confirmImport()" class="btn-primary">确认导入</button>
+                <button onclick="cancelImport()" class="btn-secondary">取消</button>
             </div>
         </div>
     </div>

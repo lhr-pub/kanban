@@ -14,6 +14,10 @@ let inlineEditorOpening = false;
 let pendingFocusSelector = null;
 let pendingFocusCaretIndex = null;
 
+// 拖拽状态（支持跨列）
+let draggingCardId = null;
+let draggingFromStatus = null;
+
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
 const projectPage = document.getElementById('projectPage');
@@ -31,6 +35,9 @@ let importFileData = null;
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
+    // 渲染静态图标
+    renderIconsInDom(document);
+
     // 检查是否已登录
     const savedUser = localStorage.getItem('kanbanUser');
     if (savedUser) {
@@ -319,17 +326,19 @@ async function loadUserProjects() {
                     };
 
                     boardCard.innerHTML = `
-                        <div class="board-icon">📋</div>
+                        <span class="board-icon" data-icon="boards"></span>
                         <div class="board-details">
                             <h4>${escapeHtml(boardName)}</h4>
                             <span class="board-project">${escapeHtml(project.name)}</span>
                         </div>
                         <div class="board-card-actions">
+                            <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="重命名">✎</button>
                             <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="删除看板">✕</button>
                         </div>
                     `;
 
                     quickAccessBoards.appendChild(boardCard);
+                    renderIconsInDom(boardCard);
                 });
 
             } catch (error) {
@@ -338,20 +347,25 @@ async function loadUserProjects() {
 
             // 添加项目卡片到项目管理Tab
             const projectCard = document.createElement('div');
-            projectCard.className = 'project-card';
+            projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(project.id, project.name);
 
             projectCard.innerHTML = `
-                <h3>${escapeHtml(project.name)}</h3>
+                <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(project.name)}</h3>
                 <div class="project-info">
                     邀请码: <span class="invite-code">${project.inviteCode}</span><br>
                     成员: ${project.memberCount}人<br>
                     看板: ${project.boardCount}个<br>
                     创建于: ${new Date(project.created).toLocaleDateString()}
                 </div>
+                <div class="project-card-actions">
+                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeHtml(project.name)}')" title="重命名项目">✎</button>
+                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeHtml(project.name)}')" title="删除项目">✕</button>
+                </div>
             `;
 
             projectsList.appendChild(projectCard);
+            renderIconsInDom(projectCard);
         }
 
     } catch (error) {
@@ -391,6 +405,43 @@ function selectProject(projectId, projectName) {
     document.getElementById('projectTitle').textContent = projectName;
     previousPage = 'project'; // 从项目页面进入看板选择
     showBoardSelectPage();
+}
+
+// 新增：重命名项目
+function renameProject() {
+    const input = prompt('输入新的项目名称', currentProjectName || '');
+    if (input === null) return;
+    const newName = input.trim();
+    if (!newName) { alert('新名称不能为空'); return; }
+    if (newName === currentProjectName) return;
+
+    fetch('/api/rename-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: currentProjectId, newName })
+    }).then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+            currentProjectName = newName;
+            localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
+            const projectTitle = document.getElementById('projectTitle');
+            if (projectTitle) projectTitle.textContent = newName;
+            updateBoardHeader();
+            // 刷新相关列表展示
+            if (!projectPage.classList.contains('hidden')) {
+                loadUserProjects();
+            }
+            if (!boardSelectPage.classList.contains('hidden')) {
+                loadProjectBoards();
+            }
+            alert('项目重命名成功');
+        } else {
+            alert(result.message || '项目重命名失败');
+        }
+    }).catch((error) => {
+        console.error('Rename project error:', error);
+        alert('项目重命名失败');
+    });
 }
 
 // 创建项目
@@ -505,12 +556,13 @@ async function loadProjectBoards() {
             boardCard.onclick = () => selectBoard(boardName);
 
             boardCard.innerHTML = `
-                <div class="board-icon">📋</div>
+                <div class="board-icon" style="display:none"></div>
                 <div class="board-details">
                     <h4>${escapeHtml(boardName)}</h4>
                     <span class="board-project">${escapeHtml(currentProjectName)}</span>
                 </div>
                 <div class="board-card-actions">
+                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeHtml(boardName)}')" title="重命名">✎</button>
                     <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeHtml(boardName)}')" title="删除看板">✕</button>
                 </div>
             `;
@@ -694,6 +746,44 @@ function handleWebSocketMessage(data) {
         case 'error':
             alert(data.message);
             break;
+        case 'board-renamed':
+            if (data.projectId === currentProjectId && data.oldName === currentBoardName) {
+                currentBoardName = data.newName;
+                localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
+                updateBoardHeader();
+                try { if (socket) socket.close(); } catch (e) {}
+                connectWebSocket();
+                loadBoardData();
+            }
+            break;
+        case 'project-renamed':
+            if (data.projectId === currentProjectId) {
+                currentProjectName = data.newName;
+                localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
+                const projectTitle = document.getElementById('projectTitle');
+                if (projectTitle) projectTitle.textContent = currentProjectName;
+                updateBoardHeader();
+                if (!boardSelectPage.classList.contains('hidden')) {
+                    loadProjectBoards();
+                }
+            }
+            break;
+        // 新增：项目被删除
+        case 'project-deleted':
+            if (data.projectId === currentProjectId) {
+                // 当前所在项目被删除，断开连接并返回首页
+                if (socket) { try { socket.close(); } catch (e) {} }
+                currentProjectId = null;
+                currentProjectName = null;
+                currentBoardName = null;
+                localStorage.removeItem('kanbanCurrentProjectId');
+                localStorage.removeItem('kanbanCurrentProjectName');
+                localStorage.removeItem('kanbanCurrentBoardName');
+                showProjectPage();
+                loadUserProjects();
+                alert('当前项目已被删除');
+            }
+            break;
     }
 }
 
@@ -778,7 +868,7 @@ function ensureTopAddRow(status) {
     if (topSelect) {
         const prev = topSelect.value;
         topSelect.innerHTML = '<option value="">未分配</option>';
-        (window.currentOnlineUsers || window.currentProjectMembers || []).forEach(u => {
+        (window.currentProjectMembers || []).forEach(u => {
             const op = document.createElement('option');
             op.value = u; op.textContent = u; topSelect.appendChild(op);
         });
@@ -1125,8 +1215,8 @@ function updateAssigneeOptions() {
         // 清空现有选项
         assigneeSelect.innerHTML = '<option value="">未分配</option>';
 
-        // 优先使用在线用户列表，如果没有则使用项目成员列表
-        let users = window.currentOnlineUsers || window.currentProjectMembers || [];
+        // 使用项目成员列表（非仅在线）
+        let users = window.currentProjectMembers || [];
 
         users.forEach(user => {
             const option = document.createElement('option');
@@ -1745,7 +1835,7 @@ function editCardAssignee(cardId) {
     const menu = document.createElement('div');
     menu.className = 'assignee-dropdown';
 
-    const userList = [''].concat(window.currentOnlineUsers || []);
+    const userList = [''].concat(window.currentProjectMembers || []);
     userList.forEach(user => {
         const item = document.createElement('div');
         item.className = 'assignee-option' + (((user || null) === (card.assignee || null)) ? ' selected' : '');
@@ -2035,6 +2125,29 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// SVG 图标：看板
+function getBoardIconSVG() {
+    return '';
+}
+
+// 简易图标库
+const Icon = {
+    boards: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h4v14H4zM10 5h4v10h-4zM16 5h4v7h-4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
+    folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h5l2 2h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 8.5a4 4 0 0 1 4-4h2a4 4 0 1 1 0 8h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 15.5a4 4 0 0 1-4 4H8a4 4 0 1 1 0-8h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+};
+
+function renderIconsInDom(root=document) {
+    root.querySelectorAll('[data-icon]').forEach(el => {
+        const name = el.getAttribute('data-icon');
+        if (Icon[name]) {
+            el.innerHTML = Icon[name];
+            el.setAttribute('aria-hidden','true');
+        }
+    });
+}
+
 // 页面卸载时清理
 window.addEventListener('beforeunload', function() {
     if (socket) {
@@ -2171,27 +2284,54 @@ function enableColumnDrag(status) {
     };
 
     container.ondrop = () => {
-        // 发送新顺序
+        // 发送新顺序（以及必要时的跨列移动）
         const orderedIds = Array.from(container.querySelectorAll('.card')).map(el => el.dataset.cardId);
+        const toStatus = status;
+        const fromStatus = draggingFromStatus;
+        const movedCardId = draggingCardId;
+
         if (socket && socket.readyState === WebSocket.OPEN) {
+            if (movedCardId && fromStatus && fromStatus !== toStatus) {
+                socket.send(JSON.stringify({
+                    type: 'move-card',
+                    projectId: currentProjectId,
+                    boardName: currentBoardName,
+                    cardId: movedCardId,
+                    fromStatus: fromStatus,
+                    toStatus: toStatus
+                }));
+            }
             socket.send(JSON.stringify({
                 type: 'reorder-cards',
                 projectId: currentProjectId,
                 boardName: currentBoardName,
-                status: status,
+                status: toStatus,
                 orderedIds
             }));
         }
+
+        // 清理拖拽状态
+        draggingCardId = null;
+        draggingFromStatus = null;
+        document.body.classList.remove('dragging-cards');
     };
 }
 
 function makeDraggable(cardEl) {
     cardEl.setAttribute('draggable', 'true');
-    cardEl.ondragstart = () => {
+    cardEl.ondragstart = (e) => {
         cardEl.classList.add('dragging');
+        const col = cardEl.closest('.column');
+        draggingFromStatus = col ? col.getAttribute('data-status') : null;
+        draggingCardId = cardEl.dataset.cardId;
+        document.body.classList.add('dragging-cards');
+        try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); } catch (e) {}
     };
     cardEl.ondragend = () => {
         cardEl.classList.remove('dragging');
+        document.body.classList.remove('dragging-cards');
+        draggingCardId = null;
+        draggingFromStatus = null;
     };
 }
 
@@ -2206,4 +2346,161 @@ function getDragAfterElement(container, y) {
             return closest;
         }
     }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+// 新增：重命名看板（项目看板页）
+function promptRenameBoard(oldName) {
+    renameBoardRequest(currentProjectId, oldName, false);
+}
+
+// 新增：重命名看板（首页快捷看板）
+function promptRenameBoardFromHome(oldName, projectId) {
+    renameBoardRequest(projectId, oldName, true);
+}
+
+async function renameBoardRequest(projectId, oldName, isHome) {
+    const input = prompt('输入新的看板名称', oldName);
+    if (input === null) return; // 取消
+    const newName = input.trim();
+    if (!newName) {
+        alert('新名称不能为空');
+        return;
+    }
+    if (newName === oldName) return;
+
+    try {
+        const response = await fetch('/api/rename-board', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, oldName, newName })
+        });
+        const result = await response.json();
+        if (response.ok) {
+            // 刷新列表
+            if (isHome) {
+                loadUserProjects();
+            } else {
+                loadProjectBoards();
+            }
+
+            // 如果当前看板被重命名，更新本地状态并重连WS
+            if (projectId === currentProjectId && currentBoardName === oldName) {
+                currentBoardName = newName;
+                localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
+                updateBoardHeader();
+                try { if (socket) socket.close(); } catch (e) {}
+                connectWebSocket();
+                loadBoardData();
+            }
+            alert('重命名成功');
+        } else {
+            alert(result.message || '重命名失败');
+        }
+    } catch (error) {
+        console.error('Rename board error:', error);
+        alert('重命名失败');
+    }
+}
+
+// 从首页重命名项目
+function renameProjectFromHome(projectId, currentName) {
+    const input = prompt('输入新的项目名称', currentName || '');
+    if (input === null) return;
+    const newName = input.trim();
+    if (!newName) { alert('新名称不能为空'); return; }
+    if (newName === currentName) return;
+
+    fetch('/api/rename-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, newName })
+    }).then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+            // 如果当前全局项目是这个，更新全局名称与存储
+            if (currentProjectId === projectId) {
+                currentProjectName = newName;
+                localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
+                const projectTitle = document.getElementById('projectTitle');
+                if (projectTitle) projectTitle.textContent = newName;
+                updateBoardHeader();
+                if (!boardSelectPage.classList.contains('hidden')) {
+                    loadProjectBoards();
+                }
+            }
+            // 刷新首页项目与看板展示
+            loadUserProjects();
+            alert('项目重命名成功');
+        } else {
+            alert(result.message || '项目重命名失败');
+        }
+    }).catch((error) => {
+        console.error('Rename project (home) error:', error);
+        alert('项目重命名失败');
+    });
+}
+
+// 删除项目（项目选择页头部按钮）
+function deleteProject() {
+    if (!currentProjectId) return;
+    if (!confirm(`确定删除项目 "${currentProjectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`)) return;
+
+    fetch('/api/delete-project', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: currentProjectId })
+    }).then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+            // 若正在此项目内，清理并返回首页
+            if (socket) { try { socket.close(); } catch (e) {} }
+            currentProjectId = null;
+            currentProjectName = null;
+            currentBoardName = null;
+            localStorage.removeItem('kanbanCurrentProjectId');
+            localStorage.removeItem('kanbanCurrentProjectName');
+            localStorage.removeItem('kanbanCurrentBoardName');
+            showProjectPage();
+            loadUserProjects();
+            alert('项目删除成功');
+        } else {
+            alert(result.message || '项目删除失败');
+        }
+    }).catch((error) => {
+        console.error('Delete project error:', error);
+        alert('项目删除失败');
+    });
+}
+
+// 从首页删除项目
+function deleteProjectFromHome(projectId, projectName) {
+    if (!confirm(`确定删除项目 "${projectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`)) return;
+
+    fetch('/api/delete-project', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId })
+    }).then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (response.ok) {
+            // 若当前上下文在此项目，退出该项目视图
+            if (currentProjectId === projectId) {
+                if (socket) { try { socket.close(); } catch (e) {} }
+                currentProjectId = null;
+                currentProjectName = null;
+                currentBoardName = null;
+                localStorage.removeItem('kanbanCurrentProjectId');
+                localStorage.removeItem('kanbanCurrentProjectName');
+                localStorage.removeItem('kanbanCurrentBoardName');
+                showProjectPage();
+            }
+            loadUserProjects();
+            alert('项目删除成功');
+        } else {
+            alert(result.message || '项目删除失败');
+        }
+    }).catch((error) => {
+        console.error('Delete project (home) error:', error);
+        alert('项目删除失败');
+    });
 }
