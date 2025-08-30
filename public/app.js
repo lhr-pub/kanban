@@ -785,8 +785,8 @@ function createCardElement(card, status) {
 
     cardElement.innerHTML = `
         <div class="card-actions">${actionsHtml}</div>
-        <h4 class="card-title clickable" onclick="event.stopPropagation(); editCardTitle('${card.id}')" title="点击编辑标题">${escapeHtml(card.title)}</h4>
-        <p class="card-description clickable" onclick="event.stopPropagation(); editCardDescription('${card.id}')" title="点击编辑描述">${escapeHtml(card.description || '点击添加描述...')}</p>
+        <h4 class="card-title clickable" onclick="event.stopPropagation(); editCardTitle('${card.id}')" title="点击编辑标题"><span class="title-text">${escapeHtml(card.title)}</span></h4>
+        <p class="card-description clickable" onclick="event.stopPropagation(); editCardDescription('${card.id}')" title="点击编辑描述"><span class="description-text">${escapeHtml(card.description || '点击添加描述...')}</span></p>
         <div class="card-footer" onclick="openEditModal('${card.id}')">
             <div class="card-footer-top">
                 <div class="card-left-info">
@@ -1397,7 +1397,6 @@ function editCardDescription(cardId) {
     textarea.className = 'inline-description-textarea';
     textarea.value = card.description || '';
     textarea.placeholder = '输入任务描述...';
-    textarea.rows = 2;
     textarea.style.width = '100%';
     textarea.style.boxSizing = 'border-box';
 
