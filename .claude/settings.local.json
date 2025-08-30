@@ -3,7 +3,9 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(npm start)",
-      "Bash(PORT=3001 node server.js)"
+      "Bash(PORT=3001 node server.js)",
+      "Bash(pkill:*)",
+      "Bash(node server.js)"
     ],
     "deny": [],
     "ask": []

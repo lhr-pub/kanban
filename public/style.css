@@ -646,8 +646,8 @@ h1 {
     font-size: 0.95rem;
     font-weight: 600;
     width: 100%;
-    margin-left: -0.75rem; /* 对齐标题文字的开始位置 */
-    margin-right: -0.75rem; /* 对齐标题文字的结束位置 */
+    margin-left: 0; /* Remove negative margin to fix left shift */
+    margin-right: -0.75rem; /* Keep right alignment */
 }
 
 .inline-description-textarea {
@@ -658,8 +658,8 @@ h1 {
     resize: vertical;
     min-height: 80px;
     line-height: 1.5;
-    margin-left: -0.75rem; /* 对齐描述文字的开始位置 */
-    margin-right: -0.75rem; /* 对齐描述文字的结束位置 */
+    margin-left: 0; /* Align with title by removing negative margin */
+    margin-right: -0.75rem; /* Keep right alignment */
 }
 
 .inline-assignee-select:focus,
@@ -1006,14 +1006,14 @@ h1 {
     transition: all 0.2s;
 }
 
-.move-left { 
-    background: #3b82f6; 
-    color: white; 
+.move-left {
+    background: #3b82f6;
+    color: white;
 }
 
-.move-right { 
-    background: #10b981; 
-    color: white; 
+.move-right {
+    background: #10b981;
+    color: white;
 }
 
 .archive-btn {
@@ -1406,42 +1406,42 @@ h1 {
         gap: 1rem;
         padding: 1rem;
     }
-    
+
     .header {
         padding: 1rem;
         flex-direction: column;
         align-items: stretch;
     }
-    
+
     .header-actions {
         justify-content: center;
     }
-    
+
     .online-users {
         justify-content: center;
     }
-    
+
     .column {
         min-height: 300px;
     }
-    
+
     .modal-content {
         margin: 1rem;
         width: calc(100% - 2rem);
     }
-    
+
     .project-list, .board-list {
         grid-template-columns: 1fr;
     }
-    
+
     .create-project-form, .join-project-form, .create-board-form {
         flex-direction: column;
     }
-    
+
     .create-project-form input, .join-project-form input, .create-board-form input {
         min-width: auto;
     }
-    
+
     .board-header-left {
         margin-bottom: 1rem;
     }
@@ -2126,42 +2126,42 @@ h1 {
         max-width: 1200px;
         margin: 0 auto;
     }
-    
+
     .quick-boards-grid {
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 1.25rem;
     }
-    
+
     .projects-grid {
         grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
         gap: 1.25rem;
     }
-    
-    
+
+
     .dashboard-section {
         margin-bottom: 3rem;
     }
-    
+
     .quick-board-card {
         padding: 1.25rem;
         min-height: 70px;
     }
-    
+
     .board-icon {
         width: 40px;
         height: 40px;
         font-size: 1.5rem;
     }
-    
+
     .board-details h4 {
         font-size: 1.125rem;
     }
-    
+
     .project-card {
         padding: 1.25rem;
         min-height: 85px;
     }
-    
+
     .board-container {
         padding: 1.5rem 2.5rem;
         gap: 1.5rem;
@@ -2170,71 +2170,71 @@ h1 {
 
 /* 移动端响应式 */
 @media (max-width: 768px) {
-    
+
     /* 工作台响应式 */
     .dashboard-stats {
         grid-template-columns: 1fr;
         gap: 0.75rem;
     }
-    
+
     .stat-card {
         padding: 1rem;
         gap: 0.75rem;
     }
-    
+
     .stat-icon {
         width: 50px;
         height: 50px;
         font-size: 1.5rem;
     }
-    
+
     .stat-number {
         font-size: 1.5rem;
     }
-    
+
     .quick-boards-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .projects-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .projects-header {
         flex-direction: column;
         align-items: stretch;
         gap: 1rem;
     }
-    
+
     .join-card {
         padding: 2rem 1.5rem;
     }
-    
+
     .join-form {
         flex-direction: column;
     }
-    
+
     .join-form input {
         min-width: auto;
     }
-    
+
     .form-card {
         margin: 1rem;
         width: calc(100% - 2rem);
         max-width: none;
     }
-    
+
     .form-actions {
         flex-direction: column;
         gap: 0.75rem;
     }
-    
+
     .user-info {
         flex-direction: column;
         align-items: flex-end;
         gap: 0.5rem;
     }
-    
+
     .project-header h1 {
         font-size: 1.5rem;
     }

@@ -29,17 +29,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedUser = localStorage.getItem('kanbanUser');
     if (savedUser) {
         currentUser = savedUser;
-        
+
         // 恢复页面状态
         const savedPageState = localStorage.getItem('kanbanPageState');
         const savedCurrentProjectId = localStorage.getItem('kanbanCurrentProjectId');
-        const savedCurrentProjectName = localStorage.getItem('kanbanCurrentProjectName'); 
+        const savedCurrentProjectName = localStorage.getItem('kanbanCurrentProjectName');
         const savedCurrentBoardName = localStorage.getItem('kanbanCurrentBoardName');
-        
+
         if (savedPageState && savedCurrentProjectId && savedCurrentProjectName) {
             currentProjectId = savedCurrentProjectId;
             currentProjectName = savedCurrentProjectName;
-            
+
             if (savedPageState === 'boardSelect') {
                 showBoardSelectPage();
             } else if (savedPageState === 'board' && savedCurrentBoardName) {
@@ -63,14 +63,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // 绑定事件
     authForm.addEventListener('submit', handleAuth);
     switchMode.addEventListener('click', toggleAuthMode);
-    
+
     // 项目页面事件
     document.getElementById('logoutFromProject').addEventListener('click', logout);
-    
+
     // 看板选择页面事件
     document.getElementById('backToProjects').addEventListener('click', showProjectPage);
     document.getElementById('logoutFromBoard').addEventListener('click', logout);
-    
+
     // 看板页面事件
     document.getElementById('logoutBtn').addEventListener('click', logout);
     document.getElementById('exportBtn').addEventListener('click', exportMarkdown);
@@ -78,14 +78,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
-    
+
     // 绑定模态框事件
     editModal.addEventListener('click', function(e) {
         if (e.target === editModal) {
             closeEditModal();
         }
     });
-    
+
     // 绑定键盘事件
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-    
+
     // 为添加任务输入框绑定回车键事件
     ['todo', 'doing', 'done'].forEach(status => {
         const titleInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Title`);
@@ -128,13 +128,13 @@ function showProjectPage() {
     boardSelectPage.classList.add('hidden');
     boardPage.classList.add('hidden');
     archivePage.classList.add('hidden');
-    
+
     // 保存页面状态
     localStorage.setItem('kanbanPageState', 'project');
     localStorage.removeItem('kanbanCurrentProjectId');
     localStorage.removeItem('kanbanCurrentProjectName');
     localStorage.removeItem('kanbanCurrentBoardName');
-    
+
     loadUserProjects();
 }
 
@@ -145,16 +145,16 @@ function showBoardSelectPage() {
     boardSelectPage.classList.remove('hidden');
     boardPage.classList.add('hidden');
     archivePage.classList.add('hidden');
-    
+
     // 更新项目标题
     document.getElementById('projectTitle').textContent = currentProjectName;
-    
+
     // 保存页面状态
     localStorage.setItem('kanbanPageState', 'boardSelect');
     localStorage.setItem('kanbanCurrentProjectId', currentProjectId);
     localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
     localStorage.removeItem('kanbanCurrentBoardName');
-    
+
     loadProjectBoards();
 }
 
@@ -167,22 +167,22 @@ function showBoard() {
     boardSelectPage.classList.add('hidden');
     boardPage.classList.remove('hidden');
     archivePage.classList.add('hidden');
-    
+
     // 保存页面状态
     localStorage.setItem('kanbanPageState', 'board');
     localStorage.setItem('kanbanCurrentProjectId', currentProjectId);
     localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
     localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
-    
+
     updateBoardHeader();
     loadBoardData();
     connectWebSocket();
-    
+
     // 加载项目成员信息（如果还未加载）
     if (!window.currentProjectMembers) {
         loadProjectMembers();
     }
-    
+
     // 初始化分配用户选项
     updateAssigneeOptions();
 }
@@ -190,10 +190,10 @@ function showBoard() {
 function showArchive() {
     boardPage.classList.add('hidden');
     archivePage.classList.remove('hidden');
-    
-    // 保存页面状态  
+
+    // 保存页面状态
     localStorage.setItem('kanbanPageState', 'archive');
-    
+
     renderArchive();
 }
 
@@ -218,7 +218,7 @@ function goToProjectBoards() {
 function toggleAuthMode(e) {
     e.preventDefault();
     const isLogin = formTitle.textContent === '登录';
-    
+
     if (isLogin) {
         formTitle.textContent = '注册';
         submitBtn.textContent = '注册';
@@ -235,16 +235,16 @@ function toggleAuthMode(e) {
 // 处理认证
 async function handleAuth(e) {
     e.preventDefault();
-    
+
     const username = document.getElementById('username').value.trim();
     const password = document.getElementById('password').value.trim();
     const isLogin = submitBtn.textContent === '登录';
-    
+
     if (!username || !password) {
         alert('请填写用户名和密码');
         return;
     }
-    
+
     try {
         const response = await fetch(`/api/${isLogin ? 'login' : 'register'}`, {
             method: 'POST',
@@ -256,9 +256,9 @@ async function handleAuth(e) {
                 password
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             currentUser = username;
             localStorage.setItem('kanbanUser', username);
@@ -277,29 +277,29 @@ async function loadUserProjects() {
     try {
         const response = await fetch(`/api/user-projects/${currentUser}`);
         const projects = await response.json();
-        
+
         // 设置用户名
         document.getElementById('currentUserName').textContent = currentUser;
-        
+
         if (projects.length === 0) {
             document.getElementById('quickAccessBoards').innerHTML = '<div class="empty-state">还没有加入任何项目，请先创建或加入一个项目！</div>';
             document.getElementById('projectsList').innerHTML = '<div class="empty-state">还没有项目，创建第一个项目开始协作吧！</div>';
             return;
         }
-        
+
         const quickAccessBoards = document.getElementById('quickAccessBoards');
         const projectsList = document.getElementById('projectsList');
-        
+
         // 清空现有内容，避免重复
         quickAccessBoards.innerHTML = '';
         projectsList.innerHTML = '';
-        
+
         // 加载所有看板和项目数据
         for (const project of projects) {
             try {
                 const boardsResponse = await fetch(`/api/project-boards/${project.id}`);
                 const boardsData = await boardsResponse.json();
-                
+
                 // 添加快速访问看板
                 boardsData.boards.forEach(boardName => {
                     const boardCard = document.createElement('div');
@@ -311,7 +311,7 @@ async function loadUserProjects() {
                         previousPage = 'project'; // 从项目首页直接进入看板
                         showBoard();
                     };
-                    
+
                     boardCard.innerHTML = `
                         <div class="board-icon">📋</div>
                         <div class="board-details">
@@ -322,19 +322,19 @@ async function loadUserProjects() {
                             <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="删除看板">✕</button>
                         </div>
                     `;
-                    
+
                     quickAccessBoards.appendChild(boardCard);
                 });
-                
+
             } catch (error) {
                 console.error(`Error loading boards for project ${project.id}:`, error);
             }
-            
+
             // 添加项目卡片到项目管理Tab
             const projectCard = document.createElement('div');
             projectCard.className = 'project-card';
             projectCard.onclick = () => selectProject(project.id, project.name);
-            
+
             projectCard.innerHTML = `
                 <h3>${escapeHtml(project.name)}</h3>
                 <div class="project-info">
@@ -344,10 +344,10 @@ async function loadUserProjects() {
                     创建于: ${new Date(project.created).toLocaleDateString()}
                 </div>
             `;
-            
+
             projectsList.appendChild(projectCard);
         }
-        
+
     } catch (error) {
         console.error('Load projects error:', error);
         alert('加载项目列表失败');
@@ -394,7 +394,7 @@ async function createProject() {
         alert('请输入项目名称');
         return;
     }
-    
+
     try {
         const response = await fetch('/api/create-project', {
             method: 'POST',
@@ -406,9 +406,9 @@ async function createProject() {
                 projectName
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             hideCreateProjectForm();
             loadUserProjects();
@@ -429,7 +429,7 @@ async function joinProject() {
         alert('请输入6位邀请码');
         return;
     }
-    
+
     try {
         const response = await fetch('/api/join-project', {
             method: 'POST',
@@ -441,9 +441,9 @@ async function joinProject() {
                 inviteCode
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             hideJoinProjectForm();
             loadUserProjects();
@@ -462,10 +462,10 @@ async function loadProjectMembers() {
     try {
         const response = await fetch(`/api/project-boards/${currentProjectId}`);
         const data = await response.json();
-        
+
         // 保存项目成员列表用于分配用户选项
         window.currentProjectMembers = data.members;
-        
+
         // 更新分配用户选项
         updateAssigneeOptions();
     } catch (error) {
@@ -478,26 +478,26 @@ async function loadProjectBoards() {
     try {
         const response = await fetch(`/api/project-boards/${currentProjectId}`);
         const data = await response.json();
-        
+
         document.getElementById('projectInviteCode').textContent = data.inviteCode;
         document.getElementById('projectMembers').textContent = data.members.join(', ');
-        
+
         // 保存项目成员列表用于分配用户选项
         window.currentProjectMembers = data.members;
-        
+
         const boardList = document.getElementById('boardList');
         boardList.innerHTML = '';
-        
+
         if (data.boards.length === 0) {
             boardList.innerHTML = '<div class="empty-state">还没有看板，创建第一个看板吧！</div>';
             return;
         }
-        
+
         data.boards.forEach(boardName => {
             const boardCard = document.createElement('div');
             boardCard.className = 'quick-board-card board-card-with-actions';
             boardCard.onclick = () => selectBoard(boardName);
-            
+
             boardCard.innerHTML = `
                 <div class="board-icon">📋</div>
                 <div class="board-details">
@@ -508,10 +508,10 @@ async function loadProjectBoards() {
                     <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeHtml(boardName)}')" title="删除看板">✕</button>
                 </div>
             `;
-            
+
             boardList.appendChild(boardCard);
         });
-        
+
     } catch (error) {
         console.error('Load boards error:', error);
         alert('加载看板列表失败');
@@ -532,7 +532,7 @@ async function createBoard() {
         alert('请输入看板名称');
         return;
     }
-    
+
     try {
         const response = await fetch('/api/create-board', {
             method: 'POST',
@@ -544,9 +544,9 @@ async function createBoard() {
                 boardName
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             document.getElementById('newBoardName').value = '';
             loadProjectBoards();
@@ -565,7 +565,7 @@ async function deleteBoard(boardName) {
     if (!confirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`)) {
         return;
     }
-    
+
     try {
         const response = await fetch('/api/delete-board', {
             method: 'DELETE',
@@ -577,9 +577,9 @@ async function deleteBoard(boardName) {
                 boardName
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             loadProjectBoards();
             alert('看板删除成功！');
@@ -597,7 +597,7 @@ async function deleteBoardFromHome(boardName, projectId) {
     if (!confirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`)) {
         return;
     }
-    
+
     try {
         const response = await fetch('/api/delete-board', {
             method: 'DELETE',
@@ -609,9 +609,9 @@ async function deleteBoardFromHome(boardName, projectId) {
                 boardName
             })
         });
-        
+
         const result = await response.json();
-        
+
         if (response.ok) {
             loadUserProjects(); // 重新加载首页项目列表
             alert('看板删除成功！');
@@ -634,9 +634,9 @@ function updateBoardHeader() {
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
-    
+
     socket = new WebSocket(wsUrl);
-    
+
     socket.onopen = function() {
         console.log('WebSocket connected');
         socket.send(JSON.stringify({
@@ -646,17 +646,17 @@ function connectWebSocket() {
             boardName: currentBoardName
         }));
     };
-    
+
     socket.onmessage = function(event) {
         const data = JSON.parse(event.data);
         handleWebSocketMessage(data);
     };
-    
+
     socket.onclose = function() {
         console.log('WebSocket disconnected');
         setTimeout(connectWebSocket, 3000);
     };
-    
+
     socket.onerror = function(error) {
         console.error('WebSocket error:', error);
     };
@@ -708,22 +708,22 @@ function renderBoard() {
     ['todo', 'doing', 'done'].forEach(status => {
         const cardsContainer = document.getElementById(`${status}Cards`);
         const countElement = document.getElementById(`${status}Count`);
-        
+
         cardsContainer.innerHTML = '';
         const cards = boardData[status] || [];
         countElement.textContent = cards.length;
-        
+
         // 按创建时间正序排序（最新的在后面）
         const sortedCards = cards.slice().sort((a, b) => {
             return new Date(a.created) - new Date(b.created);
         });
-        
+
         sortedCards.forEach(card => {
             const cardElement = createCardElement(card, status);
             cardsContainer.appendChild(cardElement);
         });
     });
-    
+
     if (!archivePage.classList.contains('hidden')) {
         renderArchive();
     }
@@ -733,16 +733,16 @@ function renderBoard() {
 function renderArchive() {
     const archivedCards = document.getElementById('archivedCards');
     const archivedCount = document.getElementById('archivedCount');
-    
+
     archivedCards.innerHTML = '';
     const cards = boardData.archived || [];
     archivedCount.textContent = cards.length;
-    
+
     // 按创建时间正序排序（最新的在后面）
     const sortedCards = cards.slice().sort((a, b) => {
         return new Date(a.created) - new Date(b.created);
     });
-    
+
     sortedCards.forEach(card => {
         const cardElement = createCardElement(card, 'archived');
         archivedCards.appendChild(cardElement);
@@ -754,13 +754,13 @@ function createCardElement(card, status) {
     const cardElement = document.createElement('div');
     cardElement.className = 'card';
     cardElement.dataset.cardId = card.id;
-    
+
     const isOverdue = card.deadline && new Date(card.deadline) < new Date();
     const isEditing = editingCardId === card.id;
-    
+
     if (isOverdue) cardElement.classList.add('overdue');
     if (isEditing) cardElement.classList.add('editing');
-    
+
     let actionsHtml = '';
     if (status !== 'archived') {
         if (status !== 'todo') {
@@ -775,14 +775,14 @@ function createCardElement(card, status) {
     } else {
         actionsHtml = `<button class="restore-btn" onclick="restoreCard('${card.id}')" title="还原到待办">↶</button>`;
     }
-    
-    const assigneeHtml = card.assignee ? 
-        `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>` : 
+
+    const assigneeHtml = card.assignee ?
+        `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>` :
         `<span class="card-assignee unassigned clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击分配用户">未分配</span>`;
-    const deadlineHtml = card.deadline ? 
-        `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">📅 ${card.deadline}</span>` : 
+    const deadlineHtml = card.deadline ?
+        `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">📅 ${card.deadline}</span>` :
         `<span class="card-deadline clickable unset" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击设置截止日期">📅 设置</span>`;
-    
+
     cardElement.innerHTML = `
         <div class="card-actions">${actionsHtml}</div>
         <h4 class="card-title clickable" onclick="event.stopPropagation(); editCardTitle('${card.id}')" title="点击编辑标题">${escapeHtml(card.title)}</h4>
@@ -798,16 +798,7 @@ function createCardElement(card, status) {
             </div>
         </div>
     `;
-    
-    // 为整个卡片添加点击事件作为备选
-    cardElement.addEventListener('click', function(e) {
-        // 如果点击的是按钮，不触发卡片点击
-        if (e.target.closest('.card-actions')) {
-            return;
-        }
-        openEditModal(card.id);
-    });
-    
+
     return cardElement;
 }
 
@@ -816,13 +807,13 @@ function addCard(status) {
     const titleInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Title`);
     const assigneeInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Assignee`);
     const deadlineInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Deadline`);
-    
+
     const title = titleInput.value.trim();
     if (!title) {
         alert('请输入任务标题');
         return;
     }
-    
+
     const card = {
         id: Date.now().toString(),
         title: title,
@@ -832,7 +823,7 @@ function addCard(status) {
         created: new Date().toISOString(),
         deadline: deadlineInput.value || null
     };
-    
+
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'add-card',
@@ -842,7 +833,7 @@ function addCard(status) {
             card: card
         }));
     }
-    
+
     titleInput.value = '';
     assigneeInput.value = '';
     deadlineInput.value = '';
@@ -853,7 +844,7 @@ function moveCard(cardId, direction) {
     const statuses = ['todo', 'doing', 'done'];
     let fromStatus = null;
     let cardIndex = -1;
-    
+
     for (const status of statuses) {
         const index = boardData[status].findIndex(card => card.id === cardId);
         if (index !== -1) {
@@ -862,18 +853,18 @@ function moveCard(cardId, direction) {
             break;
         }
     }
-    
+
     if (fromStatus === null) return;
-    
+
     const currentIndex = statuses.indexOf(fromStatus);
     let toStatus;
-    
+
     if (direction === 'left' && currentIndex > 0) {
         toStatus = statuses[currentIndex - 1];
     } else if (direction === 'right' && currentIndex < statuses.length - 1) {
         toStatus = statuses[currentIndex + 1];
     }
-    
+
     if (toStatus && socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'move-card',
@@ -893,7 +884,7 @@ function archiveCard(cardId) {
         alert('只能归档已完成的任务');
         return;
     }
-    
+
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'archive-card',
@@ -933,7 +924,7 @@ function clearArchive() {
 // 打开编辑模态框
 function openEditModal(cardId) {
     let card = null;
-    
+
     for (const status of ['todo', 'doing', 'done', 'archived']) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
@@ -941,22 +932,22 @@ function openEditModal(cardId) {
             break;
         }
     }
-    
+
     if (!card) return;
-    
+
     editingCardId = cardId;
     document.getElementById('editCardTitle').value = card.title;
     document.getElementById('editCardDescription').value = card.description || '';
     document.getElementById('editCardDeadline').value = card.deadline || '';
     document.getElementById('editCardCreated').textContent = `创建于: ${new Date(card.created).toLocaleString()}`;
     document.getElementById('editCardAuthor').textContent = `创建者: ${card.author}`;
-    
+
     // 更新分配用户下拉列表
     updateAssigneeOptions();
     document.getElementById('editCardAssignee').value = card.assignee || '';
-    
+
     editModal.classList.remove('hidden');
-    
+
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'card-editing',
@@ -972,19 +963,19 @@ function openEditModal(cardId) {
 // 保存卡片
 function saveCard() {
     if (!editingCardId) return;
-    
+
     const title = document.getElementById('editCardTitle').value.trim();
     const description = document.getElementById('editCardDescription').value.trim();
     const assignee = document.getElementById('editCardAssignee').value || null;
     const deadline = document.getElementById('editCardDeadline').value || null;
-    
+
     if (!title) {
         alert('任务标题不能为空');
         return;
     }
-    
+
     const updates = { title, description, assignee, deadline };
-    
+
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'update-card',
@@ -994,14 +985,14 @@ function saveCard() {
             updates: updates
         }));
     }
-    
+
     closeEditModal();
 }
 
 // 删除卡片
 function deleteCard() {
     if (!editingCardId) return;
-    
+
     if (confirm('确定要删除这个任务吗？')) {
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
@@ -1027,7 +1018,7 @@ function closeEditModal() {
             editing: false
         }));
     }
-    
+
     editingCardId = null;
     editModal.classList.add('hidden');
 }
@@ -1035,10 +1026,10 @@ function closeEditModal() {
 // 更新在线用户
 function updateOnlineUsers(users) {
     document.getElementById('onlineCount').textContent = `在线用户: ${users.length}`;
-    document.getElementById('userList').innerHTML = users.map(user => 
+    document.getElementById('userList').innerHTML = users.map(user =>
         `<span class="online-user">${escapeHtml(user)}</span>`
     ).join('');
-    
+
     // 同时更新分配用户选项
     window.currentOnlineUsers = users;
     updateAssigneeOptions();
@@ -1048,30 +1039,30 @@ function updateOnlineUsers(users) {
 function updateAssigneeOptions() {
     const assigneeSelects = [
         'editCardAssignee',
-        'newTodoAssignee', 
-        'newDoingAssignee', 
+        'newTodoAssignee',
+        'newDoingAssignee',
         'newDoneAssignee'
     ];
-    
+
     assigneeSelects.forEach(selectId => {
         const assigneeSelect = document.getElementById(selectId);
         if (!assigneeSelect) return;
-        
+
         const currentValue = assigneeSelect.value;
-        
+
         // 清空现有选项
         assigneeSelect.innerHTML = '<option value="">未分配</option>';
-        
+
         // 优先使用在线用户列表，如果没有则使用项目成员列表
         let users = window.currentOnlineUsers || window.currentProjectMembers || [];
-        
+
         users.forEach(user => {
             const option = document.createElement('option');
             option.value = user;
             option.textContent = user;
             assigneeSelect.appendChild(option);
         });
-        
+
         // 恢复之前的值
         assigneeSelect.value = currentValue;
     });
@@ -1122,7 +1113,7 @@ function importBoard() {
 document.getElementById('importFile').addEventListener('change', function(e) {
     const file = e.target.files[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
     reader.onload = function(event) {
         try {
@@ -1135,10 +1126,10 @@ document.getElementById('importFile').addEventListener('change', function(e) {
                 alert('不支持的文件格式，请选择 .json 或 .md 文件');
                 return;
             }
-            
+
             importFileData = data;
             importModal.classList.remove('hidden');
-            
+
         } catch (error) {
             console.error('Import error:', error);
             alert('文件格式错误，无法解析');
@@ -1153,7 +1144,7 @@ function parseMarkdownToBoard(markdown) {
     const board = { todo: [], doing: [], done: [], archived: [] };
     let currentSection = null;
     let currentCard = null;
-    
+
     for (const line of lines) {
         if (line.startsWith('## 📋 待办') || line.startsWith('## TODO')) {
             currentSection = 'todo';
@@ -1181,16 +1172,16 @@ function parseMarkdownToBoard(markdown) {
             currentCard.assignee = line.replace('**分配给:**', '').trim();
         }
     }
-    
+
     return board;
 }
 
 // 确认导入
 function confirmImport() {
     if (!importFileData) return;
-    
+
     const importMode = document.querySelector('input[name="importMode"]:checked').value;
-    
+
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'import-board',
@@ -1200,7 +1191,7 @@ function confirmImport() {
             mode: importMode
         }));
     }
-    
+
     cancelImport();
 }
 
@@ -1217,21 +1208,21 @@ function logout() {
         socket.close();
         socket = null;
     }
-    
+
     currentUser = null;
     currentProjectId = null;
     currentProjectName = null;
     currentBoardName = null;
     boardData = { todo: [], doing: [], done: [], archived: [] };
-    
+
     localStorage.removeItem('kanbanUser');
     localStorage.removeItem('kanbanPageState');
     localStorage.removeItem('kanbanCurrentProjectId');
     localStorage.removeItem('kanbanCurrentProjectName');
     localStorage.removeItem('kanbanCurrentBoardName');
-    
+
     showLoginPage();
-    
+
     // 重置表单
     document.getElementById('username').value = '';
     document.getElementById('password').value = '';
@@ -1245,7 +1236,7 @@ function logout() {
 function editCardTitle(cardId) {
     let card = null;
     let cardStatus = null;
-    
+
     for (const status of ['todo', 'doing', 'done', 'archived']) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
@@ -1254,49 +1245,49 @@ function editCardTitle(cardId) {
             break;
         }
     }
-    
+
     if (!card) return;
-    
+
     // 检查是否已经在编辑状态
     const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
     const titleElement = cardElement.querySelector('.card-title');
-    
+
     if (titleElement.querySelector('.inline-title-input')) {
         // 已经在编辑状态，不要重复创建
         return;
     }
-    
+
     // 创建输入框
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'inline-title-input';
     input.value = card.title;
     input.style.width = '100%';
-    
+
     // 保存原始文本
     const originalText = titleElement.innerHTML;
-    
+
     // 替换内容
     titleElement.innerHTML = '';
     titleElement.appendChild(input);
-    
+
     // 设置卡片为编辑状态
     setCardInlineEditingState(cardId, true);
-    
+
     // 聚焦并选中文本
     input.focus();
     input.select();
-    
+
     // 保存函数
     const save = () => {
         const newTitle = input.value.trim();
         if (newTitle && newTitle !== card.title) {
             // 更新本地数据
             card.title = newTitle;
-            
+
             // 发送更新请求
             const updates = { title: newTitle };
-            
+
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
                     type: 'update-card',
@@ -1306,7 +1297,7 @@ function editCardTitle(cardId) {
                     updates: updates
                 }));
             }
-            
+
             // 显示新标题
             titleElement.innerHTML = escapeHtml(newTitle);
         } else {
@@ -1314,12 +1305,12 @@ function editCardTitle(cardId) {
             titleElement.innerHTML = originalText;
         }
     };
-    
+
     // 取消函数
     const cancel = () => {
         titleElement.innerHTML = originalText;
     };
-    
+
     // 绑定事件 - 智能焦点管理
     input.addEventListener('blur', (e) => {
         setTimeout(() => {
@@ -1329,7 +1320,7 @@ function editCardTitle(cardId) {
             }
         }, 150);
     });
-    
+
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -1339,7 +1330,7 @@ function editCardTitle(cardId) {
             cancel();
         }
     });
-    
+
     // 阻止事件冒泡
     input.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1350,7 +1341,7 @@ function editCardTitle(cardId) {
 function editCardDescription(cardId) {
     let card = null;
     let cardStatus = null;
-    
+
     for (const status of ['todo', 'doing', 'done', 'archived']) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
@@ -1359,50 +1350,50 @@ function editCardDescription(cardId) {
             break;
         }
     }
-    
+
     if (!card) return;
-    
+
     // 检查是否已经在编辑状态
     const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
     const descriptionElement = cardElement.querySelector('.card-description');
-    
+
     if (descriptionElement.querySelector('.inline-description-textarea')) {
         // 已经在编辑状态，不要重复创建
         return;
     }
-    
+
     // 创建文本框
     const textarea = document.createElement('textarea');
     textarea.className = 'inline-description-textarea';
     textarea.value = card.description || '';
     textarea.placeholder = '输入任务描述...';
     textarea.rows = 2;
-    
+
     // 保存原始文本
     const originalText = descriptionElement.innerHTML;
-    
+
     // 替换内容
     descriptionElement.innerHTML = '';
     descriptionElement.appendChild(textarea);
-    
+
     // 聚焦并选中文本
     textarea.focus();
     textarea.select();
-    
+
     // 自动调整高度
     textarea.style.height = 'auto';
     textarea.style.height = textarea.scrollHeight + 'px';
-    
+
     // 保存函数
     const save = () => {
         const newDescription = textarea.value.trim();
         if (newDescription !== card.description) {
             // 更新本地数据
             card.description = newDescription;
-            
+
             // 发送更新请求
             const updates = { description: newDescription };
-            
+
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
                     type: 'update-card',
@@ -1412,7 +1403,7 @@ function editCardDescription(cardId) {
                     updates: updates
                 }));
             }
-            
+
             // 显示新描述
             const displayText = newDescription || '点击添加描述...';
             descriptionElement.innerHTML = escapeHtml(displayText);
@@ -1421,12 +1412,12 @@ function editCardDescription(cardId) {
             descriptionElement.innerHTML = originalText;
         }
     };
-    
+
     // 取消函数
     const cancel = () => {
         descriptionElement.innerHTML = originalText;
     };
-    
+
     // 绑定事件 - 智能焦点管理
     textarea.addEventListener('blur', (e) => {
         setTimeout(() => {
@@ -1435,7 +1426,7 @@ function editCardDescription(cardId) {
             }
         }, 150);
     });
-    
+
     textarea.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && e.ctrlKey) {
             // Ctrl+Enter保存
@@ -1446,13 +1437,13 @@ function editCardDescription(cardId) {
             cancel();
         }
     });
-    
+
     // 自动调整高度
     textarea.addEventListener('input', () => {
         textarea.style.height = 'auto';
         textarea.style.height = textarea.scrollHeight + 'px';
     });
-    
+
     // 阻止事件冒泡
     textarea.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1463,7 +1454,7 @@ function editCardDescription(cardId) {
 function editCardAssignee(cardId) {
     let card = null;
     let cardStatus = null;
-    
+
     for (const status of ['todo', 'doing', 'done', 'archived']) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
@@ -1472,33 +1463,33 @@ function editCardAssignee(cardId) {
             break;
         }
     }
-    
+
     if (!card) return;
-    
+
     // 检查是否已经在编辑状态
     const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
     const assigneeElement = cardElement.querySelector('.card-assignee');
-    
+
     if (assigneeElement.querySelector('.inline-assignee-select')) {
         // 已经在编辑状态，不要重复创建
         return;
     }
-    
+
     // 创建下拉选择框
     const select = document.createElement('select');
     select.className = 'inline-assignee-select';
-    
+
     // 阻止事件冒泡
     select.onclick = function(e) {
         e.stopPropagation();
     };
-    
+
     // 添加选项
     const defaultOption = document.createElement('option');
     defaultOption.value = '';
     defaultOption.textContent = '未分配';
     select.appendChild(defaultOption);
-    
+
     if (window.currentOnlineUsers) {
         window.currentOnlineUsers.forEach(user => {
             const option = document.createElement('option');
@@ -1510,17 +1501,17 @@ function editCardAssignee(cardId) {
             select.appendChild(option);
         });
     }
-    
+
     // 替换为下拉框
     assigneeElement.innerHTML = '';
     assigneeElement.appendChild(select);
-    
+
     // 延迟focus，确保元素已经插入DOM
     setTimeout(() => {
         select.focus();
         select.click(); // 自动打开下拉框
     }, 50);
-    
+
     // 处理选择变更
     select.onchange = function(e) {
         e.stopPropagation();
@@ -1529,7 +1520,7 @@ function editCardAssignee(cardId) {
         // 立即恢复显示
         setTimeout(() => renderBoard(), 50);
     };
-    
+
     // 处理键盘事件
     select.onkeydown = function(e) {
         if (e.key === 'Escape') {
@@ -1537,7 +1528,7 @@ function editCardAssignee(cardId) {
             renderBoard();
         }
     };
-    
+
     // 处理失去焦点 - 智能焦点管理
     select.onblur = function(e) {
         setTimeout(() => {
@@ -1554,7 +1545,7 @@ function editCardAssignee(cardId) {
 function editCardDeadline(cardId) {
     let card = null;
     let cardStatus = null;
-    
+
     for (const status of ['todo', 'doing', 'done', 'archived']) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
@@ -1563,39 +1554,39 @@ function editCardDeadline(cardId) {
             break;
         }
     }
-    
+
     if (!card) return;
-    
+
     // 检查是否已经在编辑状态
     const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
     const deadlineElement = cardElement.querySelector('.card-deadline');
-    
+
     if (deadlineElement.querySelector('.inline-date-input')) {
         // 已经在编辑状态，不要重复创建
         return;
     }
-    
+
     // 创建日期输入框
     const input = document.createElement('input');
     input.type = 'date';
     input.className = 'inline-date-input';
     input.value = card.deadline || '';
-    
+
     // 阻止事件冒泡
     input.onclick = function(e) {
         e.stopPropagation();
     };
-    
+
     // 替换为输入框
     deadlineElement.innerHTML = '';
     deadlineElement.appendChild(input);
-    
+
     // 延迟focus，确保元素已经插入DOM
     setTimeout(() => {
         input.focus();
         input.showPicker && input.showPicker(); // 自动打开日期选择器（如果支持）
     }, 50);
-    
+
     // 处理日期变更
     input.onchange = function(e) {
         e.stopPropagation();
@@ -1604,7 +1595,7 @@ function editCardDeadline(cardId) {
         // 立即恢复显示
         setTimeout(() => renderBoard(), 50);
     };
-    
+
     // 处理键盘事件
     input.onkeydown = function(e) {
         if (e.key === 'Escape') {
@@ -1617,7 +1608,7 @@ function editCardDeadline(cardId) {
             setTimeout(() => renderBoard(), 50);
         }
     };
-    
+
     // 处理失去焦点 - 智能焦点管理
     input.onblur = function(e) {
         setTimeout(() => {
@@ -1633,9 +1624,9 @@ function editCardDeadline(cardId) {
 // 智能焦点管理辅助函数
 function shouldKeepInlineEditingActive(cardId) {
     const activeElement = document.activeElement;
-    return activeElement && 
-           activeElement.closest(`[data-card-id="${cardId}"]`) && 
-           (activeElement.classList.contains('inline-date-input') || 
+    return activeElement &&
+           activeElement.closest(`[data-card-id="${cardId}"]`) &&
+           (activeElement.classList.contains('inline-date-input') ||
             activeElement.classList.contains('inline-assignee-select') ||
             activeElement.classList.contains('inline-title-input') ||
             activeElement.classList.contains('inline-description-textarea'));
@@ -1657,7 +1648,7 @@ function setCardInlineEditingState(cardId, isEditing) {
 function updateCardField(cardId, field, value) {
     const updates = {};
     updates[field] = value;
-    
+
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'update-card',

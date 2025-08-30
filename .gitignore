@@ -1,6 +1,7 @@
 # AI
 .aider*
 .specstory/
+.cursor/rules/derived-cursor-rules.mdc
 
 # Node.js依赖
 node_modules/
