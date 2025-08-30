@@ -846,9 +846,46 @@ setInterval(() => {
     }
 }, 3600000); // 1小时
 
-// 启动服务器
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Open http://localhost:${PORT} to view the application`);
+// Server configuration
+const config = {
+    port: process.env.PORT || 3000,
+    env: process.env.NODE_ENV || 'development'
+};
+
+// Graceful shutdown handling
+function gracefulShutdown() {
+    console.log('\nShutting down gracefully...');
+    server.close(() => {
+        console.log('HTTP server closed');
+        process.exit(0);
+    });
+
+    // Force close if pending connections remain
+    setTimeout(() => {
+        console.error('Forcing shutdown after timeout');
+        process.exit(1);
+    }, 5000);
+}
+
+// Start server
+server.listen(config.port, () => {
+    console.log(`Server running in ${config.env} mode on port ${config.port}`);
+});
+
+// Handle signals
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    gracefulShutdown();
+});
+
+// Handle server errors
+server.on('error', (error) => {
+    if (error.syscall !== 'listen') throw error;
+    
+    console.error(`Server error: ${error}`);
+    process.exit(1);
 });
