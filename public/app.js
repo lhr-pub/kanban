@@ -962,57 +962,310 @@ function createCardElement(card, status) {
     cardElement.className = 'card';
     cardElement.dataset.cardId = card.id;
 
-    const isOverdue = card.deadline && new Date(card.deadline) < new Date();
-    const isEditing = editingCardId === card.id;
+    // Build minimal front
+    const labels = Array.isArray(card.labels) ? card.labels.slice(0, 5) : [];
+    const labelDots = labels.map(color => `<span class="label label-${color}"></span>`).join('');
 
-    if (isOverdue) cardElement.classList.add('overdue');
-    if (isEditing) cardElement.classList.add('editing');
+    const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
+    const dueBadge = card.deadline ? `<span class="badge badge-due ${dueClass}">📅 ${formatDue(card.deadline)}</span>` : '';
 
-    let leftActions = '';
-    let rightActions = '';
-    if (status !== 'archived') {
-        if (status !== 'todo') {
-            leftActions = `<button class="action-btn move-left" onclick="moveCard('${card.id}', 'left')" title="向左移动">←</button>`;
-        }
-        if (status !== 'done') {
-            rightActions = `<button class="action-btn move-right" onclick="moveCard('${card.id}', 'right')" title="向右移动">→</button>`;
-        }
-        if (status === 'done') {
-            rightActions = `<button class="archive-btn" onclick="archiveCard('${card.id}')" title="归档">📁</button>`;
-        }
-    } else {
-        rightActions = `<button class="restore-btn" onclick="restoreCard('${card.id}')" title="还原到待办">↶</button>`;
-    }
+    const checklistBadge = card.checklist && card.checklist.total ? `<span class="badge badge-check">☑️ ${(card.checklist.done||0)}/${card.checklist.total}</span>` : '';
+    const commentsBadge = card.commentsCount > 0 ? `<span class="badge badge-comments">💬 ${card.commentsCount}</span>` : '';
+    const attachBadge = card.attachmentsCount > 0 ? `<span class="badge badge-attach">📎 ${card.attachmentsCount}</span>` : '';
+    const assigneeBadge = card.assignee ? `<span class="badge badge-user" title="${escapeHtml(card.assignee)}">${initials(card.assignee)}</span>` : '';
 
-    const assigneeHtml = card.assignee ?
-        `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>` :
-        `<span class="card-assignee unassigned clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击分配用户">未分配</span>`;
-    const deadlineHtml = card.deadline ?
-        `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">📅 ${card.deadline}</span>` :
-        `<span class="card-deadline clickable unset" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击设置截止日期">📅 设置</span>`;
+    const moreBtn = (status === 'archived')
+        ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原">↶</button>`
+        : `<button class="card-quick" onclick="event.stopPropagation(); openCardModal('${card.id}')" aria-label="编辑">⋯</button>`;
 
     cardElement.innerHTML = `
-        <h4 class="card-title"><span class="title-text clickable" onmousedown="editCardTitle('${card.id}', event)" title="点击编辑标题"><span class="title-span">${escapeHtml(card.title)}</span></span></h4>
-        <p class="card-description"><span class="description-text clickable" onmousedown="editCardDescription('${card.id}', event)" title="点击编辑描述"><span class="description-span">${escapeHtml(card.description || '点击添加描述...')}</span></span></p>
-        <div class="card-footer">
-            <div class="card-footer-top">
-                <div class="card-left-info">
-                    ${assigneeHtml}
-                </div>
-                <div class="card-center-actions">
-                    ${leftActions}
-                    <button class="detail-btn" onclick="openEditModal('${card.id}')" title="查看详情">📋</button>
-                    ${rightActions}
-                </div>
-                <div class="card-right-info">
-                    ${deadlineHtml}
-                </div>
-            </div>
-        </div>
+        <div class="card-labels">${labelDots}</div>
+        <div class="card-title">${escapeHtml(card.title || '未命名')}</div>
+        <div class="card-badges">${dueBadge}${checklistBadge}${commentsBadge}${attachBadge}${assigneeBadge}</div>
+        ${moreBtn}
     `;
 
+    cardElement.addEventListener('click', () => openCardModal(card.id));
     return cardElement;
 }
+
+// Helpers for badges
+function formatDue(dateStr) {
+    try {
+        const d = new Date(dateStr);
+        const now = new Date();
+        const sameYear = d.getFullYear() === now.getFullYear();
+        return sameYear ? `${d.getMonth()+1}-${String(d.getDate()).padStart(2,'0')}` : `${d.getFullYear()}-${d.getMonth()+1}-${String(d.getDate()).padStart(2,'0')}`;
+    } catch { return dateStr; }
+}
+function daysUntil(dateStr) {
+    try {
+        const ms = new Date(dateStr).getTime() - Date.now();
+        return Math.floor(ms / 86400000);
+    } catch { return 9999; }
+}
+function initials(name){
+    if(!name) return '';
+    const parts = String(name).trim().split(/\s+/);
+    if(parts.length===1) return parts[0].slice(0,2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+// Drawer state
+let drawerCardId = null;
+const drawerEl = typeof document !== 'undefined' ? document.getElementById('cardModal') : null;
+
+function openCardModal(cardId){
+    // Locate card data
+    let card = null;
+    let status = null;
+    for (const s of ['todo','doing','done','archived']){
+        const found = (boardData[s]||[]).find(c=>c.id===cardId);
+        if(found){ card = found; status = s; break; }
+    }
+    if(!card) return;
+
+    drawerCardId = cardId;
+    // Fill fields
+    const title = document.getElementById('drawerTitle');
+    const desc = document.getElementById('drawerDescription');
+    const assignee = document.getElementById('drawerAssignee');
+    const deadline = document.getElementById('drawerDeadline');
+    const priority = document.getElementById('drawerPriority');
+    const commentsBadge = document.getElementById('drawerCommentsBadge');
+    const attachBadge = document.getElementById('drawerAttachBadge');
+
+    title.value = card.title || '';
+    desc.value = card.description || '';
+
+    // members list
+    assignee.innerHTML = '<option value="">未分配</option>';
+    (window.currentProjectMembers || []).forEach(u=>{
+        const op = document.createElement('option'); op.value=u; op.textContent=u; assignee.appendChild(op);
+    });
+    assignee.value = card.assignee || '';
+
+    deadline.value = card.deadline || '';
+    priority.value = card.priority || '';
+    commentsBadge.textContent = `💬 ${card.commentsCount||0}`;
+    attachBadge.textContent = `📎 ${card.attachmentsCount||0}`;
+
+    // labels
+    const labelsWrap = document.getElementById('drawerLabels');
+    const current = new Set(card.labels || []);
+    labelsWrap.querySelectorAll('input[type="checkbox"]').forEach(chk=>{
+        chk.checked = current.has(chk.value);
+    });
+
+    // checklist render
+    renderDrawerChecklist(card);
+
+    // open
+    drawerEl.hidden = false;
+    drawerEl.classList.add('open');
+    setTimeout(()=>drawerEl.classList.add('open'),0);
+
+    // announce editing
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'card-editing',
+            projectId: currentProjectId,
+            boardName: currentBoardName,
+            cardId: cardId,
+            user: currentUser,
+            editing: true
+        }));
+    }
+
+    // a11y focus
+    try { document.getElementById('drawerTitle').focus(); } catch {}
+}
+
+function closeCardModal(){
+    if(!drawerEl) return;
+    if (drawerCardId && socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'card-editing', projectId: currentProjectId, boardName: currentBoardName,
+            cardId: drawerCardId, user: currentUser, editing: false
+        }));
+    }
+    drawerCardId = null;
+    drawerEl.classList.remove('open');
+    drawerEl.hidden = true;
+}
+
+function gatherDrawerUpdates(){
+    if(!drawerCardId) return null;
+    const title = document.getElementById('drawerTitle').value.trim();
+    const description = document.getElementById('drawerDescription').value;
+    const assignee = document.getElementById('drawerAssignee').value || null;
+    const deadline = document.getElementById('drawerDeadline').value || null;
+    const priority = document.getElementById('drawerPriority').value || null;
+
+    // labels
+    const labels = Array.from(document.querySelectorAll('#drawerLabels input[type="checkbox"]:checked')).map(i=>i.value);
+
+    // checklist
+    const checklist = getDrawerChecklist();
+
+    // counters from local badges (comments/attachments are optional, updated via quick inputs)
+    const commentsCount = parseInt((document.getElementById('drawerCommentsBadge').textContent||'0').replace(/[^0-9]/g,''),10) || 0;
+    const attachmentsCount = parseInt((document.getElementById('drawerAttachBadge').textContent||'0').replace(/[^0-9]/g,''),10) || 0;
+
+    return { title, description, assignee, deadline, priority, labels, checklist, commentsCount, attachmentsCount };
+}
+
+function saveCardFromDrawer(){
+    if(!drawerCardId) return;
+    const updates = gatherDrawerUpdates();
+    if (!updates.title) { alert('任务标题不能为空'); return; }
+
+    // local update to avoid flicker
+    for (const s of ['todo','doing','done','archived']){
+        const i = (boardData[s]||[]).findIndex(c=>c.id===drawerCardId);
+        if(i!==-1){ boardData[s][i] = Object.assign({}, boardData[s][i], updates); break; }
+    }
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'update-card',
+            projectId: currentProjectId,
+            boardName: currentBoardName,
+            cardId: drawerCardId,
+            updates
+        }));
+    }
+
+    closeCardModal();
+    renderBoard();
+}
+
+function deleteCardFromDrawer(){
+    if(!drawerCardId) return;
+    if(!confirm('确定要删除这个任务吗？')) return;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId: drawerCardId
+        }));
+    }
+    closeCardModal();
+}
+
+// Checklist logic (lightweight, local aggregation)
+function renderDrawerChecklist(card){
+    const wrap = document.getElementById('drawerChecklistList');
+    wrap.innerHTML = '';
+    const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items : [];
+
+    items.forEach((it, idx)=>{
+        const row = document.createElement('div');
+        row.className = 'drawer-row';
+        row.innerHTML = `<input type="checkbox" ${it.done?'checked':''} data-idx="${idx}"> <input type="text" value="${escapeHtml(it.text||'')}" data-idx="${idx}">`;
+        wrap.appendChild(row);
+    });
+
+    const input = document.getElementById('drawerChecklistInput');
+    input.onkeydown = (e)=>{
+        if(e.key==='Enter' && input.value.trim()){
+            const text = input.value.trim();
+            const card = getCardById(drawerCardId);
+            const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items.slice() : [];
+            items.push({ text, done:false });
+            const total = items.length; const done = items.filter(i=>i.done).length;
+            const updates = { checklist: { items, total, done } };
+            updateCardImmediately(drawerCardId, updates);
+            input.value='';
+            renderDrawerChecklist(getCardById(drawerCardId));
+        }
+    };
+
+    // bind existing rows
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(chk=>{
+        chk.onchange = ()=>{
+            const idx = parseInt(chk.getAttribute('data-idx'),10);
+            const card = getCardById(drawerCardId);
+            const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items.slice() : [];
+            if(items[idx]) items[idx] = Object.assign({}, items[idx], { done: chk.checked });
+            const total = items.length; const done = items.filter(i=>i.done).length;
+            updateCardImmediately(drawerCardId, { checklist: { items, total, done } });
+            renderDrawerChecklist(getCardById(drawerCardId));
+        };
+    });
+    wrap.querySelectorAll('input[type="text"]').forEach(inp=>{
+        inp.onblur = ()=>{
+            const idx = parseInt(inp.getAttribute('data-idx'),10);
+            const card = getCardById(drawerCardId);
+            const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items.slice() : [];
+            if(items[idx]) items[idx] = Object.assign({}, items[idx], { text: inp.value });
+            const total = items.length; const done = items.filter(i=>i.done).length;
+            updateCardImmediately(drawerCardId, { checklist: { items, total, done } });
+        };
+    });
+}
+
+function getDrawerChecklist(){
+    const card = getCardById(drawerCardId) || {};
+    return card.checklist || undefined;
+}
+
+function getCardById(id){
+    for (const s of ['todo','doing','done','archived']){
+        const found = (boardData[s]||[]).find(c=>c.id===id);
+        if(found) return found;
+    }
+    return null;
+}
+
+function updateCardImmediately(cardId, updates){
+    // local
+    for (const s of ['todo','doing','done','archived']){
+        const i = (boardData[s]||[]).findIndex(c=>c.id===cardId);
+        if(i!==-1){ boardData[s][i] = Object.assign({}, boardData[s][i], updates); break; }
+    }
+    // ws
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type:'update-card', projectId: currentProjectId, boardName: currentBoardName, cardId, updates }));
+    }
+}
+
+// quick counters in drawer
+(function initDrawerQuickInputs(){
+    if (typeof document === 'undefined') return;
+    const cmt = document.getElementById('drawerCommentInput');
+    const attach = document.getElementById('drawerAttachmentInput');
+    if (cmt) cmt.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter' && drawerCardId){
+            const card = getCardById(drawerCardId) || {};
+            const commentsCount = (card.commentsCount||0) + 1;
+            updateCardImmediately(drawerCardId, { commentsCount });
+            const badge = document.getElementById('drawerCommentsBadge');
+            if (badge) badge.textContent = `💬 ${commentsCount}`;
+            cmt.value='';
+        }
+    });
+    if (attach) attach.addEventListener('change', ()=>{
+        if(drawerCardId){
+            const card = getCardById(drawerCardId) || {};
+            const attachmentsCount = (card.attachmentsCount||0) + (attach.files ? attach.files.length : 1);
+            updateCardImmediately(drawerCardId, { attachmentsCount });
+            const badge = document.getElementById('drawerAttachBadge');
+            if (badge) badge.textContent = `📎 ${attachmentsCount}`;
+            attach.value='';
+        }
+    });
+})();
+
+// keyboard: save with Cmd/Ctrl+Enter on description
+(function initDrawerKeys(){
+    if (typeof document === 'undefined') return;
+    const desc = document.getElementById('drawerDescription');
+    if (desc) desc.addEventListener('keydown', (e)=>{
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { saveCardFromDrawer(); }
+    });
+    document.addEventListener('keydown', (e)=>{
+        if (drawerCardId && e.key === 'Escape') closeCardModal();
+    });
+})();
 
 // 添加卡片
 function addCard(status, position = 'bottom') {

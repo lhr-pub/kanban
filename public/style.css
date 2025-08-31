@@ -39,6 +39,20 @@
 
     /* === Trello-like refinements (phase 2) === */
     --board-bg-url: none; /* e.g., url('https://images.unsplash.com/photo-...') */
+
+    /* === Trello design tokens & minimal card UI === */
+    --list-width:272px;
+    --list-gap:12px;
+    --card-radius:10px;
+    --card-padding:10px;
+    --card-shadow:0 1px 0 rgba(9,30,66,.25);
+    --card-hover-shadow:0 4px 8px rgba(9,30,66,.25);
+    --badge-gap:6px;
+    --label-height:8px;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+    --bg:#f6f7f9;
+    --card-bg:#fff;
 }
 
 /* 全局样式 */
@@ -3268,3 +3282,66 @@ body {
 }
 .header .logout-btn:hover,
 .header #logoutBtn:hover { filter: brightness(0.95); }
+
+/* === Trello design tokens & minimal card UI === */
+:root{
+    --list-width:272px;
+    --list-gap:12px;
+    --card-radius:10px;
+    --card-padding:10px;
+    --card-shadow:0 1px 0 rgba(9,30,66,.25);
+    --card-hover-shadow:0 4px 8px rgba(9,30,66,.25);
+    --badge-gap:6px;
+    --label-height:8px;
+    --muted:#6b7280;
+    --border:#e5e7eb;
+    --bg:#f6f7f9;
+    --card-bg:#fff;
+}
+
+/* board/list */
+.board-container{ display:flex; gap:var(--list-gap); padding:12px; overflow:auto; background:var(--bg); height:calc(100vh - 64px); }
+.column{ width:var(--list-width); min-width:var(--list-width); max-width:var(--list-width); background:transparent; box-shadow:none; padding:0; border:none; }
+.column h3{ margin:6px 6px 8px; padding:0; border:none; font-size:14px; }
+.cards{ display:flex; flex-direction:column; gap:8px; padding:0 6px 8px; }
+
+/* minimal card front */
+.card{ background:var(--card-bg); border-radius:var(--card-radius); box-shadow:var(--card-shadow); padding:var(--card-padding); border:1px solid var(--border); }
+.card:hover{ box-shadow:var(--card-hover-shadow); }
+.card .card-title{ font-size:14.5px; font-weight:600; line-height:1.3; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; margin:0; }
+.card .card-description{ display:none !important; }
+.card .card-footer{ display:none !important; }
+
+.card-labels{ display:flex; gap:4px; margin-bottom:6px; min-height:var(--label-height); }
+.label{ height:var(--label-height); border-radius:6px; flex:0 0 36px; }
+.label-red{ background:#f87171; } .label-green{ background:#34d399; }
+.label-blue{ background:#60a5fa; } .label-yellow{ background:#fbbf24; } .label-purple{ background:#a78bfa; }
+
+.card-badges{ display:flex; flex-wrap:wrap; gap:var(--badge-gap); margin-top:6px; color:var(--muted); font-size:12px; }
+.badge{ display:inline-flex; align-items:center; gap:4px; }
+.badge-user{ width:20px; height:20px; border-radius:50%; background:#111; color:#fff; justify-content:center; font-size:11px; }
+.badge-due.overdue{ color:#ef4444; }
+.badge-due.soon{ color:#f59e0b; }
+
+.card-quick{ position:absolute; top:6px; right:6px; opacity:0; transition:opacity .12s; border:0; background:transparent; font-size:18px; line-height:1; cursor:pointer; }
+.card:hover .card-quick{ opacity:1; }
+
+/* drawer modal (right panel) */
+#cardModal[hidden]{ display:none; }
+#cardModal{ position:fixed; inset:0; z-index:1100; }
+#cardModal .modal-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.35); }
+#cardModal .modal-panel{ position:absolute; right:0; top:0; height:100%; width:min(720px, 92vw); background:#fff; box-shadow:-8px 0 24px rgba(0,0,0,.2); padding:20px; overflow:auto; transform:translateX(100%); transition:transform .15s ease-out; }
+#cardModal.open .modal-panel{ transform:translateX(0); }
+
+/* drawer content sections */
+.drawer-section{ margin-bottom:16px; }
+.drawer-section h4{ font-size:14px; margin:0 0 8px; color:#111827; }
+.drawer-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.drawer-row input[type="text"], .drawer-row textarea, .drawer-row select, .drawer-row input[type="date"]{ width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; font-size:14px; }
+.drawer-row textarea{ min-height:120px; resize:vertical; }
+.drawer-labels{ display:flex; gap:8px; flex-wrap:wrap; }
+.drawer-label{ width:28px; height:16px; border-radius:6px; cursor:pointer; border:1px solid rgba(17,24,39,.08); }
+.drawer-badges{ display:flex; gap:8px; color:var(--muted); font-size:12px; }
+
+/* util */
+.visually-hidden{ position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }

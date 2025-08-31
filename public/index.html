@@ -309,6 +309,86 @@
         </div>
     </div>
 
+    <!-- 新的卡片详情抽屉（右侧） -->
+    <div id="cardModal" hidden>
+        <div class="modal-backdrop" onclick="closeCardModal()" aria-hidden="true"></div>
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="drawerTitle">
+            <div class="drawer-section">
+                <label for="drawerTitle" class="visually-hidden">标题</label>
+                <input type="text" id="drawerTitle" placeholder="输入标题..." />
+            </div>
+
+            <div class="drawer-section">
+                <h4>描述</h4>
+                <textarea id="drawerDescription" placeholder="支持 Markdown，Ctrl/Cmd+Enter 保存"></textarea>
+            </div>
+
+            <div class="drawer-section">
+                <h4>负责人与截止日期</h4>
+                <div class="drawer-row">
+                    <select id="drawerAssignee">
+                        <option value="">未分配</option>
+                    </select>
+                    <input type="date" id="drawerDeadline" />
+                </div>
+            </div>
+
+            <div class="drawer-section">
+                <h4>标签</h4>
+                <div id="drawerLabels" class="drawer-labels" aria-label="选择标签">
+                    <label title="red"><input type="checkbox" value="red" class="visually-hidden"><span
+                            class="drawer-label" style="background:#f87171"></span></label>
+                    <label title="green"><input type="checkbox" value="green" class="visually-hidden"><span
+                            class="drawer-label" style="background:#34d399"></span></label>
+                    <label title="blue"><input type="checkbox" value="blue" class="visually-hidden"><span
+                            class="drawer-label" style="background:#60a5fa"></span></label>
+                    <label title="yellow"><input type="checkbox" value="yellow" class="visually-hidden"><span
+                            class="drawer-label" style="background:#fbbf24"></span></label>
+                    <label title="purple"><input type="checkbox" value="purple" class="visually-hidden"><span
+                            class="drawer-label" style="background:#a78bfa"></span></label>
+                </div>
+            </div>
+
+            <div class="drawer-section">
+                <h4>优先级</h4>
+                <select id="drawerPriority">
+                    <option value="">无</option>
+                    <option value="low">低</option>
+                    <option value="med">中</option>
+                    <option value="high">高</option>
+                </select>
+            </div>
+
+            <div class="drawer-section">
+                <h4>清单</h4>
+                <div id="drawerChecklistList"></div>
+                <div class="drawer-row">
+                    <input id="drawerChecklistInput" type="text" placeholder="添加清单项并按回车" />
+                </div>
+            </div>
+
+            <div class="drawer-section">
+                <h4>附件与评论</h4>
+                <div class="drawer-row">
+                    <input id="drawerAttachmentInput" type="file" />
+                    <input id="drawerCommentInput" type="text" placeholder="添加评论（仅计数）并按回车" />
+                </div>
+                <div class="drawer-badges">
+                    <span id="drawerCommentsBadge" class="badge">💬 0</span>
+                    <span id="drawerAttachBadge" class="badge">📎 0</span>
+                </div>
+            </div>
+
+            <div class="drawer-section">
+                <div class="drawer-row">
+                    <button class="btn-primary" onclick="saveCardFromDrawer()">保存</button>
+                    <button class="btn-danger" onclick="deleteCardFromDrawer()">删除</button>
+                    <button class="btn-secondary" onclick="closeCardModal()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 
