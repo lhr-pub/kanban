@@ -36,6 +36,9 @@
     /* 待办列的变量（没有左侧按钮） */
     --text-area-todo-left: 0px;
     --text-area-todo-width: calc(100% - var(--text-area-todo-left) - var(--text-area-right));
+
+    /* === Trello-like refinements (phase 2) === */
+    --board-bg-url: none; /* e.g., url('https://images.unsplash.com/photo-...') */
 }
 
 /* 全局样式 */
@@ -237,6 +240,11 @@ h1 {
     min-height: 100vh;
     align-items: stretch;
     justify-content: stretch;
+    background-image: var(--board-bg-url);
+    background-position: center center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
 }
 
 .header {
@@ -3076,3 +3084,187 @@ body {
 #projectPage .project-header .logout-btn:hover {
     background: var(--danger-dark);
 }
+
+/* === Trello-like compact overrides (non-destructive) === */
+/* 布局与背景更接近 Trello */
+body {
+    background: #f5f6f8;
+}
+
+#boardPage .header {
+    background: transparent;
+    box-shadow: none;
+    padding: 0.5rem 1rem;
+}
+
+.header .container {
+    padding: 0.5rem 0;
+    max-width: 100%;
+}
+
+.header-actions button,
+.header button,
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    box-shadow: none;
+}
+
+.header-actions { gap: 0.5rem; }
+.online-users { padding: 4px 8px; font-size: 12px; }
+.user-badge { padding: 2px 6px; font-size: 11px; }
+
+.board-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 12px;
+    overflow-x: auto;
+    height: calc(100vh - 64px);
+}
+
+/* 列更窄更紧凑 */
+.column, .archive-column {
+    width: 272px; /* Trello 常见列宽 */
+    min-width: 272px;
+    max-width: 272px;
+    padding: 8px;
+    border-radius: 8px;
+    background: #ebecf0; /* Trello 列背景 */
+    box-shadow: none;
+    border: none;
+}
+
+.column h3, .archive-column h3 {
+    margin: 0 0 8px 4px;
+    padding: 0;
+    border: none;
+    font-size: 14px;
+    color: #44546f;
+}
+
+.count {
+    background: transparent;
+    color: #6b778c;
+    padding: 0 4px;
+    font-size: 12px;
+}
+
+/* 卡片更像 Trello：白底、轻边框、少阴影、紧凑间距 */
+.cards { gap: 8px; margin-bottom: 8px; }
+.card {
+    border: 1px solid #dfe1e6;
+    box-shadow: none;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.card:hover { background: #fafbfc; border-color: #c1c7d0; }
+
+.card-title { font-size: 14px; margin-bottom: 6px; }
+.card-description { font-size: 12px; color: #6b778c; margin-bottom: 6px; max-height: 100px; }
+
+.card-footer, .card-meta { border-top: none; padding-top: 0; margin-top: 4px; color: #6b778c; font-size: 11px; }
+
+.card-assignee { background: #e9f2ff; color: #0c66e4; font-size: 11px; padding: 2px 6px; border-radius: 12px; }
+.card-assignee.unassigned { background: #f4f5f7; color: #97a0af; }
+
+.card-deadline { color: #5e6c84; font-size: 11px; }
+
+/* 顶部 inline 操作按钮只在 hover 时显现，体积更小 */
+.card-center-actions { gap: 6px; }
+.card-center-actions .action-btn,
+.card-center-actions .archive-btn,
+.card-center-actions .restore-btn,
+.card-center-actions .detail-btn {
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: 4px;
+}
+
+/* 添加卡片输入区简化 */
+.add-card { margin-top: 8px; }
+.input-row-inline { gap: 6px; }
+.left-inputs { gap: 6px; }
+.task-title-input { height: 32px; padding: 0 8px; font-size: 13px; }
+.assignee-select, .date-input { height: 32px; font-size: 12px; }
+
+/* 面包屑标题更紧凑 */
+.board-breadcrumb { font-size: 16px; color: #172b4d; margin: 0; }
+
+/* 归档页面和普通列保持一致风格 */
+.archive-container { padding: 12px; }
+.archive-column { background: #ebecf0; }
+
+/* 登录与项目页整体字号收紧一点点 */
+.login-form input, .login-form button { font-size: 14px; }
+.project-header h1, .board-select-header h1 { font-size: 20px; }
+.quick-boards-grid, .projects-grid { gap: 12px; }
+.project-card, .quick-board-card { padding: 10px; border-radius: 8px; }
+
+/* 辅助色调更低干扰 */
+.title-text.clickable:hover, .description-text.clickable:hover { background: #e9f2ff !important; }
+.card-assignee.clickable:hover { background: #e1ecff !important; transform: none !important; }
+
+/* 滚动优化：列容器可滚动，卡片区域填充剩余高度 */
+.column { max-height: calc(100vh - 88px); overflow-y: auto; }
+
+/* === Trello-like refinements (phase 2) === */
+:root {
+    --board-bg-url: none; /* e.g., url('https://images.unsplash.com/photo-...') */
+}
+
+/* 可选：看板背景图（与 Trello 类似的全屏背景） */
+#boardPage {
+    background-image: var(--board-bg-url);
+    background-position: center center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}
+
+/* 头部保持单行并收紧 */
+#boardPage .header .container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-wrap: nowrap;
+}
+
+.board-header-left { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; }
+.board-breadcrumb { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-actions { flex: 0 0 auto; flex-wrap: nowrap; }
+
+/* 列更接近 Trello 的视觉（浅灰半透明 + 细边框） */
+.column, .archive-column {
+    background: rgba(241, 242, 244, 0.92);
+    border: 1px solid #dfe1e6;
+}
+
+/* 卡片 hover 更克制 */
+.card:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* 拖拽时隐藏中部按钮避免闪烁 */
+.card.dragging .card-center-actions,
+.dragging-cards .card-center-actions {
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* 退出按钮的对比度修正 */
+.header .logout-btn,
+.header #logoutBtn,
+.logout-btn,
+#logoutBtn {
+    color: #ffffff !important;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.12);
+}
+.header .logout-btn:hover,
+.header #logoutBtn:hover { filter: brightness(0.95); }
