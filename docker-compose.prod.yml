@@ -1,0 +1,29 @@
+version: "3.8"
+
+services:
+  kanban:
+    # image: ghcr.io/lhr-pub/kanban:latest
+    image: xj-01-harbor.d.run/xj-01-u-cdd1523c53fb/kanban:latest
+    container_name: kanban
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - MAIL_FROM=${MAIL_FROM}
+      - USE_ETHEREAL=${USE_ETHEREAL:-false}
+    ports:
+      - "3000:3000"
+    volumes:
+      - kanban_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  kanban_data:
+    driver: local

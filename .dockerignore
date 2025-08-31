@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log*
+Dockerfile*
+docker-compose*.yml
+.git
+.gitignore
+.DS_Store
+.aider*
+.cursor*
+.claude*
+.specstory
+# Do not bake runtime data into the image
+data
+# Do not bake environment files/secrets
+.env
+.env.*

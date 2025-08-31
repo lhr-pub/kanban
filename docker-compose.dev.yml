@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  kanban:
+    image: kanban-local:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kanban-dev
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - MAIL_FROM=${MAIL_FROM:-}
+      - USE_ETHEREAL=${USE_ETHEREAL:-true}
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist data outside the container
+      - ./data:/app/data
+      # Live-edit static assets for debugging
+      - ./public:/app/public
+      # Allow editing server without rebuild (requires manual restart)
+      - ./server.js:/app/server.js
+      - ./index.html:/app/index.html
+      - ./kanban.js:/app/kanban.js
+      - ./markdown.js:/app/markdown.js
+    restart: unless-stopped

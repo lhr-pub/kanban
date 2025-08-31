@@ -250,9 +250,7 @@ app.post('/api/register', async (req, res) => {
     }
 
     try {
-        const proto = (req.headers['x-forwarded-proto'] || req.protocol);
-        const host = req.get('host');
-        const baseUrl = `${proto}://${host}`;
+        const baseUrl = process.env.BASE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
         await sendVerificationEmail(email, username, verifyToken, baseUrl);
         return res.json({ message: '注册成功，请前往邮箱验证后登录', username });
     } catch (err) {
@@ -362,9 +360,7 @@ app.post('/api/resend-verification', async (req, res) => {
     }
 
     try {
-        const proto = (req.headers['x-forwarded-proto'] || req.protocol);
-        const host = req.get('host');
-        const baseUrl = `${proto}://${host}`;
+        const baseUrl = process.env.BASE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
         await sendVerificationEmail(user.email, username, token, baseUrl);
         return res.json({ message: '验证邮件已发送，请查收' });
     } catch (e) {
