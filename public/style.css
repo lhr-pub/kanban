@@ -3345,3 +3345,36 @@ body {
 
 /* util */
 .visually-hidden{ position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+/* === Minimal Trello-like card and collapsed add form (compact) === */
+.card {
+    background-color: #FFFFFF;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    cursor: pointer;
+    position: relative;
+}
+.card:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+
+/* title clamp to 3 lines */
+.card .card-title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* hide verbose areas from old layout */
+.card .card-description, .card .card-footer { display: none !important; }
+
+/* badges (icons only) */
+.card-badges { display:flex; align-items:center; gap:8px; margin-top:6px; color:#6b7280; font-size:12px; }
+.badge-icon { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:4px; }
+.badge-icon.due.overdue { color: #ef4444; }
+.badge-user { width:20px; height:20px; border-radius:50%; background:#111827; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:11px; margin-left:auto; }
+
+/* hover pencil */
+.card-quick { position:absolute; top:6px; right:6px; opacity:0; transition:opacity .12s; border:0; background:transparent; font-size:16px; line-height:1; cursor:pointer; }
+.card:hover .card-quick { opacity:1; }
+
+/* collapsed add card */
+.add-card.collapsed .input-row-inline { display: none; }
+.add-card.collapsed .add-card-link { display: inline-block; }
+.add-card .add-card-link { display:none; color:#0c66e4; background:transparent; border:0; padding:4px 6px; cursor:pointer; font-size:13px; }
+.add-card .add-card-link:hover { text-decoration: underline; }

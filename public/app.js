@@ -885,6 +885,11 @@ function renderBoard() {
 
         // enable drag for this column
         enableColumnDrag(status);
+
+        // collapse bottom add form
+        const columnEl = document.querySelector(`.column[data-status="${status}"]`);
+        const bottomAdd = columnEl ? columnEl.querySelector('.add-card:not(.add-card-top)') : null;
+        if (bottomAdd) setupAddCardCollapsed(bottomAdd, status, 'bottom');
     });
 
     if (!archivePage.classList.contains('hidden')) {
@@ -936,6 +941,9 @@ function ensureTopAddRow(status) {
         });
         topSelect.value = prev;
     }
+
+    // collapsed behavior for top add form
+    setupAddCardCollapsed(topAdd, status, 'top');
 }
 
 // 渲染归档页面
@@ -966,20 +974,18 @@ function createCardElement(card, status) {
     const labelDots = labels.map(color => `<span class="label label-${color}"></span>`).join('');
 
     const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
-    const dueBadge = card.deadline ? `<span class="badge badge-due ${dueClass}">📅 ${formatDue(card.deadline)}</span>` : '';
-    const checklistBadge = card.checklist && card.checklist.total ? `<span class="badge badge-check">☑️ ${(card.checklist.done||0)}/${card.checklist.total}</span>` : '';
-    const commentsBadge = card.commentsCount > 0 ? `<span class="badge badge-comments">💬 ${card.commentsCount}</span>` : '';
-    const attachBadge = card.attachmentsCount > 0 ? `<span class="badge badge-attach">📎 ${card.attachmentsCount}</span>` : '';
-    const assigneeBadge = card.assignee ? `<span class="badge badge-user" title="${escapeHtml(card.assignee)}">${initials(card.assignee)}</span>` : '';
+    const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
+    const dueIcon = card.deadline ? `<span class="badge-icon due ${dueClass}" title="${card.deadline}">🕒</span>` : '';
+    const assigneeBadge = card.assignee ? `<span class="badge-user" title="${escapeHtml(card.assignee)}">${initials(card.assignee)}</span>` : '';
 
     const moreBtn = (status === 'archived')
         ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原">↶</button>`
-        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑">⋯</button>`;
+        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑">✎</button>`;
 
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
         <div class="card-title">${escapeHtml(card.title || '未命名')}</div>
-        <div class="card-badges">${dueBadge}${checklistBadge}${commentsBadge}${attachBadge}${assigneeBadge}</div>
+        <div class="card-badges">${descIcon}${dueIcon}${assigneeBadge}</div>
         ${moreBtn}
     `;
 
@@ -1308,6 +1314,11 @@ function addCard(status, position = 'bottom') {
     titleInput.value = '';
     assigneeInput.value = '';
     deadlineInput.value = '';
+
+    // collapse the add form back
+    const columnEl = document.querySelector(`.column[data-status="${status}"]`);
+    const container = columnEl ? columnEl.querySelector(isTop ? '.add-card-top' : '.add-card:not(.add-card-top)') : null;
+    if (container && container.__collapseAdd) container.__collapseAdd();
 }
 
 // 移动卡片
@@ -2812,4 +2823,46 @@ function deleteProjectFromHome(projectId, projectName) {
         console.error('Delete project (home) error:', error);
         alert('项目删除失败');
     });
+}
+
+// Collapsed add-card behavior
+function setupAddCardCollapsed(container, status, position) {
+    if (!container) return;
+    container.classList.add('collapsed');
+
+    // Ensure link exists
+    let link = container.querySelector('.add-card-link');
+    if (!link) {
+        link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'add-card-link';
+        link.textContent = '+ 添加卡片';
+        container.insertBefore(link, container.firstChild);
+    }
+
+    const input = container.querySelector('.task-title-input');
+
+    function expand() {
+        container.classList.remove('collapsed');
+        link.style.display = 'none';
+        if (input) setTimeout(() => input.focus(), 0);
+    }
+    function collapse() {
+        container.classList.add('collapsed');
+        link.style.display = '';
+    }
+
+    link.onclick = (e) => { e.preventDefault(); expand(); };
+
+    // Collapse when focus leaves the add area
+    container.addEventListener('focusout', () => {
+        setTimeout(() => {
+            if (!container.contains(document.activeElement)) {
+                collapse();
+            }
+        }, 0);
+    }, true);
+
+    // After Enter add, addCard will call collapse too
+    container.__collapseAdd = collapse;
 }
