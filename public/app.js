@@ -962,13 +962,11 @@ function createCardElement(card, status) {
     cardElement.className = 'card';
     cardElement.dataset.cardId = card.id;
 
-    // Build minimal front
     const labels = Array.isArray(card.labels) ? card.labels.slice(0, 5) : [];
     const labelDots = labels.map(color => `<span class="label label-${color}"></span>`).join('');
 
     const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
     const dueBadge = card.deadline ? `<span class="badge badge-due ${dueClass}">📅 ${formatDue(card.deadline)}</span>` : '';
-
     const checklistBadge = card.checklist && card.checklist.total ? `<span class="badge badge-check">☑️ ${(card.checklist.done||0)}/${card.checklist.total}</span>` : '';
     const commentsBadge = card.commentsCount > 0 ? `<span class="badge badge-comments">💬 ${card.commentsCount}</span>` : '';
     const attachBadge = card.attachmentsCount > 0 ? `<span class="badge badge-attach">📎 ${card.attachmentsCount}</span>` : '';
@@ -976,7 +974,7 @@ function createCardElement(card, status) {
 
     const moreBtn = (status === 'archived')
         ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原">↶</button>`
-        : `<button class="card-quick" onclick="event.stopPropagation(); openCardModal('${card.id}')" aria-label="编辑">⋯</button>`;
+        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑">⋯</button>`;
 
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
@@ -985,11 +983,10 @@ function createCardElement(card, status) {
         ${moreBtn}
     `;
 
-    cardElement.addEventListener('click', () => openCardModal(card.id));
+    cardElement.addEventListener('click', () => openEditModal(card.id));
     return cardElement;
 }
 
-// Helpers for badges
 function formatDue(dateStr) {
     try {
         const d = new Date(dateStr);
@@ -999,10 +996,7 @@ function formatDue(dateStr) {
     } catch { return dateStr; }
 }
 function daysUntil(dateStr) {
-    try {
-        const ms = new Date(dateStr).getTime() - Date.now();
-        return Math.floor(ms / 86400000);
-    } catch { return 9999; }
+    try { return Math.floor((new Date(dateStr).getTime() - Date.now()) / 86400000); } catch { return 9999; }
 }
 function initials(name){
     if(!name) return '';
