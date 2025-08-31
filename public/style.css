@@ -3378,3 +3378,25 @@ body {
 .add-card.collapsed .add-card-link { display: inline-block; }
 .add-card .add-card-link { display:none; color:#0c66e4; background:transparent; border:0; padding:4px 6px; cursor:pointer; font-size:13px; }
 .add-card .add-card-link:hover { text-decoration: underline; }
+
+/* === Minimal tokens & badge colors per spec === */
+:root{
+    --list-w:272px; --list-gap:12px;
+    --card-r:10px; --card-pad:10px;
+    --card-shadow:0 1px 0 rgba(9,30,66,.25);
+    --card-hover:0 4px 8px rgba(9,30,66,.25);
+    --label-h:8px; --muted:#6b7280;
+    --bg:#f6f7f9; --card-bg:#fff; --border:#e5e7eb;
+}
+.board{display:flex; gap:var(--list-gap); overflow-x:auto; background:var(--bg); padding:8px;}
+.column{width:var(--list-w); min-width:var(--list-w);}
+.card{background:var(--card-bg); border-radius:var(--card-r); padding:var(--card-pad); box-shadow:var(--card-shadow); border:1px solid var(--border);}
+.card:hover{box-shadow:var(--card-hover);}
+.card .label{height:var(--label-h); border-radius:6px; margin-bottom:8px;}
+.card .card-title{margin:6px 0 8px; font-weight:600; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;}
+.card .card-badges{display:flex; gap:8px; align-items:center; color:var(--muted); font-size:12px;}
+.badge{display:inline-flex; align-items:center; gap:4px;}
+.badge.due.overdue{color:#ef4444;}
+.badge.due.soon{color:#f59e0b;}
+.badge.due.done{color:#10b981;}
+.dragging{transform:scale(1.02); will-change:transform;}

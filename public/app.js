@@ -973,9 +973,32 @@ function createCardElement(card, status) {
     const labels = Array.isArray(card.labels) ? card.labels.slice(0, 5) : [];
     const labelDots = labels.map(color => `<span class="label label-${color}"></span>`).join('');
 
-    const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
-    const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
-    const dueIcon = card.deadline ? `<span class="badge-icon due ${dueClass}" title="${card.deadline}">🕒</span>` : '';
+    // badges: description/due/checklist/comments/attachments/assignee (conditionally render)
+    const hasDesc = !!(card.description && String(card.description).trim());
+    const descIcon = hasDesc ? `<span class="badge desc" title="有描述">≡</span>` : '';
+
+    let dueState = '';
+    if (status === 'done') {
+        dueState = 'done';
+    } else if (card.deadline) {
+        const d = new Date(card.deadline);
+        if (isFinite(d.getTime())) {
+            if (d < new Date()) dueState = 'overdue';
+            else if (daysUntil(card.deadline) <= 2) dueState = 'soon';
+        }
+    }
+    const dueBadge = card.deadline ? `<span class="badge due ${dueState}" title="${card.deadline}">🕒 ${formatDue(card.deadline)}</span>` : '';
+
+    const checkBadge = (card.checklist && card.checklist.total)
+        ? `<span class="badge checklist" title="清单进度">☑️ ${(card.checklist.done||0)}/${card.checklist.total}</span>`
+        : '';
+    const commentsBadge = (card.commentsCount && card.commentsCount > 0)
+        ? `<span class="badge comments" title="评论">💬 ${card.commentsCount}</span>`
+        : '';
+    const attachBadge = (card.attachmentsCount && card.attachmentsCount > 0)
+        ? `<span class="badge attach" title="附件">📎 ${card.attachmentsCount}</span>`
+        : '';
+
     const assigneeBadge = card.assignee ? `<span class="badge-user" title="${escapeHtml(card.assignee)}">${initials(card.assignee)}</span>` : '';
 
     const moreBtn = (status === 'archived')
@@ -985,7 +1008,7 @@ function createCardElement(card, status) {
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
         <div class="card-title">${escapeHtml(card.title || '未命名')}</div>
-        <div class="card-badges">${descIcon}${dueIcon}${assigneeBadge}</div>
+        <div class="card-badges">${dueBadge}${checkBadge}${commentsBadge}${attachBadge}${descIcon}${assigneeBadge}</div>
         ${moreBtn}
     `;
 
