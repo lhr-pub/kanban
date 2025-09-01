@@ -945,6 +945,9 @@ function renderBoard() {
     if (!archivePage.classList.contains('hidden')) {
         renderArchive();
     }
+
+    // enable lists drag after render
+    enableListsDrag();
 }
 
 function renderAddListEntry(container){
@@ -2749,8 +2752,14 @@ function getCaretIndexFromSpan(spanEl, clientX, clientY) {
 
 // 列内拖拽排序
 function enableColumnDrag(status) {
-    const container = document.getElementById(`${status}Cards`);
+    // Support legacy ids and new dynamic containers
+    let container = document.getElementById(`${status}Cards`);
+    if (!container) {
+        const col = document.querySelector(`.column[data-status="${status}"]`);
+        container = col ? col.querySelector('.cards') : null;
+    }
     if (!container) return;
+
     container.querySelectorAll('.card').forEach(makeDraggable);
 
     container.ondragover = (e) => {
@@ -2829,6 +2838,67 @@ function getDragAfterElement(container, y) {
         }
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
+
+// ===== Lists drag (frontend order only) =====
+let draggingListId = null;
+
+function enableListsDrag() {
+    const container = document.getElementById('listsContainer');
+    if (!container) return;
+
+    // Set draggable on list headers as handles
+    container.querySelectorAll('.list:not(.add-list) .list-header').forEach(h => {
+        h.setAttribute('draggable', 'true');
+        h.ondragstart = (e) => {
+            const listEl = h.closest('.list');
+            draggingListId = listEl.getAttribute('data-id');
+            listEl.classList.add('dragging');
+            try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingListId); } catch {}
+        };
+        h.ondragend = () => {
+            const listEl = h.closest('.list');
+            listEl && listEl.classList.remove('dragging');
+            draggingListId = null;
+        };
+    });
+
+    container.ondragover = (e) => {
+        e.preventDefault();
+        const after = getListAfterElement(container, e.clientX);
+        const draggingEl = container.querySelector('.list.dragging');
+        if (!draggingEl) return;
+        if (after == null) {
+            container.insertBefore(draggingEl, container.querySelector('#addListEntry'));
+        } else {
+            container.insertBefore(draggingEl, after);
+        }
+    };
+
+    container.ondrop = () => {
+        if (!draggingListId || !clientLists) return;
+        // Recompute order based on DOM
+        const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
+            .filter(el => el.classList.contains('list'))
+            .map(el => el.getAttribute('data-id'));
+        clientLists.listIds = ids;
+        clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
+        draggingListId = null;
+    };
+}
+
+function getListAfterElement(container, x) {
+    const lists = [...container.querySelectorAll('.list:not(.dragging):not(#addListEntry):not(.add-list)')];
+    return lists.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = x - (box.left + box.width / 2);
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+// ===== End Lists drag =====
 
 // 新增：重命名看板（项目看板页）
 function promptRenameBoard(oldName) {
