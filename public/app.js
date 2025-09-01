@@ -1170,26 +1170,35 @@ function createCardElement(card, status) {
     const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
     const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
 
-    // previous-style assignee and deadline (textual pills) with inline edit
+    // Show chips only when set (no placeholders)
     const assigneeHtml = card.assignee
         ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>`
-        : `<span class="card-assignee unassigned clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击分配用户">未分配</span>`;
+        : '';
     const deadlineHtml = card.deadline
         ? `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">📅 ${card.deadline}</span>`
-        : `<span class="card-deadline clickable unset" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击设置截止日期">📅 设置</span>`;
+        : '';
 
     const moreBtn = (status === 'archived')
         ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原">↶</button>`
         : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑">✎</button>`;
 
+    const badges = `${descIcon}${deadlineHtml}${assigneeHtml}`;
+
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
         <div class="card-title">${escapeHtml(card.title || '未命名')}</div>
-        <div class="card-badges">${descIcon}${deadlineHtml}${assigneeHtml}</div>
+        ${badges ? `<div class="card-badges">${badges}</div>` : ''}
         ${moreBtn}
     `;
 
-    // Remove whole-card click handler; title click is handled globally for inline edit
+    // Clicking logic: title -> inline edit, chips handled by their own click; others -> open modal
+    cardElement.addEventListener('click', (e) => {
+        if (e.target.closest('.card-quick')) return;
+        if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
+        if (e.target.closest('.card-title')) { inlineEditCardTitle(cardElement); return; }
+        openEditModal(card.id);
+    });
+
     return cardElement;
 }
 
