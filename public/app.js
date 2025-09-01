@@ -33,6 +33,23 @@ const editModal = document.getElementById('editModal');
 const importModal = document.getElementById('importModal');
 let importFileData = null;
 
+// ===== Trello-like Lists Adapter (frontend only, keeps backend payloads) =====
+// Map legacy sections to dynamic lists on the client. Persist via existing fields.
+let clientLists = null; // { listIds:[], lists:{id:{id,title,pos,status}}, order:['todo','doing','done'] }
+
+function ensureClientLists() {
+    if (clientLists) return clientLists;
+    const defaults = [
+        { id: 'todo', title: '待办', pos: 0, status: 'todo' },
+        { id: 'doing', title: '进行中', pos: 1, status: 'doing' },
+        { id: 'done', title: '已完成', pos: 2, status: 'done' }
+    ];
+    clientLists = { listIds: defaults.map(l=>l.id), lists: Object.fromEntries(defaults.map(l=>[l.id,l])) };
+    return clientLists;
+}
+
+function getCardsByStatus(status) { return (boardData[status] || []).slice(); }
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 渲染静态图标
@@ -864,87 +881,232 @@ async function loadBoardData() {
 
 // 渲染看板
 function renderBoard() {
-    ['todo', 'doing', 'done'].forEach(status => {
-        const cardsContainer = document.getElementById(`${status}Cards`);
-        const countElement = document.getElementById(`${status}Count`);
+    ensureClientLists();
+    const container = document.getElementById('listsContainer');
+    if (!container) return;
+    container.innerHTML = '';
 
-        // Add top add row if not present
-        ensureTopAddRow(status);
+    clientLists.listIds
+        .map(id => clientLists.lists[id])
+        .sort((a,b)=>a.pos-b.pos)
+        .forEach(list => {
+            const section = document.createElement('section');
+            section.className = 'list column';
+            section.setAttribute('data-status', list.status);
+            section.setAttribute('data-id', list.id);
 
-        cardsContainer.innerHTML = '';
-        const cards = boardData[status] || [];
-        countElement.textContent = cards.length;
+            const header = document.createElement('header');
+            header.className = 'list-header';
+            header.innerHTML = `
+                <h3 class="list-title" tabindex="0">${escapeHtml(list.title)}</h3>
+                <button class="list-menu" aria-label="更多">⋯</button>
+            `;
+            section.appendChild(header);
 
-        // 保持当前顺序渲染
-        const sortedCards = cards.slice();
+            const cardsEl = document.createElement('div');
+            cardsEl.className = 'cards';
+            cardsEl.setAttribute('role','list');
+            section.appendChild(cardsEl);
 
-        sortedCards.forEach(card => {
-            const cardElement = createCardElement(card, status);
-            cardsContainer.appendChild(cardElement);
+            const cards = getCardsByStatus(list.status);
+            cards.forEach(c => cardsEl.appendChild(createCardElement(c, list.status)));
+
+            // composer
+            const composerWrap = document.createElement('div');
+            composerWrap.className = 'card-composer add-card';
+            composerWrap.innerHTML = `
+                <button class="composer-open add-card-link">+ Add a card</button>
+                <form class="composer" hidden>
+                    <textarea rows="3" placeholder="输入卡片标题…"></textarea>
+                    <div class="composer-actions">
+                        <button type="submit" class="btn-primary">添加卡片</button>
+                        <button type="button" class="composer-cancel" aria-label="取消">×</button>
+                    </div>
+                </form>
+            `;
+            section.appendChild(composerWrap);
+
+            container.appendChild(section);
+
+            // bind list title inline rename
+            bindListTitleInlineRename(section, list);
+            // bind list menu (rename/delete)
+            bindListMenu(section, list);
+            // bind composer
+            bindComposer(section, list);
+
+            // enable drag for this column (reuse existing)
+            enableColumnDrag(list.status);
         });
 
-        // enable drag for this column
-        enableColumnDrag(status);
-
-        // collapse bottom add form
-        const columnEl = document.querySelector(`.column[data-status="${status}"]`);
-        const bottomAdd = columnEl ? columnEl.querySelector('.add-card:not(.add-card-top)') : null;
-        if (bottomAdd) setupAddCardCollapsed(bottomAdd, status, 'bottom');
-    });
+    // add-list entry (UI only, maps to new status placeholders if needed)
+    renderAddListEntry(container);
 
     if (!archivePage.classList.contains('hidden')) {
         renderArchive();
     }
 }
 
-function ensureTopAddRow(status) {
-    const columnEl = document.querySelector(`.column[data-status="${status}"]`);
-    if (!columnEl) return;
-    let topAdd = columnEl.querySelector('.add-card-top');
-    if (!topAdd) {
-        const assigneeId = `new${status.charAt(0).toUpperCase() + status.slice(1)}TopAssignee`;
-        const titleId = `new${status.charAt(0).toUpperCase() + status.slice(1)}TopTitle`;
-        const deadlineId = `new${status.charAt(0).toUpperCase() + status.slice(1)}TopDeadline`;
-        topAdd = document.createElement('div');
-        topAdd.className = 'add-card add-card-top';
-        topAdd.innerHTML = `
-            <div class="input-row-inline">
-                <div class="left-inputs">
-                    <input type="text" placeholder="在上方添加任务..." id="${titleId}" required class="task-title-input">
-                    <select id="${assigneeId}" class="assignee-select" title="分配给"><option value="">未分配</option></select>
-                </div>
-                <input type="date" id="${deadlineId}" title="截止日期" class="date-input">
+function renderAddListEntry(container){
+    let add = document.getElementById('addListEntry');
+    if (add) add.remove();
+    add = document.createElement('div');
+    add.id = 'addListEntry';
+    add.className = 'add-list column';
+    add.innerHTML = `
+        <button class="add-list-open">+ Add another list</button>
+        <form class="add-list-form" hidden>
+            <input type="text" placeholder="输入卡组名称" />
+            <div class="actions">
+                <button type="submit" class="btn-primary">添加卡组</button>
+                <button type="button" class="add-list-cancel">取消</button>
             </div>
-        `;
-        const cardsContainer = columnEl.querySelector('.cards');
-        columnEl.insertBefore(topAdd, cardsContainer);
+        </form>
+    `;
+    container.appendChild(add);
 
-        // 绑定回车添加（上方）
-        const topTitleInput = document.getElementById(titleId);
-        if (topTitleInput) {
-            topTitleInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter' && this.value.trim()) {
-                    e.preventDefault();
-                    addCard(status, 'top');
-                }
-            });
-        }
-    }
-    // sync members into top select
-    const topSelect = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}TopAssignee`);
-    if (topSelect) {
-        const prev = topSelect.value;
-        topSelect.innerHTML = '<option value="">未分配</option>';
-        (window.currentProjectMembers || []).forEach(u => {
-            const op = document.createElement('option');
-            op.value = u; op.textContent = u; topSelect.appendChild(op);
-        });
-        topSelect.value = prev;
-    }
+    const openBtn = add.querySelector('.add-list-open');
+    const form = add.querySelector('.add-list-form');
+    const input = form.querySelector('input');
+    const cancel = form.querySelector('.add-list-cancel');
 
-    // collapsed behavior for top add form
-    setupAddCardCollapsed(topAdd, status, 'top');
+    openBtn.onclick = ()=>{ openBtn.hidden = true; form.hidden = false; input.focus(); };
+    cancel.onclick = ()=>{ form.hidden = true; openBtn.hidden = false; input.value=''; };
+    form.addEventListener('submit', (e)=>{
+        e.preventDefault();
+        const name = (input.value||'').trim();
+        if(!name) return;
+        addClientList(name);
+        input.value='';
+        form.hidden = true; openBtn.hidden = false;
+    });
 }
+
+function addClientList(title){
+    ensureClientLists();
+    const id = 'list_' + Date.now().toString(36);
+    const pos = clientLists.listIds.length;
+    const status = pickAvailableStatusKey();
+    clientLists.lists[id] = { id, title, pos, status };
+    clientLists.listIds.push(id);
+    renderBoard();
+}
+function pickAvailableStatusKey(){
+    // reuse last status key for rendering; since backend has fixed todo/doing/done, map extra lists to 'todo' for now
+    return 'todo';
+}
+
+function bindListTitleInlineRename(section, list){
+    const titleEl = section.querySelector('.list-title');
+    titleEl.addEventListener('click', ()=>startListRename(titleEl, list));
+    titleEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); startListRename(titleEl, list);} });
+}
+function startListRename(titleEl, list){
+    const old = list.title;
+    const input = document.createElement('input');
+    input.type='text'; input.value=old; input.className='list-title-input';
+    titleEl.replaceWith(input); input.focus(); input.select();
+    let canceled=false;
+    input.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+        if(e.key==='Escape'){ canceled=true; input.blur(); }
+    });
+    input.addEventListener('blur', ()=>{
+        const val = (input.value||'').trim();
+        const next = canceled? old : (val || old);
+        list.title = next;
+        const h = document.createElement('h3'); h.className='list-title'; h.tabIndex=0; h.textContent=next;
+        input.replaceWith(h);
+        bindListTitleInlineRename(h.closest('.list'), list);
+    });
+}
+function bindListMenu(section, list){
+    const btn = section.querySelector('.list-menu');
+    btn.onclick = (e)=>{
+        e.stopPropagation();
+        if(confirm('删除该卡组？')){ removeClientList(list.id); }
+    };
+}
+function removeClientList(listId){
+    ensureClientLists();
+    clientLists.listIds = clientLists.listIds.filter(id=>id!==listId);
+    delete clientLists.lists[listId];
+    renderBoard();
+}
+
+function bindComposer(section, list){
+    const opener = section.querySelector('.composer-open');
+    const form = section.querySelector('.composer');
+    const textarea = form.querySelector('textarea');
+    const cancel = form.querySelector('.composer-cancel');
+
+    function open(){ opener.hidden=true; form.hidden=false; textarea.focus(); }
+    function close(){ form.hidden=true; opener.hidden=false; textarea.value=''; }
+
+    opener.onclick = open;
+    cancel.onclick = close;
+    form.addEventListener('keydown',(e)=>{
+        if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); submit(); }
+        if(e.key==='Escape'){ e.preventDefault(); close(); }
+    });
+    textarea.addEventListener('blur', ()=>{ if(textarea.value.trim()) submit(); });
+    form.addEventListener('submit',(e)=>{ e.preventDefault(); submit(); });
+
+    function submit(){
+        const title = textarea.value.trim();
+        if(!title) return;
+        // optimistic add to mapped status list
+        const status = list.status;
+        const card = {
+            id: Date.now().toString(), title, description:'', author: currentUser,
+            assignee: null, created: new Date().toISOString(), deadline: null
+        };
+        if (!Array.isArray(boardData[status])) boardData[status]=[];
+        boardData[status] = [...boardData[status], card];
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type:'add-card', projectId: currentProjectId, boardName: currentBoardName, status, card, position:'bottom' }));
+        }
+        renderBoard();
+        textarea.value='';
+        // keep open for continuous add
+        textarea.focus();
+    }
+}
+
+// Inline edit card title by clicking title area only (not whole card)
+(function bindInlineCardTitle(){
+    document.addEventListener('click',(e)=>{
+        const title = e.target.closest('.card .card-title');
+        if(!title) return;
+        const cardEl = title.closest('.card');
+        inlineEditCardTitle(cardEl);
+        e.stopPropagation();
+    });
+})();
+
+function inlineEditCardTitle(cardEl){
+    const view = cardEl.querySelector('.card-title');
+    const old = view.textContent || '';
+    const input = document.createElement('input');
+    input.className = 'card-title-input'; input.type='text'; input.value = old;
+    view.replaceWith(input); input.focus(); input.select();
+    let canceled=false;
+    input.addEventListener('keydown',(e)=>{
+        if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+        if(e.key==='Escape'){ canceled=true; input.blur(); }
+        if(e.key==='e' && e.ctrlKey) { e.preventDefault(); }
+    });
+    input.addEventListener('blur', ()=>{
+        const val = input.value.trim();
+        const next = (canceled? old : (val || old));
+        const t = document.createElement('div'); t.className='card-title'; t.textContent=next; t.tabIndex=0;
+        input.replaceWith(t);
+        if(!canceled && val && val!==old){ saveCardTitle(cardEl.dataset.cardId, val); }
+    });
+}
+
+function saveCardTitle(cardId, title){ updateCardField(cardId, 'title', title); }
+// ===== End Lists Adapter =====
 
 // 渲染归档页面
 function renderArchive() {
@@ -973,32 +1135,9 @@ function createCardElement(card, status) {
     const labels = Array.isArray(card.labels) ? card.labels.slice(0, 5) : [];
     const labelDots = labels.map(color => `<span class="label label-${color}"></span>`).join('');
 
-    // badges: description/due/checklist/comments/attachments/assignee (conditionally render)
-    const hasDesc = !!(card.description && String(card.description).trim());
-    const descIcon = hasDesc ? `<span class="badge desc" title="有描述">≡</span>` : '';
-
-    let dueState = '';
-    if (status === 'done') {
-        dueState = 'done';
-    } else if (card.deadline) {
-        const d = new Date(card.deadline);
-        if (isFinite(d.getTime())) {
-            if (d < new Date()) dueState = 'overdue';
-            else if (daysUntil(card.deadline) <= 2) dueState = 'soon';
-        }
-    }
-    const dueBadge = card.deadline ? `<span class="badge due ${dueState}" title="${card.deadline}">🕒 ${formatDue(card.deadline)}</span>` : '';
-
-    const checkBadge = (card.checklist && card.checklist.total)
-        ? `<span class="badge checklist" title="清单进度">☑️ ${(card.checklist.done||0)}/${card.checklist.total}</span>`
-        : '';
-    const commentsBadge = (card.commentsCount && card.commentsCount > 0)
-        ? `<span class="badge comments" title="评论">💬 ${card.commentsCount}</span>`
-        : '';
-    const attachBadge = (card.attachmentsCount && card.attachmentsCount > 0)
-        ? `<span class="badge attach" title="附件">📎 ${card.attachmentsCount}</span>`
-        : '';
-
+    const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
+    const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
+    const dueIcon = card.deadline ? `<span class="badge-icon due ${dueClass}" title="${card.deadline}">🕒</span>` : '';
     const assigneeBadge = card.assignee ? `<span class="badge-user" title="${escapeHtml(card.assignee)}">${initials(card.assignee)}</span>` : '';
 
     const moreBtn = (status === 'archived')
@@ -1008,7 +1147,7 @@ function createCardElement(card, status) {
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
         <div class="card-title">${escapeHtml(card.title || '未命名')}</div>
-        <div class="card-badges">${dueBadge}${checkBadge}${commentsBadge}${attachBadge}${descIcon}${assigneeBadge}</div>
+        <div class="card-badges">${descIcon}${dueIcon}${assigneeBadge}</div>
         ${moreBtn}
     `;
 
