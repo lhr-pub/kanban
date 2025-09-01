@@ -963,7 +963,7 @@ function renderAddListEntry(container){
             <div class="actions">
                 <button type="submit" class="btn-primary">添加卡组</button>
                 <button type="button" class="add-list-cancel">取消</button>
-            </div>
+                </div>
         </form>
     `;
     container.appendChild(add);
@@ -976,7 +976,7 @@ function renderAddListEntry(container){
     openBtn.onclick = ()=>{ openBtn.hidden = true; form.hidden = false; input.focus(); };
     cancel.onclick = ()=>{ form.hidden = true; openBtn.hidden = false; input.value=''; };
     form.addEventListener('submit', (e)=>{
-        e.preventDefault();
+                    e.preventDefault();
         const name = (input.value||'').trim();
         if(!name) return;
         addClientList(name);
@@ -1182,8 +1182,8 @@ function createCardElement(card, status) {
         : '';
 
     const moreBtn = (status === 'archived')
-        ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原">↶</button>`
-        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑">✎</button>`;
+        ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')\" aria-label="还原"></button>`
+        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')\" aria-label="编辑"></button>`;
 
     const badges = `${descIcon}${deadlineHtml}${assigneeHtml}`;
 
@@ -2872,17 +2872,17 @@ function makeDraggable(cardEl) {
         cardPlaceholderEl.style.height = rect.height + 'px';
         cardPlaceholderEl.style.width = rect.width + 'px';
         cardEl.parentNode.insertBefore(cardPlaceholderEl, cardEl);
-        // hide original during drag image
-        cardEl.style.display = 'none';
-        try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); } catch (e) {}
+        // hide original during drag image (keep layout)
+        cardEl.style.visibility = 'hidden';
+        try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); if(e.dataTransfer) e.dataTransfer.effectAllowed='move'; } catch (e) {}
     };
     cardEl.ondragend = () => {
         cardEl.classList.remove('dragging');
         document.body.classList.remove('dragging-cards');
         // restore if placeholder still present
-        if (cardPlaceholderEl && cardPlaceholderEl.parentNode && cardEl.style.display === 'none') {
+        if (cardPlaceholderEl && cardPlaceholderEl.parentNode && cardEl.style.visibility === 'hidden') {
             cardPlaceholderEl.parentNode.insertBefore(cardEl, cardPlaceholderEl);
-            cardEl.style.display = '';
+            cardEl.style.visibility = '';
             cardPlaceholderEl.parentNode.removeChild(cardPlaceholderEl);
         }
         draggingCardId = null;
@@ -2929,7 +2929,7 @@ function enableListsDrag() {
             listPlaceholderEl.style.width = rect.width + 'px';
             container.insertBefore(listPlaceholderEl, listEl);
             // hide original element; use drag image for cursor
-            listEl.style.display = 'none';
+            listEl.style.visibility = 'hidden';
             try {
                 if (e.dataTransfer) {
                     // visual clone follows cursor
@@ -2952,9 +2952,9 @@ function enableListsDrag() {
             const listEl = h.closest('.list');
             if (!listEl) return;
             listEl.classList.remove('dragging');
-            if (listPlaceholderEl && listPlaceholderEl.parentNode && listEl.style.display === 'none') {
+            if (listPlaceholderEl && listPlaceholderEl.parentNode && listEl.style.visibility === 'hidden') {
                 listPlaceholderEl.parentNode.insertBefore(listEl, listPlaceholderEl);
-                listEl.style.display = '';
+                listEl.style.visibility = '';
                 listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
             }
             draggingListId = null;
