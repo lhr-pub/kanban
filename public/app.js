@@ -1151,11 +1151,7 @@ function createCardElement(card, status) {
         ${moreBtn}
     `;
 
-    // Clicking anywhere on card enters inline title edit
-    cardElement.addEventListener('click', (e) => {
-        if (e.target.closest('.card-quick')) return; // pencil opens modal
-        inlineEditCardTitle(cardElement);
-    });
+    // Remove whole-card click handler; title click is handled globally for inline edit
     return cardElement;
 }
 

@@ -3427,3 +3427,11 @@ body {
 .card-composer textarea { min-height: 56px; padding: 8px; }
 .card-composer .btn-primary { height: 32px; }
 .card-composer .composer-open { width: 100%; text-align: left; color:#0c66e4; }
+
+/* hover pencil / open-details button */
+.card-quick { position:absolute; top:6px; right:6px; opacity:0; transition:opacity .12s; border:0; background:transparent; font-size:16px; line-height:1; cursor:pointer; color:#44546f; }
+.card:hover .card-quick { opacity:1; }
+
+/* add-card open button matches list background */
+.card-composer .composer-open { width: 100%; text-align: left; color:#44546f; background: #ebecf0; border: 1px dashed #dfe1e6; }
+.card-composer .composer-open:hover { background:#e3e5e9; }
