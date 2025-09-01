@@ -900,6 +900,7 @@ function renderBoard() {
             header.innerHTML = `
                 <h3 class="list-title" tabindex="0">${escapeHtml(list.title)}</h3>
                 <button class="list-menu" aria-label="更多">⋯</button>
+                <button class="list-delete" title="删除卡组" aria-label="删除">🗑</button>
             `;
             section.appendChild(header);
 
@@ -1029,6 +1030,8 @@ function bindListMenu(section, list){
         e.stopPropagation();
         if(confirm('删除该卡组？')){ removeClientList(list.id); }
     };
+    // delete
+    section.querySelector('.list-delete').onclick = (e)=>{ e.stopPropagation(); if(confirm('删除该卡组？')) removeClientList(list.id); };
 }
 function removeClientList(listId){
     ensureClientLists();
@@ -1180,7 +1183,7 @@ function createCardElement(card, status) {
 
     const moreBtn = (status === 'archived')
         ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原">↶</button>`
-        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑">✎</button>`;
+        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑">✍︎</button>`;
 
     const badges = `${descIcon}${deadlineHtml}${assigneeHtml}`;
 
