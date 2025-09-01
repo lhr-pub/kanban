@@ -2989,9 +2989,9 @@ body {
 }
 
 /* Match board header height and top alignment with homepage */
-#boardPage .header { padding: 1.25rem 0; margin-top: 0; }
+#boardPage .header { padding: 0.75rem 0; margin-top: 6px; }
 #boardPage .header > .container { padding: 0 2rem; }
-#boardPage .board-breadcrumb { margin: 0; font-size: 1.75rem; }
+#boardPage .board-breadcrumb { margin: 0; }
 
 /* Ensure project/board select headers keep their spacing */
 #projectPage .project-header { margin-bottom: 2rem; }
