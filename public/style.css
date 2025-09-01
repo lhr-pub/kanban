@@ -3403,7 +3403,7 @@ body {
 
 /* add another list entry */
 .add-list { background: transparent; border:0; border-radius:8px; width: var(--list-width); min-width: var(--list-width); max-width: var(--list-width); display:flex; align-items:flex-start; }
-.add-list .add-list-open { width:100%; min-height:40px; text-align:left; background:rgba(236,238,240,.8); border:1px solid transparent; border-radius:8px; color:#0c66e4; padding:8px 10px; cursor:pointer; }
+.add-list .add-list-open { width:100%; min-height:40px; text-align:left; background:rgba(236,238,240,.8); border:1px dashed #dfe1e6; border-radius:8px; color:#0c66e4; padding:8px 10px; cursor:pointer; }
 .add-list .add-list-open:hover { background:rgba(236,238,240,1); }
 .add-list .add-list-form { width:100%; }
 .add-list .add-list-form input { width:100%; height:36px; border:1px solid var(--border); border-radius:8px; padding:0 10px; }
@@ -3471,10 +3471,21 @@ body {
 .card-composer .composer-open::before { content:'+'; font-weight:600; }
 .card-composer .composer-open:hover { background: rgba(9,30,66,.06); }
 
-/* card detail open button size */
-.card-quick { font-size: 18px; }
+/* card dragging placeholder */
+.card-placeholder { background: rgba(236,238,240,.6); border: 2px dashed #d0d4da; border-radius: 10px; box-shadow: inset 0 0 0 2px rgba(9,30,66,.05), 0 3px 6px rgba(9,30,66,.12); }
 
-/* list menu delete icon (hover to show) */
-.list .list-header { position: relative; }
-.list .list-delete { position:absolute; right:8px; top:6px; background:transparent; border:0; cursor:pointer; opacity:0; transition:opacity .12s; }
-.list:hover .list-delete { opacity:1; }
+/* replace icons: list menu delete X and edit pencil */
+.list .list-header .list-menu { color: #ef4444; font-weight: 700; }
+.list .list-header .list-menu::before { content: '×'; font-size: 16px; }
+.list .list-header .list-menu { width: 28px; height: 28px; display:flex; align-items:center; justify-content:center; }
+
+/* card edit pencil (left arrow-like) */
+.card-quick { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+.card-quick::before { content: '✎'; }
+
+/* remove dashed border for add buttons */
+.add-list .add-list-open { border: 0; background: rgba(236,238,240,.8); }
+.card-composer .composer-open { border: 0; }
+
+/* extra-compact card top spacing */
+.card { padding-top: 4px; padding-bottom: 6px; }

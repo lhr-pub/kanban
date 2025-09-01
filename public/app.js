@@ -900,7 +900,6 @@ function renderBoard() {
             header.innerHTML = `
                 <h3 class="list-title" tabindex="0">${escapeHtml(list.title)}</h3>
                 <button class="list-menu" aria-label="更多">⋯</button>
-                <button class="list-delete" title="删除卡组" aria-label="删除">🗑</button>
             `;
             section.appendChild(header);
 
@@ -1030,8 +1029,6 @@ function bindListMenu(section, list){
         e.stopPropagation();
         if(confirm('删除该卡组？')){ removeClientList(list.id); }
     };
-    // delete
-    section.querySelector('.list-delete').onclick = (e)=>{ e.stopPropagation(); if(confirm('删除该卡组？')) removeClientList(list.id); };
 }
 function removeClientList(listId){
     ensureClientLists();
@@ -1183,7 +1180,7 @@ function createCardElement(card, status) {
 
     const moreBtn = (status === 'archived')
         ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原">↶</button>`
-        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑">✍︎</button>`;
+        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑">✎</button>`;
 
     const badges = `${descIcon}${deadlineHtml}${assigneeHtml}`;
 
@@ -2813,42 +2810,38 @@ function enableColumnDrag(status) {
         e.preventDefault();
         const afterEl = getDragAfterElement(container, e.clientY);
         const dragging = document.querySelector('.card.dragging');
-        if (!dragging) return;
+        if (!dragging || !cardPlaceholderEl) return;
         if (afterEl == null) {
-            container.appendChild(dragging);
+            container.appendChild(cardPlaceholderEl);
         } else {
-            container.insertBefore(dragging, afterEl);
+            container.insertBefore(cardPlaceholderEl, afterEl);
         }
     };
 
     container.ondrop = () => {
-        // 发送新顺序（以及必要时的跨列移动）
-        const orderedIds = Array.from(container.querySelectorAll('.card')).map(el => el.dataset.cardId);
         const toStatus = status;
         const fromStatus = draggingFromStatus;
         const movedCardId = draggingCardId;
+        const containerEl = container;
+        const draggingEl = document.querySelector('.card.dragging');
+        if (draggingEl && cardPlaceholderEl) {
+            containerEl.insertBefore(draggingEl, cardPlaceholderEl);
+            draggingEl.style.display = '';
+            cardPlaceholderEl.parentNode.removeChild(cardPlaceholderEl);
+            cardPlaceholderEl = null;
+        }
+
+        // 新顺序
+        const orderedIds = Array.from(containerEl.querySelectorAll('.card')).map(el => el.dataset.cardId);
 
         if (socket && socket.readyState === WebSocket.OPEN) {
             if (movedCardId && fromStatus && fromStatus !== toStatus) {
-                socket.send(JSON.stringify({
-                    type: 'move-card',
-                    projectId: currentProjectId,
-                    boardName: currentBoardName,
-                    cardId: movedCardId,
-                    fromStatus: fromStatus,
-                    toStatus: toStatus
-                }));
+                socket.send(JSON.stringify({ type:'move-card', projectId: currentProjectId, boardName: currentBoardName, cardId:movedCardId, fromStatus, toStatus }));
             }
-            socket.send(JSON.stringify({
-                type: 'reorder-cards',
-                projectId: currentProjectId,
-                boardName: currentBoardName,
-                status: toStatus,
-                orderedIds
-            }));
+            socket.send(JSON.stringify({ type:'reorder-cards', projectId: currentProjectId, boardName: currentBoardName, status: toStatus, orderedIds }));
         }
 
-        // 清理拖拽状态
+        // 清理状态
         draggingCardId = null;
         draggingFromStatus = null;
         document.body.classList.remove('dragging-cards');
@@ -2859,17 +2852,33 @@ function makeDraggable(cardEl) {
     cardEl.setAttribute('draggable', 'true');
     cardEl.ondragstart = (e) => {
         cardEl.classList.add('dragging');
-        const col = cardEl.closest('.column');
+        const col = cardEl.closest('.column, .list');
         draggingFromStatus = col ? col.getAttribute('data-status') : null;
         draggingCardId = cardEl.dataset.cardId;
         document.body.classList.add('dragging-cards');
+        // placeholder same size
+        const rect = cardEl.getBoundingClientRect();
+        cardPlaceholderEl = document.createElement('div');
+        cardPlaceholderEl.className = 'card card-placeholder';
+        cardPlaceholderEl.style.height = rect.height + 'px';
+        cardPlaceholderEl.style.width = rect.width + 'px';
+        cardEl.parentNode.insertBefore(cardPlaceholderEl, cardEl);
+        // hide original during drag image
+        cardEl.style.display = 'none';
         try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); } catch (e) {}
     };
     cardEl.ondragend = () => {
         cardEl.classList.remove('dragging');
         document.body.classList.remove('dragging-cards');
+        // restore if placeholder still present
+        if (cardPlaceholderEl && cardPlaceholderEl.parentNode && cardEl.style.display === 'none') {
+            cardPlaceholderEl.parentNode.insertBefore(cardEl, cardPlaceholderEl);
+            cardEl.style.display = '';
+            cardPlaceholderEl.parentNode.removeChild(cardPlaceholderEl);
+        }
         draggingCardId = null;
         draggingFromStatus = null;
+        cardPlaceholderEl = null;
     };
 }
 
