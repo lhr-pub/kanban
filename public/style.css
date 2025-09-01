@@ -3435,3 +3435,7 @@ body {
 /* add-card open button matches list background */
 .card-composer .composer-open { width: 100%; text-align: left; color:#44546f; background: #ebecf0; border: 1px dashed #dfe1e6; }
 .card-composer .composer-open:hover { background:#e3e5e9; }
+
+/* composer state toggle */
+.card-composer:not(.is-open) .composer { display:none; }
+.card-composer.is-open .composer-open { display:none; }

@@ -1043,11 +1043,12 @@ function bindComposer(section, list){
     const textarea = form.querySelector('textarea');
     const cancel = form.querySelector('.composer-cancel');
 
-    function open(){ opener.hidden=true; form.hidden=false; textarea.focus(); }
-    function close(){ form.hidden=true; opener.hidden=false; textarea.value=''; }
+    function open(){ section.querySelector('.card-composer').classList.add('is-open'); textarea.focus(); }
+    function close(){ section.querySelector('.card-composer').classList.remove('is-open'); textarea.value=''; }
 
-    opener.onclick = open;
-    cancel.onclick = close;
+    opener.onclick = (e)=>{ e.preventDefault(); open(); };
+    cancel.onclick = (e)=>{ e.preventDefault(); close(); };
+
     form.addEventListener('keydown',(e)=>{
         if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); submit(); }
         if(e.key==='Escape'){ e.preventDefault(); close(); }
@@ -1055,10 +1056,18 @@ function bindComposer(section, list){
     textarea.addEventListener('blur', ()=>{ if(textarea.value.trim()) submit(); });
     form.addEventListener('submit',(e)=>{ e.preventDefault(); submit(); });
 
+    // click outside to close when empty
+    document.addEventListener('mousedown', (ev)=>{
+        const wrap = section.querySelector('.card-composer');
+        if (!wrap) return;
+        if (!wrap.contains(ev.target) && wrap.classList.contains('is-open')) {
+            if (!textarea.value.trim()) close();
+        }
+    });
+
     function submit(){
         const title = textarea.value.trim();
         if(!title) return;
-        // optimistic add to mapped status list
         const status = list.status;
         const card = {
             id: Date.now().toString(), title, description:'', author: currentUser,
@@ -1070,9 +1079,13 @@ function bindComposer(section, list){
             socket.send(JSON.stringify({ type:'add-card', projectId: currentProjectId, boardName: currentBoardName, status, card, position:'bottom' }));
         }
         renderBoard();
-        textarea.value='';
-        // keep open for continuous add
-        textarea.focus();
+        // reopen same composer for continuous add
+        const newSection = document.querySelector(`.list[data-id="${list.id}"]`);
+        if (newSection) {
+            const wrap = newSection.querySelector('.card-composer');
+            const ta = newSection.querySelector('.card-composer textarea');
+            if (wrap && ta) { wrap.classList.add('is-open'); ta.focus(); }
+        }
     }
 }
 
