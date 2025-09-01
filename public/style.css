@@ -3526,33 +3526,3 @@ body {
 .card .card-badges:not(:has(.card-deadline)) .card-assignee { margin-left: auto; }
 /* lower title a bit more */
 .card .card-title { margin-top: 6px; }
-
-/* === Unify Kanban board header with project page header === */
-#boardPage .header {
-    background: #ffffff;
-    border-bottom: 1px solid var(--gray-200);
-    padding: 1rem 0;
-    margin-top: 0;
-}
-
-#boardPage .header > .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-#boardPage .board-breadcrumb {
-    margin: 0;
-    font-size: 20px;
-    color: #1f2937;
-}
-
-@media (prefers-color-scheme: dark) {
-    #boardPage .header {
-        background: #0f172a;
-        border-bottom: 1px solid var(--gray-300);
-    }
-}
