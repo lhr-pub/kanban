@@ -3461,3 +3461,12 @@ body {
 .card .card-title { font-size: 13.5px; line-height: 1.25; -webkit-line-clamp: 2; }
 .card-badges { gap: 6px; margin-top: 4px; }
 .card-assignee, .card-deadline { padding: 1px 6px; font-size: 11px; min-height: 18px; }
+
+/* place composer right after last card */
+.list .cards { flex: 0 0 auto; }
+
+/* blend add-card button with list background */
+.card-composer { margin-top: 0; padding: 4px 6px; background: transparent; }
+.card-composer .composer-open { display:inline-flex; align-items:center; gap:6px; width:100%; text-align:left; color:#44546f; background: transparent; border: 0; padding:6px 8px; border-radius:6px; }
+.card-composer .composer-open::before { content:'+'; font-weight:600; }
+.card-composer .composer-open:hover { background: rgba(9,30,66,.06); }
