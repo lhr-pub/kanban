@@ -1169,8 +1169,14 @@ function createCardElement(card, status) {
 
     const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
     const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
-    const dueIcon = card.deadline ? `<span class="badge-icon due ${dueClass}" title="${card.deadline}">🕒</span>` : '';
-    const assigneeBadge = card.assignee ? `<span class="badge-user" title="${escapeHtml(card.assignee)}">${initials(card.assignee)}</span>` : '';
+
+    // previous-style assignee and deadline (textual pills) with inline edit
+    const assigneeHtml = card.assignee
+        ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>`
+        : `<span class="card-assignee unassigned clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击分配用户">未分配</span>`;
+    const deadlineHtml = card.deadline
+        ? `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">📅 ${card.deadline}</span>`
+        : `<span class="card-deadline clickable unset" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击设置截止日期">📅 设置</span>`;
 
     const moreBtn = (status === 'archived')
         ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原">↶</button>`
@@ -1179,7 +1185,7 @@ function createCardElement(card, status) {
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
         <div class="card-title">${escapeHtml(card.title || '未命名')}</div>
-        <div class="card-badges">${descIcon}${dueIcon}${assigneeBadge}</div>
+        <div class="card-badges">${descIcon}${deadlineHtml}${assigneeHtml}</div>
         ${moreBtn}
     `;
 
