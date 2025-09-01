@@ -3033,6 +3033,8 @@ function enableListsDrag() {
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
         }
+        // immediately re-render to reflect new order without refresh
+        renderBoard();
     };
 }
 function getListAfterElement(container, x) {
