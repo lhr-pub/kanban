@@ -1185,7 +1185,7 @@ function createCardElement(card, status) {
         ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')\" aria-label="还原"></button>`
         : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')\" aria-label="编辑"></button>`;
 
-    const badges = `${assigneeHtml}${deadlineHtml}${descIcon}`;
+    const badges = `${descIcon}${deadlineHtml}${assigneeHtml}`;
 
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
@@ -2913,29 +2913,26 @@ function enableListsDrag() {
     const container = document.getElementById('listsContainer');
     if (!container) return;
 
-    // Prepare all lists
-    container.querySelectorAll('.list:not(.add-list)').forEach(listEl => {
-        const headerEl = listEl.querySelector('.list-header');
-        if (!headerEl) return;
-        listEl.setAttribute('draggable','true');
-
-        listEl.ondragstart = (e) => {
-            // Only allow drag when started from header region
-            if (!e.target || !e.target.closest('.list-header')) { e.preventDefault(); return; }
+    // Set draggable on list headers as handles
+    container.querySelectorAll('.list:not(.add-list) .list-header').forEach(h => {
+        h.setAttribute('draggable', 'true');
+        h.ondragstart = (e) => {
+            const listEl = h.closest('.list');
             draggingListId = listEl.getAttribute('data-id');
             listEl.classList.add('dragging');
             if (e.dataTransfer) { try { e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {} }
-
+            // create placeholder occupying original slot
             const rect = listEl.getBoundingClientRect();
             listPlaceholderEl = document.createElement('div');
             listPlaceholderEl.className = 'list list-placeholder';
             listPlaceholderEl.style.height = rect.height + 'px';
             listPlaceholderEl.style.width = rect.width + 'px';
             container.insertBefore(listPlaceholderEl, listEl);
+            // hide original element; use drag image for cursor
             listEl.style.visibility = 'hidden';
-
             try {
                 if (e.dataTransfer) {
+                    // visual clone follows cursor
                     listDragImageEl = listEl.cloneNode(true);
                     listDragImageEl.style.position = 'fixed';
                     listDragImageEl.style.left = '-1000px';
@@ -2951,8 +2948,9 @@ function enableListsDrag() {
                 }
             } catch {}
         };
-
-        listEl.ondragend = () => {
+        h.ondragend = () => {
+            const listEl = h.closest('.list');
+            if (!listEl) return;
             listEl.classList.remove('dragging');
             if (listPlaceholderEl && listPlaceholderEl.parentNode && listEl.style.visibility === 'hidden') {
                 listPlaceholderEl.parentNode.insertBefore(listEl, listPlaceholderEl);
@@ -2984,7 +2982,7 @@ function enableListsDrag() {
         const draggingEl = container.querySelector('.list.dragging');
         if (draggingEl && listPlaceholderEl) {
             container.insertBefore(draggingEl, listPlaceholderEl);
-            draggingEl.style.visibility = '';
+            draggingEl.style.display = '';
             listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
             listPlaceholderEl = null;
         }
@@ -3239,3 +3237,16 @@ function setupAddCardCollapsed(container, status, position) {
     // After Enter add, addCard will call collapse too
     container.__collapseAdd = collapse;
 }
+
+(function ensureDraggableDelegation(){
+    document.addEventListener('mousedown', (e)=>{
+        const header = e.target.closest('.list .list-header');
+        if (header) {
+            header.setAttribute('draggable','true');
+        }
+        const card = e.target.closest('.card');
+        if (card && !e.target.closest('.card-quick') && !e.target.closest('.card-assignee') && !e.target.closest('.card-deadline') && !e.target.closest('.title-text') && !e.target.closest('.inline-title-input')) {
+            card.setAttribute('draggable','true');
+        }
+    });
+})();
