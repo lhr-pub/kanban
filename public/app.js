@@ -2865,6 +2865,7 @@ function getDragAfterElement(container, y) {
 
 // ===== Lists drag (frontend order only) =====
 let draggingListId = null;
+let listDragImageEl = null;
 
 function enableListsDrag() {
     const container = document.getElementById('listsContainer');
@@ -2877,12 +2878,34 @@ function enableListsDrag() {
             const listEl = h.closest('.list');
             draggingListId = listEl.getAttribute('data-id');
             listEl.classList.add('dragging');
-            try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingListId); } catch {}
+            try {
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    const rect = listEl.getBoundingClientRect();
+                    // create a visual clone that follows the cursor
+                    listDragImageEl = listEl.cloneNode(true);
+                    listDragImageEl.style.position = 'fixed';
+                    listDragImageEl.style.left = '-1000px';
+                    listDragImageEl.style.top = '-1000px';
+                    listDragImageEl.style.width = rect.width + 'px';
+                    listDragImageEl.style.pointerEvents = 'none';
+                    listDragImageEl.style.transform = 'rotate(1.5deg) scale(1.02)';
+                    listDragImageEl.style.boxShadow = '0 8px 16px rgba(9,30,66,.25)';
+                    document.body.appendChild(listDragImageEl);
+                    const offsetX = e.clientX - rect.left;
+                    const offsetY = e.clientY - rect.top;
+                    e.dataTransfer.setDragImage(listDragImageEl, offsetX, offsetY);
+                }
+            } catch {}
         };
         h.ondragend = () => {
             const listEl = h.closest('.list');
             listEl && listEl.classList.remove('dragging');
             draggingListId = null;
+            if (listDragImageEl && listDragImageEl.parentNode) {
+                listDragImageEl.parentNode.removeChild(listDragImageEl);
+                listDragImageEl = null;
+            }
         };
     });
 
@@ -2909,6 +2932,10 @@ function enableListsDrag() {
         clientLists.listIds = ids;
         clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
         draggingListId = null;
+        if (listDragImageEl && listDragImageEl.parentNode) {
+            listDragImageEl.parentNode.removeChild(listDragImageEl);
+            listDragImageEl = null;
+        }
     };
 }
 
