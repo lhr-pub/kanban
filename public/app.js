@@ -899,7 +899,7 @@ function renderBoard() {
             header.className = 'list-header';
             header.innerHTML = `
                 <h3 class="list-title" tabindex="0">${escapeHtml(list.title)}</h3>
-                <button class="list-menu" aria-label="更多">⋯</button>
+                <button class="list-menu" aria-label="删除"></button>
             `;
             section.appendChild(header);
 
@@ -1041,7 +1041,9 @@ function bindComposer(section, list){
     const opener = section.querySelector('.composer-open');
     const form = section.querySelector('.composer');
     const textarea = form.querySelector('textarea');
-    const cancel = form.querySelector('.composer-cancel');
+    const cancel = section.querySelector('.composer-cancel');
+
+    let isCancelling = false;
 
     function open(){
         const wrap = section.querySelector('.card-composer');
@@ -1057,13 +1059,14 @@ function bindComposer(section, list){
     }
 
     opener.onclick = (e)=>{ e.preventDefault(); open(); };
-    cancel.onclick = (e)=>{ e.preventDefault(); close(); };
+    cancel.onmousedown = ()=>{ isCancelling = true; };
+    cancel.onclick = (e)=>{ e.preventDefault(); isCancelling = true; close(); setTimeout(()=>{ isCancelling = false; },0); };
 
     form.addEventListener('keydown',(e)=>{
         if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); submit(); }
         if(e.key==='Escape'){ e.preventDefault(); close(); }
     });
-    textarea.addEventListener('blur', ()=>{ if(textarea.value.trim()) submit(); });
+    textarea.addEventListener('blur', ()=>{ if(isCancelling){ isCancelling=false; return; } if(textarea.value.trim()) submit(); else close(); });
     form.addEventListener('submit',(e)=>{ e.preventDefault(); submit(); });
 
     // click outside to close when empty
@@ -1175,7 +1178,7 @@ function createCardElement(card, status) {
         ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>`
         : '';
     const deadlineHtml = card.deadline
-        ? `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">📅 ${card.deadline}</span>`
+        ? `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">${card.deadline}</span>`
         : '';
 
     const moreBtn = (status === 'archived')

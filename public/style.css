@@ -3489,3 +3489,10 @@ body {
 
 /* extra-compact card top spacing */
 .card { padding-top: 4px; padding-bottom: 6px; }
+
+/* list delete button hover only */
+.list .list-header .list-menu { opacity: 0; transition: opacity .12s; }
+.list:hover .list-header .list-menu { opacity: 1; }
+
+/* deadline chip remove emoji spacing */
+.card-deadline { padding-left: 6px; }
