@@ -3413,3 +3413,17 @@ body {
 
 /* inline card title input */
 .card-title-input { width:100%; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:14px; font-weight:600; }
+
+/* tighten card spacing and list paddings */
+.board-container { gap: var(--list-gap); padding: 12px; }
+.list { padding: 6px; gap: 6px; }
+.cards { gap: 6px; }
+.card { padding: 8px 10px; margin-bottom: 6px; }
+/* reduce distance from card to list border */
+.list .cards { padding: 2px; }
+
+/* composer sits right after last card, compact paddings */
+.card-composer { margin-top: 0; }
+.card-composer textarea { min-height: 56px; padding: 8px; }
+.card-composer .btn-primary { height: 32px; }
+.card-composer .composer-open { width: 100%; text-align: left; color:#0c66e4; }

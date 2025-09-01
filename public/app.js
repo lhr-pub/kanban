@@ -915,9 +915,9 @@ function renderBoard() {
             const composerWrap = document.createElement('div');
             composerWrap.className = 'card-composer add-card';
             composerWrap.innerHTML = `
-                <button class="composer-open add-card-link">+ Add a card</button>
+                <button class="composer-open add-card-link">添加卡片</button>
                 <form class="composer" hidden>
-                    <textarea rows="3" placeholder="输入卡片标题…"></textarea>
+                    <textarea rows="3" placeholder="输入标题或粘贴链接"></textarea>
                     <div class="composer-actions">
                         <button type="submit" class="btn-primary">添加卡片</button>
                         <button type="button" class="composer-cancel" aria-label="取消">×</button>
@@ -1151,7 +1151,11 @@ function createCardElement(card, status) {
         ${moreBtn}
     `;
 
-    cardElement.addEventListener('click', () => openEditModal(card.id));
+    // Clicking anywhere on card enters inline title edit
+    cardElement.addEventListener('click', (e) => {
+        if (e.target.closest('.card-quick')) return; // pencil opens modal
+        inlineEditCardTitle(cardElement);
+    });
     return cardElement;
 }
 
