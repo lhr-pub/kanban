@@ -1032,6 +1032,10 @@ function handleWebSocketMessage(ws, data) {
         case 'card-editing':
             handleCardEditing(ws, data);
             break;
+        // persist lists metadata (client dynamic lists)
+        case 'save-lists':
+            handleSaveLists(ws, data);
+            break;
         default:
             ws.send(JSON.stringify({
                 type: 'error',
@@ -1061,6 +1065,23 @@ function handleJoin(ws, data) {
         archived: []
     });
 
+    // Ensure lists metadata exists for dynamic columns
+    if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
+        boardData.lists = {
+            listIds: ['todo','doing','done'],
+            lists: {
+                todo:  { id:'todo',  title:'待办',   pos:0, status:'todo' },
+                doing: { id:'doing', title:'进行中', pos:1, status:'doing' },
+                done:  { id:'done',  title:'已完成', pos:2, status:'done' }
+            }
+        };
+        writeBoardData(projectId, boardName, boardData);
+    }
+
+    // Ensure all status arrays exist
+    ensureListStatusArrays(boardData);
+    writeBoardData(projectId, boardName, boardData);
+
     ws.send(JSON.stringify({
         type: 'board-update',
         projectId,
@@ -1075,12 +1096,9 @@ function handleAddCard(ws, data) {
     const { projectId, boardName, status, card, position } = data;
     const boardData = readBoardData(projectId, boardName);
 
-    if (!boardData[status]) {
-        ws.send(JSON.stringify({
-            type: 'error',
-            message: '无效的状态'
-        }));
-        return;
+    // Accept dynamic statuses; create bucket if missing
+    if (!Array.isArray(boardData[status])) {
+        boardData[status] = [];
     }
 
     // 支持顶部/底部添加
@@ -1352,6 +1370,28 @@ function handleCardEditing(ws, data) {
     broadcastToBoard(data.projectId, data.boardName, data, ws);
 }
 
+// persist lists metadata (client dynamic lists)
+function handleSaveLists(ws, data) {
+    const { projectId, boardName, lists } = data;
+    const boardData = readBoardData(projectId, boardName);
+    if (!lists || !Array.isArray(lists.listIds) || typeof lists.lists !== 'object') {
+        ws.send(JSON.stringify({ type:'error', message:'无效的列表数据' }));
+        return;
+    }
+    boardData.lists = lists;
+    // Ensure arrays exist for any new list statuses
+    ensureListStatusArrays(boardData);
+    if (writeBoardData(projectId, boardName, boardData)) {
+        createBackup(projectId, boardName, boardData);
+        broadcastToBoard(projectId, boardName, {
+            type: 'board-update',
+            projectId,
+            boardName,
+            board: boardData
+        }, ws);
+    }
+}
+
 // 辅助函数
 function readBoardData(projectId, boardName) {
     const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
@@ -1359,13 +1399,28 @@ function readBoardData(projectId, boardName) {
         todo: [],
         doing: [],
         done: [],
-        archived: []
+        archived: [],
+        // lists metadata optional; will be ensured on join if absent
+        lists: null
     });
 }
 
 function writeBoardData(projectId, boardName, data) {
     const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
     return writeJsonFile(boardFile, data);
+}
+
+function ensureListStatusArrays(boardData) {
+    try {
+        if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds)) {
+            for (const id of boardData.lists.listIds) {
+                const meta = boardData.lists.lists && boardData.lists.lists[id];
+                const st = meta && meta.status;
+                if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+            }
+        }
+        if (!Array.isArray(boardData.archived)) boardData.archived = [];
+    } catch (e) {}
 }
 
 function broadcastToBoard(projectId, boardName, message, excludeWs = null) {

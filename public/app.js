@@ -37,14 +37,35 @@ let importFileData = null;
 // Map legacy sections to dynamic lists on the client. Persist via existing fields.
 let clientLists = null; // { listIds:[], lists:{id:{id,title,pos,status}}, order:['todo','doing','done'] }
 
+function getClientListsStorageKey(){
+    const pid = currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
+    const bname = currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
+    return `kanbanClientLists:${pid}:${bname}`;
+}
+function loadClientListsFromStorage(){
+    try {
+        const raw = localStorage.getItem(getClientListsStorageKey());
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.listIds) && parsed.lists) return parsed;
+    } catch(e) { console.warn('Load clientLists failed', e); }
+    return null;
+}
+function saveClientListsToStorage(){
+    try { localStorage.setItem(getClientListsStorageKey(), JSON.stringify(clientLists)); } catch(e) { console.warn('Save clientLists failed', e); }
+}
+
 function ensureClientLists() {
     if (clientLists) return clientLists;
+    const restored = loadClientListsFromStorage();
+    if (restored) { clientLists = restored; return clientLists; }
     const defaults = [
         { id: 'todo', title: '待办', pos: 0, status: 'todo' },
         { id: 'doing', title: '进行中', pos: 1, status: 'doing' },
         { id: 'done', title: '已完成', pos: 2, status: 'done' }
     ];
     clientLists = { listIds: defaults.map(l=>l.id), lists: Object.fromEntries(defaults.map(l=>[l.id,l])) };
+    saveClientListsToStorage();
     return clientLists;
 }
 
@@ -143,10 +164,15 @@ document.addEventListener('DOMContentLoaded', function() {
     ['todo', 'doing', 'done'].forEach(status => {
         const titleInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Title`);
         if (titleInput) {
-            titleInput.addEventListener('keypress', function(e) {
+            let inputLock = false;
+            titleInput.addEventListener('keydown', function(e) {
+                if (e.isComposing || e.keyCode === 229) return; // IME composing
                 if (e.key === 'Enter' && this.value.trim()) {
                     e.preventDefault();
+                    if (inputLock) return;
+                    inputLock = true;
                     addCard(status, 'bottom');
+                    setTimeout(()=>{ inputLock = false; }, 250);
                 }
             });
         }
@@ -805,6 +831,15 @@ function handleWebSocketMessage(data) {
         case 'board-update':
             if (data.projectId === currentProjectId && data.boardName === currentBoardName) {
                 boardData = data.board;
+                if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
+                    clientLists = boardData.lists;
+                    // ensure arrays exist for every list status
+                    clientLists.listIds.forEach(id => {
+                        const st = clientLists.lists[id] && clientLists.lists[id].status;
+                        if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                    });
+                    saveClientListsToStorage();
+                }
                 pendingBoardUpdate = true;
                 scheduleDeferredRender();
             }
@@ -884,6 +919,16 @@ function renderBoard() {
     ensureClientLists();
     const container = document.getElementById('listsContainer');
     if (!container) return;
+
+    // capture current columns scroll positions to restore after render
+    const prevScrollTop = {};
+    try {
+        container.querySelectorAll('.column').forEach(col => {
+            const st = col.getAttribute('data-status');
+            if (st) prevScrollTop[st] = col.scrollTop;
+        });
+    } catch(e) {}
+
     container.innerHTML = '';
 
     clientLists.listIds
@@ -927,17 +972,26 @@ function renderBoard() {
             section.appendChild(composerWrap);
 
             container.appendChild(section);
-
-            // bind list title inline rename
-            bindListTitleInlineRename(section, list);
-            // bind list menu (rename/delete)
-            bindListMenu(section, list);
-            // bind composer
-            bindComposer(section, list);
-
-            // enable drag for this column (reuse existing)
-            enableColumnDrag(list.status);
+            // binders and drag set later below
         });
+
+    // restore scroll positions per column
+    try {
+        Object.keys(prevScrollTop).forEach(st => {
+            const col = container.querySelector(`.column[data-status="${st}"]`);
+            if (col && typeof prevScrollTop[st] === 'number') col.scrollTop = prevScrollTop[st];
+        });
+    } catch (e) {}
+
+    // bind list title inline rename
+    container.querySelectorAll('.list').forEach(section => {
+        const id = section.getAttribute('data-id');
+        const list = clientLists.lists[id];
+        bindListTitleInlineRename(section, list);
+        bindListMenu(section, list);
+        bindComposer(section, list);
+        enableColumnDrag(list.status);
+    });
 
     // add-list entry (UI only, maps to new status placeholders if needed)
     renderAddListEntry(container);
@@ -989,14 +1043,18 @@ function addClientList(title){
     ensureClientLists();
     const id = 'list_' + Date.now().toString(36);
     const pos = clientLists.listIds.length;
-    const status = pickAvailableStatusKey();
+    const status = id; // unique status per list
     clientLists.lists[id] = { id, title, pos, status };
     clientLists.listIds.push(id);
+    if (!Array.isArray(boardData[status])) boardData[status] = [];
+    saveClientListsToStorage();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
+    }
     renderBoard();
 }
 function pickAvailableStatusKey(){
-    // reuse last status key for rendering; since backend has fixed todo/doing/done, map extra lists to 'todo' for now
-    return 'todo';
+    return 'list_' + Math.random().toString(36).slice(2, 8);
 }
 
 function bindListTitleInlineRename(section, list){
@@ -1021,6 +1079,11 @@ function startListRename(titleEl, list){
         const h = document.createElement('h3'); h.className='list-title'; h.tabIndex=0; h.textContent=next;
         input.replaceWith(h);
         bindListTitleInlineRename(h.closest('.list'), list);
+        saveClientListsToStorage();
+        // sync to server
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
+        }
     });
 }
 function bindListMenu(section, list){
@@ -1034,6 +1097,11 @@ function removeClientList(listId){
     ensureClientLists();
     clientLists.listIds = clientLists.listIds.filter(id=>id!==listId);
     delete clientLists.lists[listId];
+    saveClientListsToStorage();
+    // sync to server
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
+    }
     renderBoard();
 }
 
@@ -1044,6 +1112,8 @@ function bindComposer(section, list){
     const cancel = section.querySelector('.composer-cancel');
 
     let isCancelling = false;
+    let isSubmitting = false;
+    let isComposingIme = false;
 
     function open(){
         const wrap = section.querySelector('.card-composer');
@@ -1062,12 +1132,23 @@ function bindComposer(section, list){
     cancel.onmousedown = ()=>{ isCancelling = true; };
     cancel.onclick = (e)=>{ e.preventDefault(); isCancelling = true; close(); setTimeout(()=>{ isCancelling = false; },0); };
 
+    textarea.addEventListener('compositionstart', ()=>{ isComposingIme = true; });
+    textarea.addEventListener('compositionend', ()=>{ isComposingIme = false; });
+
     form.addEventListener('keydown',(e)=>{
+        if (e.isComposing || e.keyCode === 229 || isComposingIme) return; // ignore IME confirm
         if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); submit(); }
         if(e.key==='Escape'){ e.preventDefault(); close(); }
     });
-    textarea.addEventListener('blur', ()=>{ if(isCancelling){ isCancelling=false; return; } if(textarea.value.trim()) submit(); else close(); });
-    form.addEventListener('submit',(e)=>{ e.preventDefault(); submit(); });
+    textarea.addEventListener('blur', ()=>{
+        if (isSubmitting) return;
+        if(isCancelling){ isCancelling=false; return; }
+        const active = document.activeElement;
+        const isSubmitBtn = active && active.closest && active.closest('.composer-actions') && active.type === 'submit';
+        if (isSubmitBtn) return;
+        if(textarea.value.trim()) submit(); else close();
+    });
+    form.addEventListener('submit',(e)=>{ e.preventDefault(); if (!isSubmitting) submit(); });
 
     // click outside to close when empty
     document.addEventListener('mousedown', (ev)=>{
@@ -1079,8 +1160,10 @@ function bindComposer(section, list){
     });
 
     function submit(){
+        if (isSubmitting) return;
+        isSubmitting = true;
         const title = textarea.value.trim();
-        if(!title) return;
+        if(!title){ isSubmitting = false; return; }
         const status = list.status;
         const card = {
             id: Date.now().toString(),
@@ -1096,15 +1179,23 @@ function bindComposer(section, list){
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type:'add-card', projectId: currentProjectId, boardName: currentBoardName, status, card, position:'bottom' }));
         }
-        renderBoard();
-        // reopen same composer for continuous add
-        const newSection = document.querySelector(`.list[data-id="${list.id}"]`);
-        if (newSection) {
-            const wrap = newSection.querySelector('.card-composer');
-            const ta = newSection.querySelector('.card-composer textarea');
-            const newForm = newSection.querySelector('.card-composer .composer');
-            if (wrap && ta && newForm) { wrap.classList.add('is-open'); newForm.hidden = false; ta.focus(); }
+        // collapse composer before drawing
+        const wrapBefore = section.querySelector('.card-composer');
+        if (wrapBefore) { wrapBefore.classList.remove('is-open'); }
+        // append card DOM directly to avoid full re-render jitter
+        let cardsContainer = section.querySelector('.cards');
+        if (!cardsContainer) {
+            const col = document.querySelector(`.column[data-status="${status}"]`);
+            cardsContainer = col ? col.querySelector('.cards') : null;
         }
+        if (cardsContainer) {
+            const el = createCardElement(card, status);
+            cardsContainer.appendChild(el);
+            makeDraggable(el);
+        } else {
+            renderBoard();
+        }
+        setTimeout(()=>{ isSubmitting = false; }, 300);
     }
 }
 
@@ -1521,26 +1612,40 @@ function addCard(status, position = 'bottom') {
     } else {
         boardData[status] = [...boardData[status], card];
     }
-    renderBoard();
+    // append new card DOM directly to reduce jitter
+    const columnEl = document.querySelector(`.column[data-status="${status}"]`);
+    const cardsEl = columnEl ? columnEl.querySelector('.cards') : null;
+    if (cardsEl) {
+        const el = createCardElement(card, status);
+        if (isTop) {
+            cardsEl.insertBefore(el, cardsEl.firstChild);
+        } else {
+            cardsEl.appendChild(el);
+        }
+        makeDraggable(el);
+    } else {
+        renderBoard();
+    }
 
     titleInput.value = '';
     assigneeInput.value = '';
     deadlineInput.value = '';
 
     // collapse the add form back
-    const columnEl = document.querySelector(`.column[data-status="${status}"]`);
-    const container = columnEl ? columnEl.querySelector(isTop ? '.add-card-top' : '.add-card:not(.add-card-top)') : null;
-    if (container && container.__collapseAdd) container.__collapseAdd();
+    const addContainer = columnEl ? columnEl.querySelector(isTop ? '.add-card-top' : '.add-card:not(.add-card-top)') : null;
+    if (addContainer && addContainer.__collapseAdd) addContainer.__collapseAdd();
 }
 
 // 移动卡片
 function moveCard(cardId, direction) {
-    const statuses = ['todo', 'doing', 'done'];
+    const statuses = (clientLists && clientLists.listIds || []).map(id => clientLists.lists[id].status);
+    if (!statuses.length) { return; }
     let fromStatus = null;
     let cardIndex = -1;
 
     for (const status of statuses) {
-        const index = boardData[status].findIndex(card => card.id === cardId);
+        const arr = Array.isArray(boardData[status]) ? boardData[status] : [];
+        const index = arr.findIndex(card => card.id === cardId);
         if (index !== -1) {
             fromStatus = status;
             cardIndex = index;
@@ -2922,7 +3027,25 @@ function enableListsDrag() {
         clientLists.listIds = ids;
         clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
         draggingListId = null;
+        if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
+        // persist & sync
+        saveClientListsToStorage();
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
+        }
     };
+}
+function getListAfterElement(container, x) {
+    const lists = [...container.querySelectorAll('.list:not(.dragging):not(#addListEntry):not(.add-list)')];
+    return lists.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = x - (box.left + box.width / 2);
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 // ===== End Lists drag =====
 

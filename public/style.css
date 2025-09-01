@@ -340,6 +340,7 @@ h1 {
     overflow-x: auto;
     max-width: none;
     width: 100%;
+    justify-content: flex-start;
 }
 
 /* 归档页面样式 */
@@ -2989,8 +2990,9 @@ body {
 }
 
 /* Match board header height and top alignment with homepage */
-#boardPage .header { padding: 1.25rem 0; margin-top: 0; }
-#boardPage .header > .container { padding: 0 2rem; }
+#boardPage .header { padding: 1rem 0; margin-top: 0; }
+#boardPage .header > .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; }
+#boardPage .board-header-left { display: flex; align-items: center; }
 #boardPage .board-breadcrumb { margin: 0; font-size: 1.75rem; }
 
 /* Ensure project/board select headers keep their spacing */
@@ -3398,8 +3400,8 @@ body {
 .card-composer textarea { width:100%; min-height:72px; border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:14px; resize:vertical; box-shadow:0 1px 0 rgba(9,30,66,.1); background:#fff; }
 .card-composer .composer-actions { display:flex; align-items:center; gap:8px; margin-top:6px; }
 .card-composer .btn-primary { padding:6px 10px; border-radius:6px; border:0; background:#0c66e4; color:#fff; }
-.card-composer .composer-cancel { width:28px; height:28px; border:0; border-radius:6px; background:transparent; cursor:pointer; }
-.card-composer .composer-cancel:hover { background:rgba(9,30,66,.08); }
+.card-composer .composer-cancel { width:28px; height:28px; border:0; border-radius:6px; background:transparent; cursor:pointer; color:#0c66e4; font-weight:700; font-size:18px; }
+.card-composer .composer-cancel:hover { background:rgba(12,102,228,.10); color:#0b5bd7; }
 
 /* add another list entry */
 .add-list { background: transparent; border:0; border-radius:8px; width: var(--list-width); min-width: var(--list-width); max-width: var(--list-width); display:flex; align-items:flex-start; }
@@ -3412,7 +3414,11 @@ body {
 .add-list .add-list-cancel { padding:6px 10px; border-radius:6px; border:0; background:transparent; }
 
 /* inline card title input */
-.card-title-input { width:100%; border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:14px; font-weight:600; }
+.card-title-input { width:100%; border:1px solid var(--border); border-radius:6px; padding:2px 8px 6px; font-size:14px; font-weight:600; line-height: 1.28; }
+
+/* title spacing and button alignment */
+.card .card-title { padding-right: 28px; display: block; }
+.card-quick { top: 2px; line-height: 1; }
 
 /* tighten card spacing and list paddings */
 .board-container { gap: var(--list-gap); padding: 12px; }
@@ -3502,3 +3508,21 @@ body {
 .card-quick::before { content: ''; }
 .card-quick { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 7L17 10L9 18H6V15L14 7Z" fill="black"/></svg>') no-repeat center / 16px 16px; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M14 7L17 10L9 18H6V15L14 7Z\" fill=\"black\"/></svg>') no-repeat center / 16px 16px; background-color:#44546f; }
 .card:hover .card-quick { background-color:#2e3a59; }
+
+/* hide empty labels container */
+.card-labels:empty { display: none !important; }
+
+/* left align lists (columns) */
+.board-container { justify-content: flex-start; }
+
+/* header alignment like home/project: left title, right buttons */
+.header > .container { display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap; }
+#boardPage .header .container { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: nowrap; }
+
+
+/* refined: only date/user align right; keep other badges left */
+.card .card-badges { justify-content: flex-start; }
+.card .card-badges:has(.card-deadline) .card-deadline { margin-left: auto; }
+.card .card-badges:not(:has(.card-deadline)) .card-assignee { margin-left: auto; }
+/* lower title a bit more */
+.card .card-title { margin-top: 6px; }
