@@ -2877,6 +2877,7 @@ function enableListsDrag() {
 
     container.ondragover = (e) => {
         e.preventDefault();
+        const beforeRects = captureListRects(container);
         const after = getListAfterElement(container, e.clientX);
         const draggingEl = container.querySelector('.list.dragging');
         if (!draggingEl) return;
@@ -2885,6 +2886,7 @@ function enableListsDrag() {
         } else {
             container.insertBefore(draggingEl, after);
         }
+        playFLIPList(container, beforeRects);
     };
 
     container.ondrop = () => {
@@ -2897,6 +2899,35 @@ function enableListsDrag() {
         clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
         draggingListId = null;
     };
+}
+
+function captureListRects(container){
+    const rects = new Map();
+    container.querySelectorAll('.list').forEach(el=>{
+        if (el.id === 'addListEntry') return;
+        const r = el.getBoundingClientRect();
+        rects.set(el, { x:r.left, y:r.top });
+    });
+    return rects;
+}
+
+function playFLIPList(container, beforeRects){
+    container.querySelectorAll('.list').forEach(el=>{
+        if (el.classList.contains('dragging') || el.id === 'addListEntry') return;
+        const before = beforeRects.get(el);
+        if (!before) return;
+        const r = el.getBoundingClientRect();
+        const dx = before.x - r.left;
+        const dy = before.y - r.top;
+        if (dx || dy){
+            el.style.transform = `translate(${dx}px, ${dy}px)`;
+            el.style.transition = 'transform 0s';
+            // Force reflow
+            void el.offsetWidth;
+            el.style.transition = 'transform 150ms ease';
+            el.style.transform = 'translate(0, 0)';
+        }
+    });
 }
 
 function getListAfterElement(container, x) {

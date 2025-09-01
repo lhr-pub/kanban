@@ -3439,3 +3439,6 @@ body {
 /* composer state toggle */
 .card-composer:not(.is-open) .composer { display:none; }
 .card-composer.is-open .composer-open { display:none; }
+
+/* list dragging visual */
+.list.dragging { transform: rotate(1.5deg) scale(1.02); box-shadow: 0 8px 16px rgba(9,30,66,.25); opacity: .98; }
