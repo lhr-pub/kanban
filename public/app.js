@@ -2814,11 +2814,11 @@ function enableColumnDrag(status) {
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
         const afterEl = getDragAfterElement(container, e.clientY);
         const dragging = document.querySelector('.card.dragging');
-        if (!dragging || !cardPlaceholderEl) return;
+        if (!dragging) return;
         if (afterEl == null) {
-            container.appendChild(cardPlaceholderEl);
+            container.appendChild(dragging);
         } else {
-            container.insertBefore(cardPlaceholderEl, afterEl);
+            container.insertBefore(dragging, afterEl);
         }
     };
 
@@ -2826,15 +2826,7 @@ function enableColumnDrag(status) {
         const toStatus = status;
         const fromStatus = draggingFromStatus;
         const movedCardId = draggingCardId;
-        const containerEl = container;
-        const draggingEl = document.querySelector('.card.dragging');
-        if (draggingEl && cardPlaceholderEl) {
-            containerEl.insertBefore(draggingEl, cardPlaceholderEl);
-            draggingEl.style.display = '';
-            cardPlaceholderEl.parentNode.removeChild(cardPlaceholderEl);
-            cardPlaceholderEl = null;
-        }
-        const orderedIds = Array.from(containerEl.querySelectorAll('.card')).map(el => el.dataset.cardId);
+        const orderedIds = Array.from(container.querySelectorAll('.card')).map(el => el.dataset.cardId);
         if (socket && socket.readyState === WebSocket.OPEN) {
             if (movedCardId && fromStatus && fromStatus !== toStatus) {
                 socket.send(JSON.stringify({ type:'move-card', projectId: currentProjectId, boardName: currentBoardName, cardId:movedCardId, fromStatus, toStatus }));
@@ -2848,13 +2840,8 @@ function enableColumnDrag(status) {
 
     container.ondragover = handleDragOver;
     container.ondrop = handleDrop;
-
-    // bind also on the list wrapper so drop works even if not exactly over cards area
     const listWrapper = container.closest('.list, .column');
-    if (listWrapper) {
-        listWrapper.ondragover = handleDragOver;
-        listWrapper.ondrop = handleDrop;
-    }
+    if (listWrapper) { listWrapper.ondragover = handleDragOver; listWrapper.ondrop = handleDrop; }
 }
 
 function makeDraggable(cardEl) {
@@ -2865,29 +2852,13 @@ function makeDraggable(cardEl) {
         draggingFromStatus = col ? col.getAttribute('data-status') : null;
         draggingCardId = cardEl.dataset.cardId;
         document.body.classList.add('dragging-cards');
-        // placeholder same size
-        const rect = cardEl.getBoundingClientRect();
-        cardPlaceholderEl = document.createElement('div');
-        cardPlaceholderEl.className = 'card card-placeholder';
-        cardPlaceholderEl.style.height = rect.height + 'px';
-        cardPlaceholderEl.style.width = rect.width + 'px';
-        cardEl.parentNode.insertBefore(cardPlaceholderEl, cardEl);
-        // hide original during drag image
-        cardEl.style.display = 'none';
-        try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); } catch (e) {}
+        try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); e.dataTransfer.effectAllowed = 'move'; } catch (e) {}
     };
     cardEl.ondragend = () => {
         cardEl.classList.remove('dragging');
         document.body.classList.remove('dragging-cards');
-        // restore if placeholder still present
-        if (cardPlaceholderEl && cardPlaceholderEl.parentNode && cardEl.style.display === 'none') {
-            cardPlaceholderEl.parentNode.insertBefore(cardEl, cardPlaceholderEl);
-            cardEl.style.display = '';
-            cardPlaceholderEl.parentNode.removeChild(cardPlaceholderEl);
-        }
         draggingCardId = null;
         draggingFromStatus = null;
-        cardPlaceholderEl = null;
     };
 }
 
@@ -2904,142 +2875,54 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
-// ===== Lists drag (frontend order only) =====
+// ===== Lists drag (simple) =====
 let draggingListId = null;
-let listDragImageEl = null;
-let listPlaceholderEl = null;
+let listDragImageEl = null; // not used in simple mode
+let listPlaceholderEl = null; // not used in simple mode
 
 function enableListsDrag() {
     const container = document.getElementById('listsContainer');
     if (!container) return;
 
-    // Set draggable on list headers as handles
-    container.querySelectorAll('.list:not(.add-list)').forEach(listEl => {
-        const h = listEl.querySelector('.list-header');
-        // make whole list draggable, but avoid starting when dragging cards/composer inside
-        listEl.setAttribute('draggable', 'true');
-        listEl.ondragstart = (e) => {
-            if (e.target && (e.target.closest('.card') || e.target.closest('.composer') || e.target.closest('.composer-open'))) {
-                e.preventDefault();
-                return;
-            }
+    // Make header the drag handle but move the whole list element
+    container.querySelectorAll('.list:not(.add-list) .list-header').forEach(h => {
+        h.setAttribute('draggable', 'true');
+        h.ondragstart = (e) => {
+            const listEl = h.closest('.list');
             draggingListId = listEl.getAttribute('data-id');
             listEl.classList.add('dragging');
             if (e.dataTransfer) { try { e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {} }
-            // create placeholder occupying original slot
-            const rect = listEl.getBoundingClientRect();
-            listPlaceholderEl = document.createElement('div');
-            listPlaceholderEl.className = 'list list-placeholder';
-            listPlaceholderEl.style.height = rect.height + 'px';
-            listPlaceholderEl.style.width = rect.width + 'px';
-            container.insertBefore(listPlaceholderEl, listEl);
-            // hide original element; use drag image for cursor
-            listEl.style.display = 'none';
-            try {
-                if (e.dataTransfer) {
-                    // visual clone follows cursor
-                    listDragImageEl = listEl.cloneNode(true);
-                    listDragImageEl.style.position = 'fixed';
-                    listDragImageEl.style.left = '-1000px';
-                    listDragImageEl.style.top = '-1000px';
-                    listDragImageEl.style.width = rect.width + 'px';
-                    listDragImageEl.style.pointerEvents = 'none';
-                    listDragImageEl.style.transform = 'rotate(1.5deg) scale(1.02)';
-                    listDragImageEl.style.boxShadow = '0 8px 16px rgba(9,30,66,.25)';
-                    document.body.appendChild(listDragImageEl);
-                    const offsetX = e.clientX - rect.left;
-                    const offsetY = e.clientY - rect.top;
-                    e.dataTransfer.setDragImage(listDragImageEl, offsetX, offsetY);
-                }
-            } catch {}
         };
-        listEl.ondragend = () => {
+        h.ondragend = () => {
+            const listEl = h.closest('.list');
             if (!listEl) return;
             listEl.classList.remove('dragging');
-            if (listPlaceholderEl && listPlaceholderEl.parentNode && listEl.style.display === 'none') {
-                listPlaceholderEl.parentNode.insertBefore(listEl, listPlaceholderEl);
-                listEl.style.display = '';
-                listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
-            }
             draggingListId = null;
-            if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
-            listPlaceholderEl = null;
         };
     });
 
     container.ondragover = (e) => {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        const beforeRects = captureListRects(container);
         const after = getListAfterElement(container, e.clientX);
-        if (!listPlaceholderEl) return;
+        const draggingEl = container.querySelector('.list.dragging');
+        if (!draggingEl) return;
         if (after == null) {
-            container.insertBefore(listPlaceholderEl, container.querySelector('#addListEntry'));
+            container.insertBefore(draggingEl, container.querySelector('#addListEntry'));
         } else {
-            container.insertBefore(listPlaceholderEl, after);
+            container.insertBefore(draggingEl, after);
         }
-        playFLIPList(container, beforeRects);
     };
 
     container.ondrop = () => {
         if (!draggingListId || !clientLists) return;
-        const draggingEl = container.querySelector('.list.dragging');
-        if (draggingEl && listPlaceholderEl) {
-            container.insertBefore(draggingEl, listPlaceholderEl);
-            draggingEl.style.display = '';
-            listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
-            listPlaceholderEl = null;
-        }
         const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
             .filter(el => el.classList.contains('list'))
             .map(el => el.getAttribute('data-id'));
         clientLists.listIds = ids;
         clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
         draggingListId = null;
-        if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
     };
-}
-
-function getListAfterElement(container, x) {
-    const lists = [...container.querySelectorAll('.list:not(.dragging):not(#addListEntry):not(.add-list):not(.list-placeholder)')];
-    return lists.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = x - (box.left + box.width / 2);
-        if (offset < 0 && offset > closest.offset) {
-            return { offset, element: child };
-        } else {
-            return closest;
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
-}
-
-function captureListRects(container){
-    const rects = new Map();
-    container.querySelectorAll('.list').forEach(el=>{
-        if (el.id === 'addListEntry') return;
-        const r = el.getBoundingClientRect();
-        rects.set(el, { x:r.left, y:r.top });
-    });
-    return rects;
-}
-
-function playFLIPList(container, beforeRects){
-    container.querySelectorAll('.list').forEach(el=>{
-        if (el.classList.contains('dragging') || el.id === 'addListEntry') return;
-        const before = beforeRects.get(el);
-        if (!before) return;
-        const r = el.getBoundingClientRect();
-        const dx = before.x - r.left;
-        const dy = before.y - r.top;
-        if (dx || dy){
-            el.style.transform = `translate(${dx}px, ${dy}px)`;
-            el.style.transition = 'transform 0s';
-            // Force reflow
-            void el.offsetWidth;
-            el.style.transition = 'transform 150ms ease';
-            el.style.transform = 'translate(0, 0)';
-        }
-    });
 }
 // ===== End Lists drag =====
 
