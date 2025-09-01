@@ -1043,8 +1043,18 @@ function bindComposer(section, list){
     const textarea = form.querySelector('textarea');
     const cancel = form.querySelector('.composer-cancel');
 
-    function open(){ section.querySelector('.card-composer').classList.add('is-open'); textarea.focus(); }
-    function close(){ section.querySelector('.card-composer').classList.remove('is-open'); textarea.value=''; }
+    function open(){
+        const wrap = section.querySelector('.card-composer');
+        wrap.classList.add('is-open');
+        form.hidden = false;
+        textarea.focus();
+    }
+    function close(){
+        const wrap = section.querySelector('.card-composer');
+        wrap.classList.remove('is-open');
+        form.hidden = true;
+        textarea.value='';
+    }
 
     opener.onclick = (e)=>{ e.preventDefault(); open(); };
     cancel.onclick = (e)=>{ e.preventDefault(); close(); };
@@ -1084,7 +1094,8 @@ function bindComposer(section, list){
         if (newSection) {
             const wrap = newSection.querySelector('.card-composer');
             const ta = newSection.querySelector('.card-composer textarea');
-            if (wrap && ta) { wrap.classList.add('is-open'); ta.focus(); }
+            const newForm = newSection.querySelector('.card-composer .composer');
+            if (wrap && ta && newForm) { wrap.classList.add('is-open'); newForm.hidden = false; ta.focus(); }
         }
     }
 }
