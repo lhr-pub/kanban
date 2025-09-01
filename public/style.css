@@ -3403,7 +3403,7 @@ body {
 
 /* add another list entry */
 .add-list { background: transparent; border:0; border-radius:8px; width: var(--list-width); min-width: var(--list-width); max-width: var(--list-width); display:flex; align-items:flex-start; }
-.add-list .add-list-open { width:100%; min-height:40px; text-align:left; background:rgba(236,238,240,.8); border:0; border-radius:8px; color:#0c66e4; padding:8px 10px; cursor:pointer; }
+.add-list .add-list-open { width:100%; min-height:40px; text-align:left; background:rgba(236,238,240,.8); border:1px dashed #dfe1e6; border-radius:8px; color:#0c66e4; padding:8px 10px; cursor:pointer; }
 .add-list .add-list-open:hover { background:rgba(236,238,240,1); }
 .add-list .add-list-form { width:100%; }
 .add-list .add-list-form input { width:100%; height:36px; border:1px solid var(--border); border-radius:8px; padding:0 10px; }
@@ -3433,7 +3433,7 @@ body {
 .card:hover .card-quick { opacity:1; }
 
 /* add-card open button matches list background */
-.card-composer .composer-open { width: 100%; text-align: left; color:#44546f; background: #ebecf0; border: 0; }
+.card-composer .composer-open { width: 100%; text-align: left; color:#44546f; background: #ebecf0; border: 1px dashed #dfe1e6; }
 .card-composer .composer-open:hover { background:#e3e5e9; }
 
 /* composer state toggle */
@@ -3502,10 +3502,3 @@ body {
 .card-quick::before { content: ''; }
 .card-quick { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 7L17 10L9 18H6V15L14 7Z" fill="black"/></svg>') no-repeat center / 16px 16px; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M14 7L17 10L9 18H6V15L14 7Z\" fill=\"black\"/></svg>') no-repeat center / 16px 16px; background-color:#44546f; }
 .card:hover .card-quick { background-color:#2e3a59; }
-
-/* tighter card text margins */
-.card .card-title { margin-top: 2px; }
-
-/* remove dashed borders definitively */
-.add-list .add-list-open { border: 0 !important; }
-.card-composer .composer-open { border: 0 !important; background: transparent; }

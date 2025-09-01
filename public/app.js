@@ -1182,8 +1182,8 @@ function createCardElement(card, status) {
         : '';
 
     const moreBtn = (status === 'archived')
-        ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')\" aria-label="还原"></button>`
-        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')\" aria-label="编辑"></button>`;
+        ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原"></button>`
+        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
 
     const badges = `${descIcon}${deadlineHtml}${assigneeHtml}`;
 
@@ -2872,17 +2872,17 @@ function makeDraggable(cardEl) {
         cardPlaceholderEl.style.height = rect.height + 'px';
         cardPlaceholderEl.style.width = rect.width + 'px';
         cardEl.parentNode.insertBefore(cardPlaceholderEl, cardEl);
-        // hide original during drag image (keep layout)
-        cardEl.style.visibility = 'hidden';
-        try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); if(e.dataTransfer) e.dataTransfer.effectAllowed='move'; } catch (e) {}
+        // hide original during drag image
+        cardEl.style.display = 'none';
+        try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); } catch (e) {}
     };
     cardEl.ondragend = () => {
         cardEl.classList.remove('dragging');
         document.body.classList.remove('dragging-cards');
         // restore if placeholder still present
-        if (cardPlaceholderEl && cardPlaceholderEl.parentNode && cardEl.style.visibility === 'hidden') {
+        if (cardPlaceholderEl && cardPlaceholderEl.parentNode && cardEl.style.display === 'none') {
             cardPlaceholderEl.parentNode.insertBefore(cardEl, cardPlaceholderEl);
-            cardEl.style.visibility = '';
+            cardEl.style.display = '';
             cardPlaceholderEl.parentNode.removeChild(cardPlaceholderEl);
         }
         draggingCardId = null;
@@ -2914,10 +2914,15 @@ function enableListsDrag() {
     if (!container) return;
 
     // Set draggable on list headers as handles
-    container.querySelectorAll('.list:not(.add-list) .list-header').forEach(h => {
-        h.setAttribute('draggable', 'true');
-        h.ondragstart = (e) => {
-            const listEl = h.closest('.list');
+    container.querySelectorAll('.list:not(.add-list)').forEach(listEl => {
+        const h = listEl.querySelector('.list-header');
+        // make whole list draggable, but avoid starting when dragging cards/composer inside
+        listEl.setAttribute('draggable', 'true');
+        listEl.ondragstart = (e) => {
+            if (e.target && (e.target.closest('.card') || e.target.closest('.composer') || e.target.closest('.composer-open'))) {
+                e.preventDefault();
+                return;
+            }
             draggingListId = listEl.getAttribute('data-id');
             listEl.classList.add('dragging');
             if (e.dataTransfer) { try { e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {} }
@@ -2929,7 +2934,7 @@ function enableListsDrag() {
             listPlaceholderEl.style.width = rect.width + 'px';
             container.insertBefore(listPlaceholderEl, listEl);
             // hide original element; use drag image for cursor
-            listEl.style.visibility = 'hidden';
+            listEl.style.display = 'none';
             try {
                 if (e.dataTransfer) {
                     // visual clone follows cursor
@@ -2948,13 +2953,12 @@ function enableListsDrag() {
                 }
             } catch {}
         };
-        h.ondragend = () => {
-            const listEl = h.closest('.list');
+        listEl.ondragend = () => {
             if (!listEl) return;
             listEl.classList.remove('dragging');
-            if (listPlaceholderEl && listPlaceholderEl.parentNode && listEl.style.visibility === 'hidden') {
+            if (listPlaceholderEl && listPlaceholderEl.parentNode && listEl.style.display === 'none') {
                 listPlaceholderEl.parentNode.insertBefore(listEl, listPlaceholderEl);
-                listEl.style.visibility = '';
+                listEl.style.display = '';
                 listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
             }
             draggingListId = null;
@@ -3237,16 +3241,3 @@ function setupAddCardCollapsed(container, status, position) {
     // After Enter add, addCard will call collapse too
     container.__collapseAdd = collapse;
 }
-
-(function ensureDraggableDelegation(){
-    document.addEventListener('mousedown', (e)=>{
-        const header = e.target.closest('.list .list-header');
-        if (header) {
-            header.setAttribute('draggable','true');
-        }
-        const card = e.target.closest('.card');
-        if (card && !e.target.closest('.card-quick') && !e.target.closest('.card-assignee') && !e.target.closest('.card-deadline') && !e.target.closest('.title-text') && !e.target.closest('.inline-title-input')) {
-            card.setAttribute('draggable','true');
-        }
-    });
-})();
