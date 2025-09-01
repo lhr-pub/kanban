@@ -2809,8 +2809,9 @@ function enableColumnDrag(status) {
 
     container.querySelectorAll('.card').forEach(makeDraggable);
 
-    container.ondragover = (e) => {
+    const handleDragOver = (e) => {
         e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
         const afterEl = getDragAfterElement(container, e.clientY);
         const dragging = document.querySelector('.card.dragging');
         if (!dragging || !cardPlaceholderEl) return;
@@ -2821,7 +2822,7 @@ function enableColumnDrag(status) {
         }
     };
 
-    container.ondrop = () => {
+    const handleDrop = () => {
         const toStatus = status;
         const fromStatus = draggingFromStatus;
         const movedCardId = draggingCardId;
@@ -2833,22 +2834,27 @@ function enableColumnDrag(status) {
             cardPlaceholderEl.parentNode.removeChild(cardPlaceholderEl);
             cardPlaceholderEl = null;
         }
-
-        // 新顺序
         const orderedIds = Array.from(containerEl.querySelectorAll('.card')).map(el => el.dataset.cardId);
-
         if (socket && socket.readyState === WebSocket.OPEN) {
             if (movedCardId && fromStatus && fromStatus !== toStatus) {
                 socket.send(JSON.stringify({ type:'move-card', projectId: currentProjectId, boardName: currentBoardName, cardId:movedCardId, fromStatus, toStatus }));
             }
             socket.send(JSON.stringify({ type:'reorder-cards', projectId: currentProjectId, boardName: currentBoardName, status: toStatus, orderedIds }));
         }
-
-        // 清理状态
         draggingCardId = null;
         draggingFromStatus = null;
         document.body.classList.remove('dragging-cards');
     };
+
+    container.ondragover = handleDragOver;
+    container.ondrop = handleDrop;
+
+    // bind also on the list wrapper so drop works even if not exactly over cards area
+    const listWrapper = container.closest('.list, .column');
+    if (listWrapper) {
+        listWrapper.ondragover = handleDragOver;
+        listWrapper.ondrop = handleDrop;
+    }
 }
 
 function makeDraggable(cardEl) {
@@ -2914,6 +2920,7 @@ function enableListsDrag() {
             const listEl = h.closest('.list');
             draggingListId = listEl.getAttribute('data-id');
             listEl.classList.add('dragging');
+            if (e.dataTransfer) { try { e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {} }
             // create placeholder occupying original slot
             const rect = listEl.getBoundingClientRect();
             listPlaceholderEl = document.createElement('div');
@@ -2925,7 +2932,6 @@ function enableListsDrag() {
             listEl.style.display = 'none';
             try {
                 if (e.dataTransfer) {
-                    e.dataTransfer.effectAllowed = 'move';
                     // visual clone follows cursor
                     listDragImageEl = listEl.cloneNode(true);
                     listDragImageEl.style.position = 'fixed';
@@ -2946,23 +2952,20 @@ function enableListsDrag() {
             const listEl = h.closest('.list');
             if (!listEl) return;
             listEl.classList.remove('dragging');
-            // If placeholder exists but drop didn't occur, restore
             if (listPlaceholderEl && listPlaceholderEl.parentNode && listEl.style.display === 'none') {
                 listPlaceholderEl.parentNode.insertBefore(listEl, listPlaceholderEl);
                 listEl.style.display = '';
                 listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
             }
             draggingListId = null;
-            if (listDragImageEl && listDragImageEl.parentNode) {
-                listDragImageEl.parentNode.removeChild(listDragImageEl);
-                listDragImageEl = null;
-            }
+            if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
             listPlaceholderEl = null;
         };
     });
 
     container.ondragover = (e) => {
         e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
         const beforeRects = captureListRects(container);
         const after = getListAfterElement(container, e.clientX);
         if (!listPlaceholderEl) return;
@@ -2983,17 +2986,13 @@ function enableListsDrag() {
             listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
             listPlaceholderEl = null;
         }
-        // Recompute order based on DOM
         const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
             .filter(el => el.classList.contains('list'))
             .map(el => el.getAttribute('data-id'));
         clientLists.listIds = ids;
         clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
         draggingListId = null;
-        if (listDragImageEl && listDragImageEl.parentNode) {
-            listDragImageEl.parentNode.removeChild(listDragImageEl);
-            listDragImageEl = null;
-        }
+        if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
     };
 }
 

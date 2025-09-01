@@ -3496,3 +3496,9 @@ body {
 
 /* deadline chip remove emoji spacing */
 .card-deadline { padding-left: 6px; }
+
+/* card edit pencil left-oriented */
+.card-quick { width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; background:transparent; border:0; }
+.card-quick::before { content: ''; }
+.card-quick { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 7L17 10L9 18H6V15L14 7Z" fill="black"/></svg>') no-repeat center / 16px 16px; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M14 7L17 10L9 18H6V15L14 7Z\" fill=\"black\"/></svg>') no-repeat center / 16px 16px; background-color:#44546f; }
+.card:hover .card-quick { background-color:#2e3a59; }
