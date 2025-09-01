@@ -3453,3 +3453,11 @@ body {
 .card-deadline.unset { color:#97a0af; }
 .card-assignee.clickable:hover { background:#e1ecff !important; }
 .card-deadline.clickable:hover { background:#e9ecef !important; }
+
+/* === Compact card height tweaks === */
+.cards { gap: 4px; }
+.list { padding: 4px; }
+.card { padding: 6px 8px; margin-bottom: 4px; }
+.card .card-title { font-size: 13.5px; line-height: 1.25; -webkit-line-clamp: 2; }
+.card-badges { gap: 6px; margin-top: 4px; }
+.card-assignee, .card-deadline { padding: 1px 6px; font-size: 11px; min-height: 18px; }
