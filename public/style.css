@@ -3659,3 +3659,170 @@ body {
     .toast { background: rgba(0,0,0,.85); }
     .toast-info { background: #111827; }
 }
+
+/* archive quick button on card - compact, neutral */
+.card-quick-archive {
+    position: absolute;
+    top: 2px; /* align with .card-quick */
+    right: 36px; /* 6px gap from edit (24px icon + 6px) */
+    width: 24px;
+    height: 24px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background-color: transparent;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity .12s, background-color .12s, box-shadow .12s, border-color .12s, color .12s;
+    /* use SVG background for icon so hover background is visible */
+    mask: none; -webkit-mask: none;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+    color: #6b7280; /* icon color */
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.17l-3.88-3.88-1.41 1.41L9 19 20.29 7.71l-1.41-1.41z"/></svg>');
+}
+.card:hover .card-quick-archive { opacity: 1; }
+.card-quick-archive:hover { background-color: #eef2ff; border-color: #c7d2fe; box-shadow: 0 2px 6px rgba(0,0,0,0.18); color: #1e40af; }
+
+@media (prefers-color-scheme: dark) {
+    .card-quick-archive { color: #cbd5e1; }
+    .card-quick-archive:hover { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #93c5fd; }
+}
+
+/* Archive page refinements */
+.archive-container {
+    max-width: 920px;
+    padding: 16px;
+}
+.archive-column {
+    background: #ffffff;
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    padding: 12px;
+}
+.archive-column h3 {
+    margin: 0 0 10px 0;
+    padding: 0 0 8px 0;
+    border-bottom: 1px solid var(--gray-200);
+    color: #374151;
+}
+.archive-column .cards { gap: 8px; }
+.archive-column .card { background: #fff; border: 1px solid var(--gray-200); opacity: 1; }
+.archive-column .card:hover { background: #fafafa; }
+
+/* empty state alignment */
+#archivedCards:empty::before {
+    content: '暂无归档任务';
+    display: block;
+    text-align: center;
+    color: #6b7280;
+    padding: 24px 0;
+}
+
+/* Dark mode tweaks for archive */
+@media (prefers-color-scheme: dark) {
+    .card-quick-archive { background: #d97706; }
+    .archive-column { background: #0f172a; border-color: var(--gray-300); box-shadow: var(--shadow-sm); }
+    .archive-column h3 { border-bottom-color: var(--gray-300); color: var(--gray-700); }
+    #archivedCards:empty::before { color: var(--gray-700); }
+}
+
+/* restore chip on archived cards */
+.card-actions-row { margin-top: 8px; display: flex; justify-content: flex-end; }
+.restore-chip { height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--gray-300); background: #f3f4f6; color: #374151; cursor: pointer; font-size: 12px; }
+.restore-chip:hover { background: #e5e7eb; }
+
+/* Archive page header (align with project header) */
+#archivePage .header {
+    background: #ffffff;
+    border-bottom: 1px solid var(--gray-200);
+    padding: 0.75rem 0;
+}
+#archivePage .header > .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+#archivePage .header h1 { font-size: 20px; margin: 0; color: #1f2937; }
+#archivePage .header .header-actions { display: flex; gap: 0.75rem; }
+
+@media (prefers-color-scheme: dark) {
+    #archivePage .header { background: #0f172a; border-bottom-color: var(--gray-300); }
+    #archivePage .header h1 { color: var(--gray-700); }
+}
+
+/* === Final overrides: unify quick icons alignment and hover visuals (refined) === */
+.card-quick,
+.card-quick-archive {
+    position: absolute;
+    top: 6px; /* align to original edit button baseline */
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    opacity: 0;
+    transition: opacity .12s, background-color .12s, border-color .12s, box-shadow .12s, color .12s;
+    border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: #64748b; /* neutral icon */
+}
+.card:hover .card-quick,
+.card:hover .card-quick-archive { opacity: 1; }
+
+/* Edit (pencil) */
+.card-quick {
+    right: 6px;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42L18.37 3.29a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.83z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+}
+
+/* Archive (check) */
+.card-quick-archive {
+    right: 36px; /* 6px gap from edit */
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.17l-3.88-3.88-1.41 1.41L9 19 20.29 7.71l-1.41-1.41z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+}
+
+/* Hover/Focus visuals: soft blue, clear on white backgrounds */
+.card-quick:hover,
+.card-quick-archive:hover { background-color: #eef2ff; border-color: #dbeafe; box-shadow: 0 2px 6px rgba(0,0,0,0.12); color: #1e40af; }
+.card-quick:focus-visible,
+.card-quick-archive:focus-visible { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
+.card-quick:focus,
+.card-quick-archive:focus { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
+
+@media (prefers-color-scheme: dark) {
+    .card-quick,
+    .card-quick-archive { color: #cbd5e1; }
+    .card-quick:hover,
+    .card-quick-archive:hover { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #93c5fd; }
+    .card-quick:focus-visible,
+    .card-quick-archive:focus-visible { background-color: rgba(255,255,255,0.10); border-color: var(--gray-300); box-shadow: 0 0 0 3px rgba(99,102,241,0.28); color: #bfdbfe; }
+}
+
+/* Fix legacy mask and enforce hover/focus for quick actions */
+.card-quick { -webkit-mask: none; mask: none; }
+.card:hover .card-quick,
+.card:hover .card-quick-archive { background-color: #eef2ff; border-color: #dbeafe; box-shadow: 0 2px 6px rgba(0,0,0,0.12); color: #1e40af; }
+.card:hover .card-quick:focus,
+.card:hover .card-quick:focus-visible,
+.card:hover .card-quick-archive:focus,
+.card:hover .card-quick-archive:focus-visible { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
+@media (prefers-color-scheme: dark) {
+    .card:hover .card-quick,
+    .card:hover .card-quick-archive { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #93c5fd; }
+    .card:hover .card-quick:focus,
+    .card:hover .card-quick:focus-visible,
+    .card:hover .card-quick-archive:focus,
+    .card:hover .card-quick-archive:focus-visible { background-color: rgba(255,255,255,0.10); border-color: var(--gray-300); box-shadow: 0 0 0 3px rgba(99,102,241,0.28); color: #bfdbfe; }
+}

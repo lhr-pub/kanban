@@ -1284,7 +1284,6 @@ function createCardElement(card, status) {
     const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
     const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
 
-    // Show chips only when set (no placeholders)
     const assigneeHtml = card.assignee
         ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>`
         : '';
@@ -1296,18 +1295,27 @@ function createCardElement(card, status) {
         ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原"></button>`
         : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
 
+    const archiveBtn = (status !== 'archived')
+        ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}')" aria-label="归档"></button>`
+        : '';
+
+    const restoreChip = (status === 'archived')
+        ? `<div class="card-actions-row"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button></div>`
+        : '';
+
     const badges = `${descIcon}${deadlineHtml}${assigneeHtml}`;
 
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
         <div class="card-title">${escapeHtml(card.title || '未命名')}</div>
         ${badges ? `<div class="card-badges">${badges}</div>` : ''}
+        ${restoreChip}
+        ${archiveBtn}
         ${moreBtn}
     `;
 
-    // Clicking logic: title -> inline edit, chips handled by their own click; others -> open modal
     cardElement.addEventListener('click', (e) => {
-        if (e.target.closest('.card-quick')) return;
+        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.restore-chip')) return;
         if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
         if (e.target.closest('.card-title')) { inlineEditCardTitle(cardElement); return; }
         openEditModal(card.id);
@@ -1698,11 +1706,16 @@ function moveCard(cardId, direction) {
 
 // 归档卡片
 function archiveCard(cardId) {
-    const cardIndex = boardData.done.findIndex(card => card.id === cardId);
-    if (cardIndex === -1) {
-        alert('只能归档已完成的任务');
-        return;
+    // find card from any non-archived column
+    let fromStatus = null;
+    let cardObj = null;
+    for (const s of ['todo','doing','done']) {
+        const idx = (boardData[s] || []).findIndex(c => c.id === cardId);
+        if (idx !== -1) { fromStatus = s; cardObj = boardData[s][idx]; boardData[s].splice(idx,1); break; }
     }
+    if (!fromStatus) { return; }
+    boardData.archived = boardData.archived || [];
+    boardData.archived.push(cardObj);
 
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
@@ -1710,9 +1723,10 @@ function archiveCard(cardId) {
             projectId: currentProjectId,
             boardName: currentBoardName,
             cardId: cardId,
-            fromStatus: 'done'
+            fromStatus
         }));
     }
+    renderBoard();
 }
 
 // 还原卡片
