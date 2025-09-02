@@ -3383,7 +3383,7 @@ body {
 
 /* === Trello-like lists & composer visuals === */
 .list { background: #ebecf0; border: 1px solid #dfe1e6; border-radius: 8px; padding: 8px; width: var(--list-width); min-width: var(--list-width); max-width: var(--list-width); display:flex; flex-direction:column; gap:8px; }
-.list-header { display:flex; align-items:center; justify-content:space-between; margin: 2px 4px 6px; }
+.list-header { display:flex; align-items:center; justify-content:space-between; margin: 2px 4px 6px; cursor: grab; -webkit-user-select: none; user-select: none; -webkit-user-drag: element; }
 .list-title { font-size: 14px; font-weight:600; margin:0; }
 .list-title-input { width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-weight:600; background:#fff; }
 .list-menu { width:28px; height:28px; border:0; background:transparent; border-radius:6px; color:#6b778c; cursor:pointer; }
@@ -3447,7 +3447,7 @@ body {
 .card-composer.is-open .composer-open { display:none; }
 
 /* list dragging visual */
-.list.dragging { transform: rotate(1.5deg) scale(1.02); box-shadow: 0 8px 16px rgba(9,30,66,.25); opacity: .98; }
+.list.dragging { transform: rotate(1.5deg) scale(1.02); box-shadow: 0 8px 16px rgba(9,30,66,.25); opacity: .98; cursor: grabbing; }
 
 .list-placeholder { background: rgba(236,238,240,.8); border: 2px dashed #d0d4da; border-radius: 8px; box-shadow: inset 0 0 0 2px rgba(9,30,66,.05), 0 4px 8px rgba(9,30,66,.12); }
 
@@ -3544,13 +3544,7 @@ body {
     flex: 0 1 50%; /* do not span full width */
     min-width: 0;
 }
-#boardPage .board-breadcrumb {
-    margin: 0;
-    text-align: left; /* keep title left */
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis; /* prevent title from taking too much width */
-}
+#boardPage .board-breadcrumb { margin: 0; text-align: left; /* keep title left */ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* prevent title from taking too much width */ }
 
 /* Board switcher dropdown */
 .board-switcher-menu {
@@ -3906,5 +3900,129 @@ body {
 }
 
 /* Hide list header actions until hover */
-.list-actions { opacity: 0; transition: opacity .12s; }
-.list:hover .list-actions { opacity: 1; }
+.list-actions { opacity: 0; transition: opacity .12s; pointer-events: none; }
+.list:hover .list-actions { opacity: 1; pointer-events: auto; }
+
+/* Posts UI in edit modal */
+.edit-modal .modal-body {
+    padding: 1rem;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.form-group textarea {
+    font-size: 1rem;
+}
+
+.posts-list {
+    margin-bottom: 1rem;
+    padding: 0.5rem;
+    border: 1px solid var(--gray-200);
+    border-radius: 4px;
+    /* max-height: 300px; */
+    /* overflow-y: auto; */
+}
+
+.post-item {
+    border-bottom: 1px solid var(--gray-100);
+    padding: 0.5rem 0;
+    background: var(--gray-50);
+    border-radius: var(--border-radius-sm);
+    margin-bottom: 0.5rem;
+    transition: var(--transition);
+}
+
+.post-item:hover {
+    background: var(--gray-100);
+}
+
+.post-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--gray-500);
+    padding: 0 0.5rem;
+}
+
+.post-text {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.post-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    padding: 0 0.5rem 0.25rem;
+}
+
+.post-actions button {
+    font-size: 0.8rem;
+    color: var(--primary-color);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.post-actions button:hover {
+    color: var(--primary-dark);
+    text-decoration: underline;
+}
+
+#editPostsInput {
+    min-height: 100px;
+    width: 100%;
+    border-radius: var(--border-radius);
+    padding: 0.75rem;
+    border: 1px solid var(--gray-300);
+    transition: var(--transition);
+}
+
+#editPostsInput:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.posts-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+}
+
+.posts-actions button {
+    padding: 0.5rem 1rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.posts-actions button:hover {
+    background: var(--primary-dark);
+}
+
+/* Reduce other elements to prioritize posts */
+.form-group:not([for="editPostsInput"]) {
+    margin-bottom: 0.5rem;
+}
+
+.modal-header, .modal-footer {
+    padding: 0.75rem 1rem;
+}
+
+.card-info {
+    font-size: 0.875rem;
+    color: var(--gray-500);
+    display: flex;
+    justify-content: space-between;
+    margin-top: 0.5rem;
+}
+
+/* Optionally hide description if focusing on posts */
+.form-group[for="editCardDescription"] {
+    display: none; /* or opacity: 0.5; to de-emphasize */
+}

@@ -861,6 +861,11 @@ function handleWebSocketMessage(data) {
                 }
                 pendingBoardUpdate = true;
                 scheduleDeferredRender();
+                // 如果编辑模态打开，刷新评论列表
+                if (editingCardId && !editModal.classList.contains('hidden')) {
+                    const c = getCardById(editingCardId);
+                    if (c) { try { renderEditPostsList(c); } catch(e) {} }
+                }
             }
             break;
         case 'user-list':
@@ -1197,7 +1202,9 @@ function bindComposer(section, list){
             author: currentUser,
             assignee: null,
             created: new Date().toISOString(),
-            deadline: null
+            deadline: null,
+            posts: [],
+            commentsCount: 0
         };
         if (!Array.isArray(boardData[status])) boardData[status]=[];
         boardData[status] = [...boardData[status], card];
@@ -1629,7 +1636,9 @@ function addCard(status, position = 'bottom') {
         author: currentUser,
         assignee: assigneeInput.value || null,
         created: new Date().toISOString(),
-        deadline: deadlineInput.value || null
+        deadline: deadlineInput.value || null,
+        posts: [],
+        commentsCount: 0
     };
 
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -1784,6 +1793,17 @@ function openEditModal(cardId) {
     // 更新分配用户下拉列表
     updateAssigneeOptions();
     document.getElementById('editCardAssignee').value = card.assignee || '';
+
+    // 渲染讨论/评论
+    try { renderEditPostsList(card); } catch(e) {}
+    const postsInput = document.getElementById('editPostsInput');
+    const postsSubmit = document.getElementById('editPostsSubmit');
+    if (postsSubmit) {
+        postsSubmit.onclick = function(e){ e.preventDefault(); submitNewPost(); };
+    }
+    if (postsInput) {
+        postsInput.onkeydown = function(e){ if ((e.metaKey||e.ctrlKey) && e.key==='Enter') { e.preventDefault(); submitNewPost(); } };
+    }
 
     editModal.classList.remove('hidden');
 
@@ -3033,187 +3053,85 @@ function enableListsDrag() {
     const container = document.getElementById('listsContainer');
     if (!container) return;
 
-    // Make lists draggable (prefer list as draggable, header as well)
-    container.querySelectorAll('.list:not(.add-list)').forEach(listEl => {
-        const headerEl = listEl.querySelector('.list-header');
-        if (headerEl) headerEl.setAttribute('draggable', 'true');
-        listEl.setAttribute('draggable', 'true');
-
-        const startDrag = (e) => { /* list drag start */
-            // Prevent starting list drag from inside a card/composer/form control
-            const isInsideCard = !!(e.target && e.target.closest && e.target.closest('.card'));
-            const isComposer = !!(e.target && e.target.closest && e.target.closest('.card-composer, .add-list-form'));
-            const isFormControl = !!(e.target && e.target.closest && e.target.closest('input, textarea, button, select'));
-            if (isInsideCard || isComposer || isFormControl) { if (e.preventDefault) e.preventDefault(); return; }
-
-            draggingListId = listEl.getAttribute('data-id');
-            listEl.classList.add('dragging');
-            if (e.dataTransfer) { try { e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {} }
-
-            // Create placeholder with same size and keep layout by hiding original
-            const rect = listEl.getBoundingClientRect();
-            listPlaceholderEl = document.createElement('div');
-            listPlaceholderEl.className = 'list list-placeholder';
-            listPlaceholderEl.style.height = rect.height + 'px';
-            listPlaceholderEl.style.width = rect.width + 'px';
-            container.insertBefore(listPlaceholderEl, listEl);
-            listEl.style.visibility = 'hidden';
-
-            // Create a ghost drag image that follows mouse with slight tilt
-            try {
-                if (e.dataTransfer) {
-                    listDragImageEl = listEl.cloneNode(true);
-                    listDragImageEl.style.position = 'fixed';
-                    listDragImageEl.style.left = '-1000px';
-                    listDragImageEl.style.top = '-1000px';
-                    listDragImageEl.style.width = rect.width + 'px';
-                    listDragImageEl.style.pointerEvents = 'none';
-                    listDragImageEl.style.transform = 'rotate(1.5deg) scale(1.02)';
-                    listDragImageEl.style.boxShadow = '0 8px 16px rgba(9,30,66,.25)';
-                    document.body.appendChild(listDragImageEl);
-                    const offsetX = e.clientX - rect.left;
-                    const offsetY = e.clientY - rect.top;
-                    e.dataTransfer.setDragImage(listDragImageEl, offsetX, offsetY);
-                }
-            } catch {}
-        };
-
-        const endDrag = (e) => { /* list drag end */
-            listEl.classList.remove('dragging');
-            if (listPlaceholderEl && listPlaceholderEl.parentNode && listEl.style.visibility === 'hidden') {
-                listPlaceholderEl.parentNode.insertBefore(listEl, listPlaceholderEl);
-                listEl.style.visibility = '';
-                listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
-            }
-            draggingListId = null;
-            if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
-            listPlaceholderEl = null;
-        };
-
-        // Bind dragstart/dragend on both the list and header as handles
-        listEl.addEventListener('dragstart', startDrag);
-        listEl.addEventListener('dragend', endDrag);
-        if (headerEl) {
-            headerEl.addEventListener('dragstart', startDrag);
-            headerEl.addEventListener('dragend', endDrag);
-        }
-
-        // Let each list act as a valid drop target to improve compatibility
-        listEl.addEventListener('dragover', (e) => {
-            if (!draggingListId) return;
-            e.preventDefault();
-            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-            const beforeRects = captureListRects(container);
-            const after = getListAfterElement(container, e.clientX);
-            if (!listPlaceholderEl) return;
-            if (after == null) {
-                container.insertBefore(listPlaceholderEl, container.querySelector('#addListEntry'));
-            } else {
-                container.insertBefore(listPlaceholderEl, after);
-            }
-            playFLIPList(container, beforeRects);
-        });
-
-        listEl.addEventListener('drop', (e) => {
-            if (e && e.preventDefault) e.preventDefault();
-            if (!draggingListId || !clientLists) return;
-            const draggingEl = container.querySelector('.list.dragging');
-            if (draggingEl && listPlaceholderEl) {
-                container.insertBefore(draggingEl, listPlaceholderEl);
-                draggingEl.style.visibility = '';
-                listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
-                listPlaceholderEl = null;
-            }
-            const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
-                .filter(el => el.classList.contains('list'))
-                .map(el => el.getAttribute('data-id'));
-            clientLists.listIds = ids;
-            clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
-            draggingListId = null;
-            if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
-        });
-    });
-
-    container.addEventListener('dragover', (e) => {
+    // Shared reposition handler (no placeholder; directly reorders DOM)
+    const reposition = (e) => {
+        if (!draggingListId) return;
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        const beforeRects = captureListRects(container);
         const after = getListAfterElement(container, e.clientX);
-        if (!listPlaceholderEl) return;
-        if (after == null) {
-            container.insertBefore(listPlaceholderEl, container.querySelector('#addListEntry'));
-        } else {
-            container.insertBefore(listPlaceholderEl, after);
-        }
-        playFLIPList(container, beforeRects);
-    });
-
-    container.ondrop = () => {
-        if (!draggingListId || !clientLists) return;
         const draggingEl = container.querySelector('.list.dragging');
-        if (draggingEl && listPlaceholderEl) {
-            container.insertBefore(draggingEl, listPlaceholderEl);
-            draggingEl.style.visibility = '';
-            listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
-            listPlaceholderEl = null;
+        if (!draggingEl) return;
+        if (after == null) {
+            container.insertBefore(draggingEl, container.querySelector('#addListEntry'));
+        } else {
+            container.insertBefore(draggingEl, after);
         }
+    };
+
+    // Shared finalize handler
+    const finalizeDrop = () => {
+        if (!draggingListId || !clientLists) return;
+        // clear dragging class if any remains
+        const draggingEl = container.querySelector('.list.dragging');
+        if (draggingEl) draggingEl.classList.remove('dragging');
         const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
             .filter(el => el.classList.contains('list'))
             .map(el => el.getAttribute('data-id'));
         clientLists.listIds = ids;
         clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
         draggingListId = null;
-        if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
-        // persist & sync
         saveClientListsToStorage();
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
         }
-        // immediately re-render to reflect new order without refresh
         renderBoard();
     };
-    container.ondragenter = (e) => { if (!draggingListId) return; e.preventDefault(); };
-}
-function getListAfterElement(container, x) {
-    const lists = [...container.querySelectorAll('.list:not(.dragging):not(#addListEntry):not(.add-list):not(.list-placeholder)')];
-    return lists.reduce((closest, child) => {
-        const box = child.getBoundingClientRect();
-        const offset = x - (box.left + box.width / 2);
-        if (offset < 0 && offset > closest.offset) {
-            return { offset, element: child };
-        } else {
-            return closest;
-        }
-    }, { offset: Number.NEGATIVE_INFINITY }).element;
-}
 
-function captureListRects(container){
-    const rects = new Map();
-    container.querySelectorAll('.list').forEach(el=>{
-        if (el.id === 'addListEntry') return;
-        const r = el.getBoundingClientRect();
-        rects.set(el, { x:r.left, y:r.top });
-    });
-    return rects;
-}
+    // Make entire list and header/title draggable; filter bad start targets
+    container.querySelectorAll('.list:not(.add-list)').forEach(listEl => {
+        const header = listEl.querySelector('.list-header');
+        const title = header ? header.querySelector('.list-title') : null;
 
-function playFLIPList(container, beforeRects){
-    container.querySelectorAll('.list').forEach(el=>{
-        if (el.classList.contains('dragging') || el.id === 'addListEntry') return;
-        const before = beforeRects.get(el);
-        if (!before) return;
-        const r = el.getBoundingClientRect();
-        const dx = before.x - r.left;
-        const dy = before.y - r.top;
-        if (dx || dy){
-            el.style.transform = `translate(${dx}px, ${dy}px)`;
-            el.style.transition = 'transform 0s';
-            // Force reflow
-            void el.offsetWidth;
-            el.style.transition = 'transform 150ms ease';
-            el.style.transform = 'translate(0, 0)';
+        function startDrag(e){
+            const isInsideCard = !!(e.target && e.target.closest && e.target.closest('.card'));
+            const isComposer = !!(e.target && e.target.closest && e.target.closest('.card-composer, .add-list-form'));
+            const isFormControl = !!(e.target && e.target.closest && e.target.closest('input, textarea, button, select'));
+            if (isInsideCard || isComposer || isFormControl) { if (e.stopPropagation) e.stopPropagation(); return; }
+            const el = (e.currentTarget && e.currentTarget.closest) ? e.currentTarget.closest('.list') : listEl;
+            if (!el) return;
+            draggingListId = el.getAttribute('data-id');
+            el.classList.add('dragging');
+            try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {}
         }
+        function endDrag(){
+            const el = container.querySelector('.list.dragging');
+            if (el) el.classList.remove('dragging');
+            draggingListId = null;
+        }
+
+        // set draggable attributes and bind events
+        listEl.setAttribute('draggable', 'true');
+        listEl.addEventListener('dragstart', startDrag);
+        listEl.addEventListener('dragend', endDrag);
+        if (header) {
+            header.setAttribute('draggable', 'true');
+            header.addEventListener('dragstart', startDrag);
+            header.addEventListener('dragend', endDrag);
+        }
+        if (title) {
+            title.setAttribute('draggable', 'true');
+            title.addEventListener('dragstart', startDrag);
+            title.addEventListener('dragend', endDrag);
+        }
+
+        // list-level dragover/drop to improve reliability
+        listEl.ondragover = reposition;
+        listEl.ondrop = (e) => { if (e && e.preventDefault) e.preventDefault(); finalizeDrop(); };
     });
+
+    // container-level handlers
+    container.ondragover = reposition;
+    container.ondrop = (e) => { if (e && e.preventDefault) e.preventDefault(); finalizeDrop(); };
 }
 // ===== End Lists drag =====
 
@@ -3722,4 +3640,105 @@ async function archiveList(status){
     }
     renderBoard();
     uiToast('已归档该卡组全部卡片','success');
+}
+
+// === Posts (讨论/评论) helpers ===
+
+function renderEditPostsList(card){
+    const listEl = document.getElementById('editPostsList');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    const posts = Array.isArray(card.posts) ? card.posts : [];
+    posts.forEach((p)=>{
+        const item = document.createElement('div');
+        item.className = 'post-item';
+        item.dataset.postId = String(p.id||'');
+        const content = document.createElement('div');
+        content.className = 'post-content';
+        content.innerHTML = `<div class="post-meta">${escapeHtml(p.author||'')} · ${new Date(p.created||Date.now()).toLocaleString()}</div><div class="post-text">${escapeHtml(p.text||'')}</div>`;
+        const actions = document.createElement('div');
+        actions.className = 'post-actions';
+        if ((p.author||'') === (currentUser||'')){
+            const editBtn = document.createElement('button'); editBtn.className='btn-link'; editBtn.textContent='编辑'; editBtn.onclick = ()=> startEditPost(p.id);
+            const delBtn = document.createElement('button'); delBtn.className='btn-link'; delBtn.textContent='删除'; delBtn.onclick = ()=> deletePost(p.id);
+            actions.appendChild(editBtn); actions.appendChild(delBtn);
+        }
+        item.appendChild(content);
+        item.appendChild(actions);
+        listEl.appendChild(item);
+    });
+}
+
+function submitNewPost(){
+    if (!editingCardId) return;
+    const input = document.getElementById('editPostsInput');
+    if (!input) return;
+    const text = (input.value||'').trim();
+    if (!text) return;
+    const card = getCardById(editingCardId);
+    if (!card) return;
+    const newPost = { id: Date.now().toString(), author: currentUser, text, created: new Date().toISOString() };
+    const posts = Array.isArray(card.posts) ? card.posts.slice() : [];
+    posts.push(newPost);
+    const commentsCount = (card.commentsCount||0) + 1;
+    updateCardImmediately(editingCardId, { posts, commentsCount });
+    input.value = '';
+    renderEditPostsList(getCardById(editingCardId));
+}
+
+function startEditPost(postId){
+    const card = getCardById(editingCardId);
+    if (!card) return;
+    const listEl = document.getElementById('editPostsList');
+    const item = listEl && listEl.querySelector(`[data-post-id="${postId}"]`);
+    if (!item) return;
+    const p = (card.posts||[]).find(pp=>String(pp.id)===String(postId));
+    if (!p) return;
+    item.innerHTML = '';
+    const ta = document.createElement('textarea');
+    ta.className = 'post-edit-textarea';
+    ta.value = p.text || '';
+    const saveBtn = document.createElement('button'); saveBtn.className='btn-primary'; saveBtn.textContent='保存'; saveBtn.onclick = ()=> saveEditPost(postId, ta.value.trim());
+    const cancelBtn = document.createElement('button'); cancelBtn.className='btn-secondary'; cancelBtn.textContent='取消'; cancelBtn.onclick = ()=> renderEditPostsList(card);
+    item.appendChild(ta);
+    const actions = document.createElement('div'); actions.className='post-actions'; actions.appendChild(saveBtn); actions.appendChild(cancelBtn); item.appendChild(actions);
+}
+
+function saveEditPost(postId, newText){
+    const card = getCardById(editingCardId);
+    if (!card) return;
+    const posts = Array.isArray(card.posts) ? card.posts.slice() : [];
+    const idx = posts.findIndex(p=>String(p.id)===String(postId));
+    if (idx===-1) return;
+    if (!newText) { uiToast('内容不能为空','error'); return; }
+    posts[idx] = Object.assign({}, posts[idx], { text: newText, edited: new Date().toISOString() });
+    updateCardImmediately(editingCardId, { posts });
+    renderEditPostsList(getCardById(editingCardId));
+}
+
+async function deletePost(postId){
+    const ok = await uiConfirm('删除这条评论？','删除评论');
+    if (!ok) return;
+    const card = getCardById(editingCardId);
+    if (!card) return;
+    const posts = Array.isArray(card.posts) ? card.posts.slice() : [];
+    const idx = posts.findIndex(p=>String(p.id)===String(postId));
+    if (idx===-1) return;
+    posts.splice(idx,1);
+    const commentsCount = Math.max(0, (card.commentsCount||0) - 1);
+    updateCardImmediately(editingCardId, { posts, commentsCount });
+    renderEditPostsList(getCardById(editingCardId));
+}
+
+function getListAfterElement(container, x) {
+    const lists = [...container.querySelectorAll('.list:not(.dragging):not(#addListEntry):not(.add-list):not(.list-placeholder)')];
+    return lists.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = x - (box.left + box.width / 2);
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
