@@ -963,7 +963,10 @@ function renderBoard() {
             header.className = 'list-header';
             header.innerHTML = `
                 <h3 class="list-title" tabindex="0">${escapeHtml(list.title)}</h3>
+                <div class="list-actions">
+                    <button class="list-archive" title="归档此卡组全部卡片" aria-label="归档卡组"></button>
                 <button class="list-menu" aria-label="删除"></button>
+                </div>
             `;
             section.appendChild(header);
 
@@ -1008,6 +1011,8 @@ function renderBoard() {
         const list = clientLists.lists[id];
         bindListTitleInlineRename(section, list);
         bindListMenu(section, list);
+        const archBtn = section.querySelector('.list-archive');
+        if (archBtn) archBtn.onclick = async (e)=>{ e.stopPropagation(); await archiveList(list.status); };
         bindComposer(section, list);
         enableColumnDrag(list.status);
     });
@@ -1296,7 +1301,7 @@ function createCardElement(card, status) {
         : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
 
     const archiveBtn = (status !== 'archived')
-        ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}')" aria-label="归档"></button>`
+        ? ``
         : '';
 
     const deleteBtn = (status === 'archived')
@@ -3028,38 +3033,130 @@ function enableListsDrag() {
     const container = document.getElementById('listsContainer');
     if (!container) return;
 
-    // Make header the drag handle but move the whole list element
-    container.querySelectorAll('.list:not(.add-list) .list-header').forEach(h => {
-        h.setAttribute('draggable', 'true');
-        h.ondragstart = (e) => {
-            const listEl = h.closest('.list');
+    // Make lists draggable (prefer list as draggable, header as well)
+    container.querySelectorAll('.list:not(.add-list)').forEach(listEl => {
+        const headerEl = listEl.querySelector('.list-header');
+        if (headerEl) headerEl.setAttribute('draggable', 'true');
+        listEl.setAttribute('draggable', 'true');
+
+        const startDrag = (e) => { /* list drag start */
+            // Prevent starting list drag from inside a card/composer/form control
+            const isInsideCard = !!(e.target && e.target.closest && e.target.closest('.card'));
+            const isComposer = !!(e.target && e.target.closest && e.target.closest('.card-composer, .add-list-form'));
+            const isFormControl = !!(e.target && e.target.closest && e.target.closest('input, textarea, button, select'));
+            if (isInsideCard || isComposer || isFormControl) { if (e.preventDefault) e.preventDefault(); return; }
+
             draggingListId = listEl.getAttribute('data-id');
             listEl.classList.add('dragging');
             if (e.dataTransfer) { try { e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {} }
+
+            // Create placeholder with same size and keep layout by hiding original
+            const rect = listEl.getBoundingClientRect();
+            listPlaceholderEl = document.createElement('div');
+            listPlaceholderEl.className = 'list list-placeholder';
+            listPlaceholderEl.style.height = rect.height + 'px';
+            listPlaceholderEl.style.width = rect.width + 'px';
+            container.insertBefore(listPlaceholderEl, listEl);
+            listEl.style.visibility = 'hidden';
+
+            // Create a ghost drag image that follows mouse with slight tilt
+            try {
+                if (e.dataTransfer) {
+                    listDragImageEl = listEl.cloneNode(true);
+                    listDragImageEl.style.position = 'fixed';
+                    listDragImageEl.style.left = '-1000px';
+                    listDragImageEl.style.top = '-1000px';
+                    listDragImageEl.style.width = rect.width + 'px';
+                    listDragImageEl.style.pointerEvents = 'none';
+                    listDragImageEl.style.transform = 'rotate(1.5deg) scale(1.02)';
+                    listDragImageEl.style.boxShadow = '0 8px 16px rgba(9,30,66,.25)';
+                    document.body.appendChild(listDragImageEl);
+                    const offsetX = e.clientX - rect.left;
+                    const offsetY = e.clientY - rect.top;
+                    e.dataTransfer.setDragImage(listDragImageEl, offsetX, offsetY);
+                }
+            } catch {}
         };
-        h.ondragend = () => {
-            const listEl = h.closest('.list');
-            if (!listEl) return;
+
+        const endDrag = (e) => { /* list drag end */
             listEl.classList.remove('dragging');
+            if (listPlaceholderEl && listPlaceholderEl.parentNode && listEl.style.visibility === 'hidden') {
+                listPlaceholderEl.parentNode.insertBefore(listEl, listPlaceholderEl);
+                listEl.style.visibility = '';
+                listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
+            }
             draggingListId = null;
+            if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
+            listPlaceholderEl = null;
         };
+
+        // Bind dragstart/dragend on both the list and header as handles
+        listEl.addEventListener('dragstart', startDrag);
+        listEl.addEventListener('dragend', endDrag);
+        if (headerEl) {
+            headerEl.addEventListener('dragstart', startDrag);
+            headerEl.addEventListener('dragend', endDrag);
+        }
+
+        // Let each list act as a valid drop target to improve compatibility
+        listEl.addEventListener('dragover', (e) => {
+            if (!draggingListId) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            const beforeRects = captureListRects(container);
+            const after = getListAfterElement(container, e.clientX);
+            if (!listPlaceholderEl) return;
+            if (after == null) {
+                container.insertBefore(listPlaceholderEl, container.querySelector('#addListEntry'));
+            } else {
+                container.insertBefore(listPlaceholderEl, after);
+            }
+            playFLIPList(container, beforeRects);
+        });
+
+        listEl.addEventListener('drop', (e) => {
+            if (e && e.preventDefault) e.preventDefault();
+            if (!draggingListId || !clientLists) return;
+            const draggingEl = container.querySelector('.list.dragging');
+            if (draggingEl && listPlaceholderEl) {
+                container.insertBefore(draggingEl, listPlaceholderEl);
+                draggingEl.style.visibility = '';
+                listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
+                listPlaceholderEl = null;
+            }
+            const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
+                .filter(el => el.classList.contains('list'))
+                .map(el => el.getAttribute('data-id'));
+            clientLists.listIds = ids;
+            clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
+            draggingListId = null;
+            if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
+        });
     });
 
-    container.ondragover = (e) => {
+    container.addEventListener('dragover', (e) => {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        const beforeRects = captureListRects(container);
         const after = getListAfterElement(container, e.clientX);
-        const draggingEl = container.querySelector('.list.dragging');
-        if (!draggingEl) return;
+        if (!listPlaceholderEl) return;
         if (after == null) {
-            container.insertBefore(draggingEl, container.querySelector('#addListEntry'));
+            container.insertBefore(listPlaceholderEl, container.querySelector('#addListEntry'));
         } else {
-            container.insertBefore(draggingEl, after);
+            container.insertBefore(listPlaceholderEl, after);
         }
-    };
+        playFLIPList(container, beforeRects);
+    });
 
     container.ondrop = () => {
         if (!draggingListId || !clientLists) return;
+        const draggingEl = container.querySelector('.list.dragging');
+        if (draggingEl && listPlaceholderEl) {
+            container.insertBefore(draggingEl, listPlaceholderEl);
+            draggingEl.style.visibility = '';
+            listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
+            listPlaceholderEl = null;
+        }
         const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
             .filter(el => el.classList.contains('list'))
             .map(el => el.getAttribute('data-id'));
@@ -3075,9 +3172,10 @@ function enableListsDrag() {
         // immediately re-render to reflect new order without refresh
         renderBoard();
     };
+    container.ondragenter = (e) => { if (!draggingListId) return; e.preventDefault(); };
 }
 function getListAfterElement(container, x) {
-    const lists = [...container.querySelectorAll('.list:not(.dragging):not(#addListEntry):not(.add-list)')];
+    const lists = [...container.querySelectorAll('.list:not(.dragging):not(#addListEntry):not(.add-list):not(.list-placeholder)')];
     return lists.reduce((closest, child) => {
         const box = child.getBoundingClientRect();
         const offset = x - (box.left + box.width / 2);
@@ -3087,6 +3185,35 @@ function getListAfterElement(container, x) {
             return closest;
         }
     }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+function captureListRects(container){
+    const rects = new Map();
+    container.querySelectorAll('.list').forEach(el=>{
+        if (el.id === 'addListEntry') return;
+        const r = el.getBoundingClientRect();
+        rects.set(el, { x:r.left, y:r.top });
+    });
+    return rects;
+}
+
+function playFLIPList(container, beforeRects){
+    container.querySelectorAll('.list').forEach(el=>{
+        if (el.classList.contains('dragging') || el.id === 'addListEntry') return;
+        const before = beforeRects.get(el);
+        if (!before) return;
+        const r = el.getBoundingClientRect();
+        const dx = before.x - r.left;
+        const dy = before.y - r.top;
+        if (dx || dy){
+            el.style.transform = `translate(${dx}px, ${dy}px)`;
+            el.style.transition = 'transform 0s';
+            // Force reflow
+            void el.offsetWidth;
+            el.style.transition = 'transform 150ms ease';
+            el.style.transform = 'translate(0, 0)';
+        }
+    });
 }
 // ===== End Lists drag =====
 
@@ -3575,4 +3702,24 @@ async function deleteArchivedCard(cardId){
         socket.send(JSON.stringify({ type:'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId }));
     }
     renderArchive();
+}
+
+// 归档整列（卡组）
+async function archiveList(status){
+    const cards = (boardData[status]||[]);
+    if (!cards.length) { uiToast('此卡组没有可归档的卡片','info'); return; }
+    const ok = await uiConfirm('将该卡组的所有卡片归档？','归档卡组');
+    if (!ok) return;
+    boardData.archived = boardData.archived || [];
+    // copy array to avoid mutation during iteration
+    const moving = cards.slice();
+    boardData.archived.push(...moving);
+    boardData[status] = [];
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        moving.forEach(c => {
+            socket.send(JSON.stringify({ type:'archive-card', projectId: currentProjectId, boardName: currentBoardName, cardId: c.id, fromStatus: status }));
+        });
+    }
+    renderBoard();
+    uiToast('已归档该卡组全部卡片','success');
 }
