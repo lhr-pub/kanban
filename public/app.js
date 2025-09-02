@@ -574,7 +574,7 @@ async function renameProject() {
 async function createProject() {
     const projectName = document.getElementById('newProjectName').value.trim();
     if (!projectName) {
-        alert('请输入项目名称');
+        uiToast('请输入项目名称','error');
         return;
     }
 
@@ -595,13 +595,13 @@ async function createProject() {
         if (response.ok) {
             hideCreateProjectForm();
             loadUserProjects();
-            alert(`项目创建成功！\n项目名称: ${projectName}\n邀请码: ${result.inviteCode}\n\n请保存邀请码，用于邀请团队成员！`);
+            uiToast(`项目创建成功！邀请码：${result.inviteCode}`,'success');
         } else {
-            alert(result.message || '创建项目失败');
+            uiToast(result.message || '创建项目失败','error');
         }
     } catch (error) {
         console.error('Create project error:', error);
-        alert('创建项目失败');
+        uiToast('创建项目失败','error');
     }
 }
 
@@ -609,7 +609,7 @@ async function createProject() {
 async function joinProject() {
     const inviteCode = document.getElementById('inviteCode').value.trim().toUpperCase();
     if (!inviteCode || inviteCode.length !== 6) {
-        alert('请输入6位邀请码');
+        uiToast('请输入6位邀请码','error');
         return;
     }
 
@@ -630,13 +630,13 @@ async function joinProject() {
         if (response.ok) {
             hideJoinProjectForm();
             loadUserProjects();
-            alert('成功加入项目！');
+            uiToast('成功加入项目！','success');
         } else {
-            alert(result.message || '加入项目失败');
+            uiToast(result.message || '加入项目失败','error');
         }
     } catch (error) {
         console.error('Join project error:', error);
-        alert('加入项目失败');
+        uiToast('加入项目失败','error');
     }
 }
 
@@ -874,10 +874,10 @@ function handleWebSocketMessage(data) {
             }
             break;
         case 'import-success':
-            alert(data.message);
+            uiToast(data.message || '导入成功','success');
             break;
         case 'error':
-            alert(data.message);
+            uiToast(data.message || '发生错误','error');
             break;
         case 'board-renamed':
             if (data.projectId === currentProjectId && data.oldName === currentBoardName) {
@@ -914,7 +914,7 @@ function handleWebSocketMessage(data) {
                 localStorage.removeItem('kanbanCurrentBoardName');
                 showProjectPage();
                 loadUserProjects();
-                alert('当前项目已被删除');
+                uiToast('当前项目已被删除','error');
             }
             break;
     }
@@ -1600,7 +1600,7 @@ function addCard(status, position = 'bottom') {
 
     const title = titleInput.value.trim();
     if (!title) {
-        alert('请输入任务标题');
+        uiToast('请输入任务标题','error');
         return;
     }
 
@@ -1785,7 +1785,7 @@ function saveCard() {
     const deadline = document.getElementById('editCardDeadline').value || null;
 
     if (!title) {
-        alert('任务标题不能为空');
+        uiToast('任务标题不能为空','error');
         return;
     }
 
@@ -1907,10 +1907,13 @@ async function exportMarkdown() {
             a.click();
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
+        } else {
+            console.error('Export error:', error);
+            uiToast('导出失败','error');
         }
     } catch (error) {
         console.error('Export error:', error);
-        alert('导出失败');
+        uiToast('导出失败','error');
     }
 }
 
@@ -1934,7 +1937,7 @@ document.getElementById('importFile').addEventListener('change', function(e) {
             } else if (file.name.endsWith('.md')) {
                 data = parseMarkdownToBoard(event.target.result);
             } else {
-                alert('不支持的文件格式，请选择 .json 或 .md 文件');
+                uiToast('不支持的文件格式，请选择 .json 或 .md 文件','error');
                 return;
             }
 
@@ -1943,7 +1946,7 @@ document.getElementById('importFile').addEventListener('change', function(e) {
 
         } catch (error) {
             console.error('Import error:', error);
-            alert('文件格式错误，无法解析');
+            uiToast('文件格式错误，无法解析','error');
         }
     };
     reader.readAsText(file);
