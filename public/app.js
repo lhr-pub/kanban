@@ -157,6 +157,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const currentBoardNameEl = document.getElementById('currentBoardName');
     if (currentBoardNameEl) {
         currentBoardNameEl.addEventListener('click', openBoardSwitcher);
+        currentBoardNameEl.setAttribute('title', '切换看板');
     }
 
     // 绑定键盘事件
@@ -3327,6 +3328,10 @@ function setupAddCardCollapsed(container, status, position) {
 async function openBoardSwitcher(e) {
     e.preventDefault();
     e.stopPropagation();
+    if (boardSwitcherOpen) {
+        hideBoardSwitcher();
+        return;
+    }
     const anchor = e.currentTarget;
     const rect = anchor.getBoundingClientRect();
 
@@ -3342,6 +3347,8 @@ async function openBoardSwitcher(e) {
         }
     }
     showBoardSwitcherAt(rect, boards);
+    const titleEl = document.getElementById('currentBoardName');
+    if (titleEl) titleEl.classList.add('open');
 }
 
 function showBoardSwitcherAt(rect, boards) {
@@ -3477,6 +3484,8 @@ function hideBoardSwitcher() {
     }
     boardSwitcherMenu = null;
     boardSwitcherOpen = false;
+    const titleEl = document.getElementById('currentBoardName');
+    if (titleEl) titleEl.classList.remove('open');
 }
 
 // === In-app dialog & toast helpers ===

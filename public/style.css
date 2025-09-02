@@ -2963,6 +2963,37 @@ body {
     color: var(--primary-dark);
     box-shadow: none;
 }
+
+/* Board name dropdown caret indicator */
+#currentBoardName {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: var(--transition);
+}
+#currentBoardName:hover {
+    background: var(--gray-100);
+}
+#currentBoardName::before {  /* 改为 ::before，放在文字前面 */
+    content: '';
+    display: inline-block;
+    margin-right: 4px;  /* 右边距，箭头与文字间距 */
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;  /* 右指向箭头 */
+    border-bottom: 5px solid transparent;
+    border-left: 6px solid currentColor;
+    opacity: 0.7;
+    transform-origin: center;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+#currentBoardName.open::before {
+    transform: rotate(90deg);  /* 旋转 90° 变为下指向 */
+    opacity: 0.9;
+}
 .quick-board-card:hover .board-icon {
     background: rgba(59,130,246,0.14);
     border-color: rgba(59,130,246,0.28);
@@ -3395,7 +3426,6 @@ body {
 .card-composer { margin-top:auto; }
 .card-composer .composer-open { display:inline-block; color:#0c66e4; background:transparent; border:0; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px; }
 .card-composer .composer-open:hover { background:rgba(9,30,66,.06); }
-.card-composer .composer { display:block; }
 .card-composer .composer[hidden] { display:none; }
 .card-composer textarea { width:100%; min-height:72px; border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:14px; resize:vertical; box-shadow:0 1px 0 rgba(9,30,66,.1); background:#fff; }
 .card-composer .composer-actions { display:flex; align-items:center; gap:8px; margin-top:6px; }
@@ -4025,4 +4055,35 @@ body {
 /* Optionally hide description if focusing on posts */
 .form-group[for="editCardDescription"] {
     display: none; /* or opacity: 0.5; to de-emphasize */
+}
+
+/* Board name dropdown caret indicator */
+#currentBoardName {
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: var(--transition);
+}
+#currentBoardName:hover {
+    background: var(--gray-100);
+}
+#currentBoardName::before {  /* 改为 ::before，放在文字前面 */
+    content: '';
+    display: inline-block;
+    margin-right: 4px;  /* 右边距，箭头与文字间距 */
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;  /* 右指向箭头 */
+    border-bottom: 5px solid transparent;
+    border-left: 6px solid currentColor;
+    opacity: 0.7;
+    transform-origin: center;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+#currentBoardName.open::before {
+    transform: rotate(90deg);  /* 旋转 90° 变为下指向 */
+    opacity: 0.9;
 }
