@@ -54,14 +54,12 @@
     --bg:#f6f7f9;
     --card-bg:#fff;
 }
-
 /* 全局样式 */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
-
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
@@ -72,53 +70,45 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
-
 /* 自定义滚动条样式 */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
 }
-
 ::-webkit-scrollbar-track {
     background: var(--gray-100);
     border-radius: var(--border-radius-sm);
 }
-
 ::-webkit-scrollbar-thumb {
     background: var(--gray-300);
     border-radius: var(--border-radius-sm);
+    -webkit-transition: var(--transition);
     transition: var(--transition);
 }
-
 ::-webkit-scrollbar-thumb:hover {
     background: var(--gray-400);
 }
-
 /* Firefox滚动条 */
 html {
     scrollbar-width: thin;
     scrollbar-color: var(--gray-300) var(--gray-100);
 }
-
 /* 通用聚焦样式 */
 *:focus {
     outline: 2px solid transparent;
     outline-offset: 2px;
 }
-
 *:focus-visible {
     outline: 2px solid var(--primary-color);
     outline-offset: 2px;
     border-radius: var(--border-radius-sm);
 }
-
 /* 改善点击目标和触摸友好性 */
 .clickable {
     cursor: pointer;
     position: relative;
     transition: var(--transition);
 }
-
 .clickable::after {
     content: '';
     position: absolute;
@@ -130,17 +120,14 @@ html {
     min-height: 44px;
     pointer-events: none;
 }
-
 /* 页面切换 */
 .page {
     min-height: 100vh;
     width: 100%;
 }
-
 .hidden {
     display: none !important;
 }
-
 /* 页面容器 */
 .container {
     width: 100%;
@@ -148,7 +135,6 @@ html {
     max-width: 1400px;
     margin: 0 auto;
 }
-
 /* 登录页面特殊样式 */
 #loginPage .container {
     max-width: 420px;
@@ -159,14 +145,12 @@ html {
     box-shadow: var(--shadow-lg);
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
-
 #loginPage {
     display: flex;
     align-items: center;
     justify-content: center;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
-
 h1 {
     text-align: center;
     margin-bottom: 1.5rem;
@@ -175,14 +159,12 @@ h1 {
     font-size: 1.875rem;
     letter-spacing: -0.025em;
 }
-
 .login-form h2 {
     margin-bottom: 1rem;
     color: var(--gray-700);
     font-weight: 600;
     font-size: 1.25rem;
 }
-
 .login-form input {
     width: 100%;
     padding: 0.875rem 1rem;
@@ -194,7 +176,6 @@ h1 {
     background: var(--gray-50);
     font-weight: 400;
 }
-
 .login-form input:focus {
     outline: none;
     border-color: var(--primary-color);
@@ -202,11 +183,12 @@ h1 {
     background: white;
     transform: translateY(-1px);
 }
-
+.login-form input::-moz-placeholder {
+    color: var(--gray-400);
+}
 .login-form input::placeholder {
     color: var(--gray-400);
 }
-
 .login-form button {
     width: 100%;
     padding: 0.875rem 1rem;
@@ -220,33 +202,27 @@ h1 {
     transition: var(--transition);
     box-shadow: var(--shadow-sm);
 }
-
 .login-form button:hover {
     background: linear-gradient(135deg, var(--primary-dark) 0%, #1e40af 100%);
     transform: translateY(-1px);
     box-shadow: var(--shadow-md);
 }
-
 .login-form button:active {
     transform: translateY(0);
     box-shadow: var(--shadow-sm);
 }
-
 .login-form p {
     text-align: center;
     margin-top: 1rem;
     color: #6b7280;
 }
-
 .login-form a {
     color: #2563eb;
     text-decoration: none;
 }
-
 .login-form a:hover {
     text-decoration: underline;
 }
-
 /* 看板页面 */
 #boardPage {
     display: flex;
@@ -260,7 +236,6 @@ h1 {
     background-repeat: no-repeat;
     background-attachment: fixed;
 }
-
 .header {
     background: white;
     padding: 1rem 2rem;
@@ -271,14 +246,12 @@ h1 {
     flex-wrap: wrap;
     gap: 1rem;
 }
-
 .header-actions {
     display: flex;
     align-items: center;
     gap: 1rem;
     flex-wrap: wrap;
 }
-
 .online-users {
     display: flex;
     align-items: center;
@@ -289,12 +262,10 @@ h1 {
     border-radius: 6px;
     font-size: 0.875rem;
 }
-
 #userList {
     display: flex;
     gap: 0.25rem;
 }
-
 .user-badge {
     background: #10b981;
     color: white;
@@ -302,7 +273,6 @@ h1 {
     border-radius: 4px;
     font-size: 0.75rem;
 }
-
 .header button {
     padding: 0.5rem 1rem;
     border: none;
@@ -311,25 +281,20 @@ h1 {
     font-size: 0.875rem;
     transition: all 0.2s;
 }
-
 #exportBtn {
     background: #059669;
     color: white;
 }
-
 #exportBtn:hover {
     background: #047857;
 }
-
 #logoutBtn {
     background: #dc2626;
     color: white;
 }
-
 #logoutBtn:hover {
     background: #b91c1c;
 }
-
 /* 看板容器 */
 .board-container {
     flex: 1;
@@ -342,7 +307,6 @@ h1 {
     width: 100%;
     justify-content: flex-start;
 }
-
 /* 归档页面样式 */
 .archive-container {
     flex: 1;
@@ -350,7 +314,6 @@ h1 {
     max-width: 600px;
     margin: 0 auto;
 }
-
 .archive-column {
     background: white;
     border-radius: 8px;
@@ -359,7 +322,6 @@ h1 {
     border: 2px dashed #d1d5db;
     background: #f9fafb;
 }
-
 .archive-column h3 {
     color: #6b7280;
     margin-bottom: 1rem;
@@ -367,23 +329,19 @@ h1 {
     border-bottom: 2px solid #e5e7eb;
     font-size: 1.125rem;
 }
-
 .archive-column .cards {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
 }
-
 .archive-column .card {
     opacity: 0.8;
     background: #f3f4f6;
 }
-
 .archive-column .card:hover {
     opacity: 1;
     background: #e5e7eb;
 }
-
 /* 列样式 */
 .column {
     background: white;
@@ -394,7 +352,6 @@ h1 {
     flex-direction: column;
     min-height: 500px;
 }
-
 .column h3 {
     display: flex;
     justify-content: space-between;
@@ -405,7 +362,6 @@ h1 {
     font-size: 1.125rem;
     color: #374151;
 }
-
 .count {
     background: #f3f4f6;
     color: #6b7280;
@@ -413,7 +369,6 @@ h1 {
     border-radius: 4px;
     font-size: 0.75rem;
 }
-
 /* 卡片容器 */
 .cards {
     flex: 1;
@@ -422,7 +377,6 @@ h1 {
     gap: 0.75rem;
     margin-bottom: 1rem;
 }
-
 /* 卡片样式 */
 .card {
     background: white;
@@ -435,11 +389,9 @@ h1 {
     box-shadow: var(--shadow-sm);
     backdrop-filter: blur(10px);
 }
-
 .card:hover {
     /* 移除卡片整体的hover效果，避免与内部元素冲突 */
 }
-
 .card-title {
     margin-left: 0;
     width: 100%;
@@ -454,7 +406,6 @@ h1 {
     min-height: 1.5rem; /* 确保有足够高度容纳绝对定位的可点击区域 */
     box-sizing: border-box;
 }
-
 /* 标题点击区域 - 简单的相对定位 */
 .title-text.clickable {
     position: relative;
@@ -464,11 +415,9 @@ h1 {
     transition: var(--transition);
     cursor: pointer;
 }
-
 .title-text.clickable:hover {
     background: #dbeafe !important;
 }
-
 .card-description {
     margin-left: 0;
     width: 100%;
@@ -484,7 +433,6 @@ h1 {
     position: relative; /* allow absolute overlay */
     box-sizing: border-box;
 }
-
 /* 描述点击区域 - 简单的相对定位 */
 .description-text.clickable {
     position: relative;
@@ -494,11 +442,9 @@ h1 {
     transition: var(--transition);
     cursor: pointer;
 }
-
 .description-text.clickable:hover {
     background: #dbeafe !important;
 }
-
 /* 待办列和归档列维持无左偏移 */
 .column[data-status="todo"] .card-title,
 .column[data-status="todo"] .card-description,
@@ -507,9 +453,7 @@ h1 {
     margin-left: 0;
     width: 100%;
 }
-
 /* 移除待办列的特殊处理，保持简单 */
-
 .card-meta {
     display: flex;
     justify-content: space-between;
@@ -520,13 +464,11 @@ h1 {
     border-top: 1px solid #e5e7eb;
     padding-top: 0.5rem;
 }
-
 .card-dates {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
 }
-
 .card-footer {
     display: flex;
     justify-content: space-between;
@@ -539,7 +481,6 @@ h1 {
     cursor: pointer;
     transition: color 0.2s;
 }
-
 .card-footer-top {
     position: relative;
     display: flex;
@@ -549,13 +490,11 @@ h1 {
     gap: 0.5rem;
     min-height: 32px;
 }
-
 .card-left-info {
     display: flex;
     gap: 0.5rem;
     align-items: center;
 }
-
 .card-center-actions {
     position: absolute;
     left: 50%;
@@ -566,18 +505,15 @@ h1 {
     align-items: center;
     gap: 0.5rem;
 }
-
 .card:hover .card-center-actions {
     visibility: visible;
 }
-
 .card-center-actions .action-btn,
 .card-center-actions .archive-btn,
 .card-center-actions .restore-btn,
 .card-center-actions .detail-btn {
     pointer-events: auto;
 }
-
 .card-right-info {
     display: flex;
     gap: 0.5rem;
@@ -586,7 +522,6 @@ h1 {
     justify-content: flex-end;
     margin-left: auto; /* push deadline to the right in flex layout */
 }
-
 .card-assignee {
     font-weight: 500;
     color: var(--primary-dark);
@@ -597,29 +532,23 @@ h1 {
     transition: var(--transition);
     border: 2px solid transparent; /* Reserve space for editing border */
 }
-
 .card-assignee.unassigned {
     color: var(--gray-400);
     background: var(--gray-100);
 }
-
 /* 小元素的特殊clickable样式 - 覆盖通用样式 */
 .card-assignee.clickable,
 .card-deadline.clickable {
     cursor: pointer;
     position: relative;
 }
-
 /* 移除伪元素扩大点击区域，避免焦点切换闪烁 */
-
 .card-assignee.clickable:hover {
     background: #dbeafe !important;
 }
-
 .card-assignee.unassigned.clickable:hover {
     background: var(--gray-200) !important;
 }
-
 .card-deadline {
     background: var(--gray-100);
     padding: 0.25rem 0.5rem;
@@ -634,11 +563,9 @@ h1 {
     position: relative; /* for absolute date input */
     max-width: 160px; /* Ensure empty-date editor has enough room but not overflow */
 }
-
 .card-deadline.clickable:hover {
     background: var(--gray-200) !important;
 }
-
 .card-deadline.unset {
     color: var(--gray-400);
     background: var(--gray-100);
@@ -646,7 +573,6 @@ h1 {
     border-radius: 12px;
     font-size: 0.7rem;
 }
-
 /* 内联编辑样式 - 统一设计 */
 .inline-assignee-select,
 .inline-date-input,
@@ -663,7 +589,6 @@ h1 {
     box-sizing: border-box;
     padding: 0.25rem 0.5rem; /* Match original */
 }
-
 .inline-assignee-select,
 .inline-date-input {
     padding: 0.375rem 0.5rem;
@@ -674,7 +599,6 @@ h1 {
     height: 100%; /* inherit locked height from container */
     box-sizing: border-box;
 }
-
 .inline-title-input {
     padding: 0; /* no extra vertical padding */
     font-size: 0.95rem;
@@ -691,7 +615,6 @@ h1 {
     white-space: pre-wrap; /* keep line breaks */
     border-radius: var(--border-radius-sm); /* Match text padding */
 }
-
 /* Overlay inline editors to avoid changing layout height */
 .inline-title-input {
     position: absolute;
@@ -709,9 +632,7 @@ h1 {
     line-height: 1.4; /* 匹配 .card-title */
     font-family: inherit;
 }
-
 /* 移除待办列特殊处理，编辑框现在自动适应父容器宽度 */
-
 .inline-date-input {
     position: absolute;
     top: 0;
@@ -721,7 +642,6 @@ h1 {
     width: 100%;
     height: 100%;
 }
-
 .inline-description-textarea {
     padding: 0; /* Prevent height increase */
     font-size: 0.875rem;
@@ -738,7 +658,6 @@ h1 {
     outline-offset: -2px;
     border-radius: var(--border-radius-sm); /* Match text padding */
 }
-
 .inline-description-textarea {
     position: absolute;
     top: 0;
@@ -751,68 +670,43 @@ h1 {
     padding: 0;
     box-sizing: border-box;
 }
-
 /* 移除待办列特殊处理，编辑框现在自动适应父容器宽度 */
-
 .inline-assignee-select:focus,
 .inline-date-input:focus,
 .inline-title-input:focus,
 .inline-description-textarea:focus {
     outline: none;
 }
-
 .card-author {
     font-weight: 500;
     color: #2563eb;
 }
-
 .card-created {
     font-size: 0.75rem;
     color: #9ca3af;
 }
-
 .deadline {
     color: #dc2626;
     font-weight: 500;
 }
-
-.deadline.upcoming {
-    color: #f59e0b;
-}
-
 .deadline.overdue {
     color: #dc2626;
     background: #fef2f2;
     padding: 0.125rem 0.25rem;
     border-radius: 3px;
 }
-
 /* 编辑中的卡片 */
 .card.editing {
     /* 移除编辑状态的特殊颜色 */
 }
-
 /* 内联编辑模式的卡片 */
 .card.inline-editing {
     /* 移除内联编辑状态的特殊颜色 */
 }
-
-.editing-indicator {
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    width: 8px;
-    height: 8px;
-    background: #10b981;
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-}
-
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
 }
-
 /* 添加卡片区域 */
 .add-card {
     display: flex;
@@ -824,43 +718,6 @@ h1 {
     border: 1px dashed #cbd5e1;
     margin-top: 1rem;
 }
-
-.input-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.input-row-inline {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.left-inputs {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    flex: 1;
-}
-
-.left-inputs .task-title-input {
-    flex: 1;
-    min-width: 0;
-}
-
-.input-row-inline .date-input {
-    margin-left: auto;
-    flex-shrink: 0;
-}
-
-.input-group {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
 .add-card input[type="text"],
 .task-title-input {
     padding: 0.875rem 1rem;
@@ -875,12 +732,10 @@ h1 {
     font-weight: 400;
     outline: none;
 }
-
 .task-title-input {
     flex: 3;
     min-width: 0;
 }
-
 .add-card input[type="text"]:focus,
 .task-title-input:focus {
     outline: none;
@@ -888,59 +743,17 @@ h1 {
     box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.1);
     transform: translateY(-1px);
 }
-
+.add-card input[type="text"]::-moz-placeholder, .task-title-input::-moz-placeholder {
+    color: var(--gray-400);
+    font-style: italic;
+    font-weight: 400;
+}
 .add-card input[type="text"]::placeholder,
 .task-title-input::placeholder {
     color: var(--gray-400);
     font-style: italic;
     font-weight: 400;
 }
-
-.assignee-select {
-    padding: 0.75rem 0.875rem;
-    border: 2px solid var(--gray-200);
-    border-radius: var(--border-radius);
-    background: white;
-    color: var(--gray-700);
-    font-size: 0.8rem;
-    transition: var(--transition);
-    cursor: pointer;
-    min-width: 80px;
-    max-width: 100px;
-    font-family: inherit;
-    font-weight: 500;
-    box-shadow: var(--shadow-sm);
-}
-
-.assignee-select:hover,
-.assignee-select:focus {
-    border-color: var(--primary-color);
-    outline: none;
-    box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.date-input {
-    padding: 0.75rem 0.875rem;
-    border: 2px solid var(--gray-200);
-    border-radius: var(--border-radius);
-    background: white;
-    font-size: 0.8rem;
-    transition: var(--transition);
-    cursor: pointer;
-    width: 120px;
-    font-family: inherit;
-    font-weight: 500;
-    box-shadow: var(--shadow-sm);
-    outline: none;
-}
-
-.date-input:hover,
-.date-input:focus {
-    border-color: var(--primary-color);
-    outline: none;
-    box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
 .add-card input[type="date"] {
     padding: 0.3rem;
     border: 1px solid #cbd5e1;
@@ -955,7 +768,6 @@ h1 {
     cursor: pointer;
     position: relative;
 }
-
 .add-card input[type="date"]::-webkit-calendar-picker-indicator {
     position: absolute;
     top: 0;
@@ -967,18 +779,15 @@ h1 {
     color: #64748b;
     cursor: pointer;
 }
-
 .add-card input[type="date"]:focus {
     outline: none;
     border-color: #3b82f6;
     background: #eff6ff;
 }
-
 .add-card input[type="date"]:hover {
     border-color: #94a3b8;
     background: #f1f5f9;
 }
-
 .add-card button {
     padding: 0.875rem 1.25rem;
     background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
@@ -997,46 +806,30 @@ h1 {
     width: 100%;
     margin-top: 0.5rem;
 }
-
 .add-card button:hover {
     background: linear-gradient(135deg, var(--primary-dark), #1e40af);
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
 }
-
 .add-card button:active {
     transform: translateY(0);
     box-shadow: var(--shadow);
 }
-
 .add-card button:focus {
     outline: none;
     box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.3);
 }
-
 .add-card button:disabled {
     background: #9ca3af;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
 }
-
 /* 快捷键提示 */
-.keyboard-hint {
-    font-size: 0.75rem;
-    color: var(--gray-400);
-    text-align: center;
-    margin-top: 0.5rem;
-    font-style: italic;
-    opacity: 0.8;
-    transition: var(--transition);
-}
-
 .add-card:hover .keyboard-hint {
     opacity: 1;
     color: var(--gray-500);
 }
-
 /* 卡片移动按钮 */
 .card-actions {
     display: none;
@@ -1049,21 +842,16 @@ h1 {
     pointer-events: none;
     width: 100%; /* center within full footer width */
 }
-
 .card-actions .action-btn,
 .card-actions .archive-btn,
 .card-actions .restore-btn,
 .card-actions .detail-btn {
     pointer-events: auto;
 }
-
 /* 所有按钮现在都居中显示，有统一间距 */
-
-
 .card:hover .card-actions {
     display: flex;
 }
-
 .action-btn,
 .archive-btn,
 .restore-btn,
@@ -1081,43 +869,27 @@ h1 {
     padding: 0; /* ensure no extra padding */
     box-sizing: border-box; /* include borders in size */
 }
-
-.move-left {
-    background: #3b82f6;
-    color: white;
-}
-
-.move-right {
-    background: #10b981;
-    color: white;
-}
-
 .archive-btn {
     background: #f59e0b;
     color: white;
 }
-
 .restore-btn {
     background: #8b5cf6;
     color: white;
 }
-
 .card-detail-center {
     display: flex;
     justify-content: center;
     margin: 0.75rem 0;
 }
-
 .detail-btn {
     background: #6366f1;
     color: white;
     box-shadow: 0 2px 4px rgba(99, 102, 241, 0.2);
 }
-
 .action-btn:hover, .archive-btn:hover, .restore-btn:hover, .detail-btn:hover {
     transform: scale(1.1);
 }
-
 /* 模态框 */
 .modal {
     position: fixed;
@@ -1133,12 +905,10 @@ h1 {
     z-index: 1000;
     animation: fadeIn 0.2s ease-out;
 }
-
 @keyframes fadeIn {
     from { opacity: 0; }
     to { opacity: 1; }
 }
-
 .modal-content {
     background: white;
     border-radius: var(--border-radius-xl);
@@ -1151,12 +921,10 @@ h1 {
     backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
-
 @keyframes slideUp {
     from { transform: translateY(30px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
 }
-
 .edit-modal .modal-header {
     background: #f8fafc;
     border-bottom: 1px solid #e2e8f0;
@@ -1166,13 +934,11 @@ h1 {
     justify-content: space-between;
     align-items: center;
 }
-
 .edit-modal .modal-header h3 {
     margin: 0;
     font-size: 1.1rem;
     font-weight: 600;
 }
-
 .close-btn {
     background: none;
     border: none;
@@ -1184,22 +950,18 @@ h1 {
     transition: background-color 0.2s;
     line-height: 1;
 }
-
 .close-btn:hover {
     background: rgba(0, 0, 0, 0.1);
     color: #374151;
 }
-
 .modal-body {
     padding: 1.5rem;
     overflow-y: auto;
     max-height: calc(90vh - 200px);
 }
-
 .form-group {
     margin-bottom: 1rem;
 }
-
 .form-group label {
     display: block;
     margin-bottom: 0.5rem;
@@ -1207,20 +969,16 @@ h1 {
     color: #374151;
     font-size: 0.9rem;
 }
-
 .form-row {
     display: flex;
     gap: 1rem;
 }
-
 .form-group.flex-1 {
     flex: 1;
 }
-
 .form-group.flex-2 {
     flex: 2;
 }
-
 .form-group input,
 .form-group textarea,
 .form-group select {
@@ -1232,7 +990,6 @@ h1 {
     transition: all 0.2s;
     font-family: inherit;
 }
-
 .form-group input:focus,
 .form-group textarea:focus,
 .form-group select:focus {
@@ -1240,12 +997,10 @@ h1 {
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
-
 .form-group select {
     background: white;
     cursor: pointer;
 }
-
 .card-info {
     background: #f8fafc;
     padding: 0.75rem;
@@ -1256,7 +1011,6 @@ h1 {
     font-size: 0.8rem;
     color: #64748b;
 }
-
 .modal-footer {
     background: #f8fafc;
     padding: 1rem 1.5rem;
@@ -1265,7 +1019,6 @@ h1 {
     justify-content: flex-end;
     gap: 0.75rem;
 }
-
 .modal-footer button {
     padding: 0.5rem 1rem;
     border: none;
@@ -1276,36 +1029,29 @@ h1 {
     transition: all 0.2s;
     font-family: inherit;
 }
-
 .btn-primary {
     background: #3b82f6;
     color: white;
 }
-
 .btn-primary:hover {
     background: #2563eb;
 }
-
 .btn-danger {
     background: #dc2626;
     color: white;
 }
-
 .btn-danger:hover {
     background: #b91c1c;
 }
-
 .btn-secondary {
     background: #f1f5f9;
     color: #64748b;
     border: 1px solid #e2e8f0;
 }
-
 .btn-secondary:hover {
     background: #e2e8f0;
     color: #475569;
 }
-
 /* 兼容旧的模态框样式 */
 .modal-actions {
     display: flex;
@@ -1313,7 +1059,6 @@ h1 {
     justify-content: flex-end;
     flex-wrap: wrap;
 }
-
 .modal-actions button {
     padding: 0.5rem 1rem;
     border: none;
@@ -1322,40 +1067,32 @@ h1 {
     font-size: 0.875rem;
     transition: all 0.2s;
 }
-
 .modal-actions button:first-child {
     background: #2563eb;
     color: white;
 }
-
 .modal-actions button:first-child:hover {
     background: #1d4ed8;
 }
-
 .delete-btn {
     background: #dc2626 !important;
     color: white !important;
 }
-
 .delete-btn:hover {
     background: #b91c1c !important;
 }
-
 .modal-actions button:last-child {
     background: #6b7280;
     color: white;
 }
-
 .modal-actions button:last-child:hover {
     background: #4b5563;
 }
-
 /* 归档功能样式 */
 .archive-actions {
     margin-top: auto;
     padding-top: 1rem;
 }
-
 .clear-archive-btn {
     width: 100%;
     padding: 0.5rem;
@@ -1367,43 +1104,34 @@ h1 {
     font-size: 0.875rem;
     transition: background 0.2s;
 }
-
 .clear-archive-btn:hover {
     background: #b91c1c;
 }
-
 .clear-archive-btn:disabled {
     background: #9ca3af;
     cursor: not-allowed;
 }
-
 /* 归档列特殊样式 */
 .column[data-status="archived"] {
     background: #f9fafb;
     border: 2px dashed #d1d5db;
 }
-
 .column[data-status="archived"] h3 {
     color: #6b7280;
 }
-
 .column[data-status="archived"] .card {
     opacity: 0.8;
     background: #f3f4f6;
 }
-
 .column[data-status="archived"] .card:hover {
     opacity: 1;
     background: #e5e7eb;
 }
-
 /* 所有列的卡片现在都没有左侧间距，因为移动按钮已移到底部 */
-
 /* 导入选项样式 */
 .import-options {
     margin: 1rem 0;
 }
-
 .import-options label {
     display: block;
     padding: 0.75rem;
@@ -1413,54 +1141,43 @@ h1 {
     cursor: pointer;
     transition: all 0.2s;
 }
-
 .import-options label:hover {
     border-color: #2563eb;
     background: #f8fafc;
 }
-
 .import-options label input[type="radio"] {
     margin-right: 0.5rem;
 }
-
 .import-options label span {
     font-weight: 500;
     display: block;
     margin-bottom: 0.25rem;
 }
-
 .import-options label small {
     color: #6b7280;
     font-size: 0.875rem;
 }
-
 .import-options label input[type="radio"]:checked + span {
     color: #2563eb;
 }
-
 .import-options label:has(input[type="radio"]:checked) {
     border-color: #2563eb;
     background: #eff6ff;
 }
-
 #importBtn {
     background: #0ea5e9;
     color: white;
 }
-
 #importBtn:hover {
     background: #0284c7;
 }
-
 #archiveBtn {
     background: #f59e0b;
     color: white;
 }
-
 #archiveBtn:hover {
     background: #d97706;
 }
-
 /* 响应式设计 */
 @media (max-width: 768px) {
     .board-container {
@@ -1496,11 +1213,11 @@ h1 {
         grid-template-columns: 1fr;
     }
 
-    .create-project-form, .join-project-form, .create-board-form {
+     .create-board-form {
         flex-direction: column;
     }
 
-    .create-project-form input, .join-project-form input, .create-board-form input {
+     .create-board-form input {
         min-width: auto;
     }
 
@@ -1508,7 +1225,6 @@ h1 {
         margin-bottom: 1rem;
     }
 }
-
 /* 项目选择页面样式 */
 .project-header, .board-select-header {
     display: flex;
@@ -1518,28 +1234,24 @@ h1 {
     padding-bottom: 1rem;
     border-bottom: 2px solid #e5e7eb;
 }
-
-.project-section, .board-section {
+ .board-section {
     background: white;
     padding: 1.5rem;
     border-radius: 8px;
     margin-bottom: 1.5rem;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
-
-.project-section h2, .board-section h2 {
+ .board-section h2 {
     margin: 0 0 1rem 0;
     color: #374151;
     font-size: 1.25rem;
 }
-
 .project-list, .board-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 1rem;
     margin-bottom: 1rem;
 }
-
 .project-card, .board-card {
     border: 1px solid #e5e7eb;
     border-radius: 8px;
@@ -1550,7 +1262,6 @@ h1 {
     min-height: 85px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
 }
-
 /* 项目卡片操作按钮（右上角悬浮显示） */
 .project-card-with-actions { position: relative; }
 .project-card-actions {
@@ -1583,42 +1294,35 @@ h1 {
 }
 .project-action-btn.rename-btn { color: #2563eb; border-color: rgba(37,99,235,0.25); }
 .project-action-btn.rename-btn:hover { background: rgba(37,99,235,0.08); }
-
 .project-card {
     background: linear-gradient(135deg, #ffffff 0%, #f3f4f6 100%);
 }
-
 .board-card {
     background: linear-gradient(135deg, #f7fdf7 0%, #f0fdf4 100%);
     border-color: #d1fae5;
 }
-
 .project-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     border-color: #667eea;
     background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
 }
-
 .board-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 20px rgba(34, 197, 94, 0.08);
     border-color: #a7f3d0;
     background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
 }
-
 .project-card h3, .board-card h3 {
     margin: 0 0 0.5rem 0;
     color: #1f2937;
     font-size: 1.125rem;
 }
-
 .project-card .project-info, .board-card .board-info {
     color: #6b7280;
     font-size: 0.875rem;
     line-height: 1.4;
 }
-
 .invite-code {
     background: #eff6ff;
     color: #1d4ed8;
@@ -1628,14 +1332,12 @@ h1 {
     font-weight: bold;
     font-size: 1.1em;
 }
-
-.create-project-form, .join-project-form, .create-board-form {
+ .create-board-form {
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
 }
-
-.create-project-form input, .join-project-form input, .create-board-form input {
+ .create-board-form input {
     flex: 1;
     min-width: 200px;
     padding: 0.75rem;
@@ -1644,13 +1346,11 @@ h1 {
     font-size: 0.9rem;
     transition: border-color 0.2s;
 }
-
-.create-project-form input:focus, .join-project-form input:focus, .create-board-form input:focus {
+ .create-board-form input:focus {
     outline: none;
     border-color: #3b82f6;
 }
-
-.create-project-form button, .join-project-form button, .create-board-form button {
+ .create-board-form button {
     padding: 0.75rem 1.5rem;
     background: linear-gradient(135deg, #3b82f6, #1d4ed8);
     color: white;
@@ -1661,43 +1361,36 @@ h1 {
     transition: all 0.2s;
     white-space: nowrap;
 }
-
-.create-project-form button:hover, .join-project-form button:hover, .create-board-form button:hover {
+ .create-board-form button:hover {
     background: linear-gradient(135deg, #1d4ed8, #1e40af);
     transform: translateY(-1px);
 }
-
 .project-info {
     background: #f8fafc;
     padding: 1rem;
     border-radius: 6px;
     margin-bottom: 2rem;
 }
-
 .project-info p {
     margin: 0.5rem 0;
     color: #4b5563;
 }
-
 /* 看板头部样式 */
 .board-header-left {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
 }
-
 .board-breadcrumb {
     font-size: 1.875rem;
     color: #374151;
     margin: 0;
     font-weight: bold;
 }
-
 .board-breadcrumb span {
     color: #374151;
     font-weight: 500;
 }
-
 .board-breadcrumb .project-link {
     color: #3b82f6;
     cursor: pointer;
@@ -1705,24 +1398,20 @@ h1 {
     border-bottom: 2px solid transparent;
     transition: all 0.2s;
 }
-
 .board-breadcrumb .project-link:hover {
     color: #1d4ed8;
     border-bottom-color: #1d4ed8;
 }
-
 .project-breadcrumb {
     font-size: 1.875rem;
     color: #374151;
     margin: 0;
     font-weight: bold;
 }
-
 .project-breadcrumb span {
     color: #374151;
     font-weight: 500;
 }
-
 .project-breadcrumb .home-link {
     color: #3b82f6;
     cursor: pointer;
@@ -1730,30 +1419,24 @@ h1 {
     border-bottom: 2px solid transparent;
     transition: all 0.2s;
 }
-
 .project-breadcrumb .home-link:hover {
     color: #1d4ed8;
     border-bottom-color: #1d4ed8;
 }
-
 .logout-btn {
     background: #dc2626 !important;
     color: white;
 }
-
 .logout-btn:hover {
     background: #b91c1c !important;
 }
-
 #backToBoardSelect {
     background: #6b7280;
     color: white;
 }
-
 #backToBoardSelect:hover {
     background: #4b5563;
 }
-
 .empty-state {
     text-align: center;
     color: #6b7280;
@@ -1763,34 +1446,12 @@ h1 {
     border: 2px dashed #d1d5db;
     border-radius: 8px;
 }
-
 /* 首页优化样式 */
-.all-boards-section, .projects-section {
-    margin-bottom: 2rem;
-}
-
-.all-boards-section h3, .projects-section h3 {
-    margin: 0 0 1rem 0;
-    color: #1f2937;
-    font-size: 1.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.all-boards-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-
 .projects-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 1rem;
 }
-
 .quick-board-card {
     background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
     color: #1e293b;
@@ -1805,13 +1466,11 @@ h1 {
     min-height: 70px;
     border: 1px solid #cbd5e1;
 }
-
 .quick-board-card:hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
     background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
 }
-
 .board-icon {
     font-size: 1.5rem;
     background: #3b82f6;
@@ -1824,13 +1483,11 @@ h1 {
     justify-content: center;
     flex-shrink: 0;
 }
-
 .board-details h4 {
     margin: 0 0 0.5rem 0;
     font-size: 1.125rem;
     font-weight: 600;
 }
-
 .board-project {
     font-size: 0.875rem;
     color: #64748b;
@@ -1839,12 +1496,10 @@ h1 {
     border-radius: 4px;
     display: inline-block;
 }
-
 /* 看板卡片操作按钮 */
 .board-card-with-actions {
     position: relative;
 }
-
 .board-card-actions {
     display: none;
     position: absolute;
@@ -1852,11 +1507,9 @@ h1 {
     right: 1rem;
     gap: 0.5rem;
 }
-
 .board-card-with-actions:hover .board-card-actions {
     display: flex;
 }
-
 /* 统一卡片动作按钮风格 */
 .board-action-btn,
 .project-action-btn {
@@ -1875,7 +1528,6 @@ h1 {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(0, 0, 0, 0.1);
 }
-
 .board-action-btn:hover,
 .project-action-btn:hover {
     background: white;
@@ -1883,25 +1535,21 @@ h1 {
     transform: scale(1.1);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
-
 .board-action-btn:hover {
     background: white;
     color: #374151;
     transform: scale(1.1);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
-
 .board-action-btn.delete-btn {
     color: #dc2626;
     background: rgba(255, 255, 255, 0.9);
 }
-
 .board-action-btn.delete-btn:hover {
     background: #dc2626;
     color: white;
     box-shadow: 0 4px 8px rgba(220, 38, 38, 0.3);
 }
-
 /* 项目头部样式 */
 .project-header {
     display: flex;
@@ -1911,13 +1559,11 @@ h1 {
     padding-bottom: 1rem;
     border-bottom: 2px solid #e5e7eb;
 }
-
 .user-info {
     display: flex;
     align-items: center;
     gap: 1rem;
 }
-
 .user-info span {
     color: #4b5563;
     font-weight: 500;
@@ -1925,15 +1571,7 @@ h1 {
     padding: 0.5rem 1rem;
     border-radius: 20px;
 }
-
 /* 工作台样式 */
-.dashboard-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2rem;
-}
-
 .stat-card {
     background: white;
     padding: 1.5rem;
@@ -1945,103 +1583,27 @@ h1 {
     border-left: 4px solid #3b82f6;
     transition: transform 0.2s;
 }
-
 .stat-card:hover {
     transform: translateY(-2px);
 }
-
-.stat-icon {
-    font-size: 2rem;
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-    border-radius: 50%;
-    width: 60px;
-    height: 60px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-
-.stat-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.stat-number {
-    font-size: 2rem;
-    font-weight: bold;
-    color: #1f2937;
-    line-height: 1;
-}
-
 .stat-label {
     color: #6b7280;
     font-size: 0.875rem;
     margin-top: 0.25rem;
 }
-
 .dashboard-section {
     margin-bottom: 2rem;
 }
-
 .dashboard-section h2 {
     margin: 0 0 1rem 0;
     color: #1f2937;
     font-size: 1.5rem;
 }
-
 .quick-boards-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: 1rem;
 }
-
-.recent-activities {
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    overflow: hidden;
-}
-
-.activity-item {
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid #f3f4f6;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.activity-item:last-child {
-    border-bottom: none;
-}
-
-.activity-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.25rem;
-    background: #f0f9ff;
-    flex-shrink: 0;
-}
-
-.activity-content {
-    flex: 1;
-}
-
-.activity-title {
-    font-weight: 500;
-    color: #1f2937;
-    margin: 0 0 0.25rem 0;
-}
-
-.activity-time {
-    font-size: 0.875rem;
-    color: #6b7280;
-}
-
 /* 项目管理样式 */
 .projects-header {
     display: flex;
@@ -2049,17 +1611,14 @@ h1 {
     align-items: center;
     margin-bottom: 2rem;
 }
-
 .projects-header h2 {
     margin: 0;
     color: #1f2937;
 }
-
 .header-actions {
     display: flex;
     gap: 1rem;
 }
-
 .btn-primary {
     background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
     color: white;
@@ -2075,13 +1634,11 @@ h1 {
     box-shadow: 0 2px 4px rgba(59, 130, 246, 0.15);
     font-size: 0.875rem;
 }
-
 .btn-primary:hover {
     background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%);
     transform: translateY(-1px);
     box-shadow: 0 4px 8px rgba(59, 130, 246, 0.25);
 }
-
 .btn-secondary {
     background: #f3f4f6;
     color: #374151;
@@ -2092,11 +1649,9 @@ h1 {
     font-weight: 500;
     transition: all 0.2s;
 }
-
 .btn-secondary:hover {
     background: #e5e7eb;
 }
-
 .create-form {
     position: fixed;
     top: 0;
@@ -2109,7 +1664,6 @@ h1 {
     justify-content: center;
     z-index: 1000;
 }
-
 .form-card {
     background: white;
     padding: 2rem;
@@ -2118,12 +1672,10 @@ h1 {
     width: 100%;
     max-width: 400px;
 }
-
 .form-card h3 {
     margin: 0 0 1.5rem 0;
     color: #1f2937;
 }
-
 .form-card input {
     width: 100%;
     padding: 0.75rem;
@@ -2133,26 +1685,16 @@ h1 {
     margin-bottom: 1.5rem;
     box-sizing: border-box;
 }
-
 .form-card input:focus {
     outline: none;
     border-color: #3b82f6;
 }
-
 .form-actions {
     display: flex;
     gap: 1rem;
     justify-content: flex-end;
 }
-
 /* 加入项目样式 */
-.join-section {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 400px;
-}
-
 .join-card {
     background: white;
     padding: 3rem;
@@ -2162,69 +1704,14 @@ h1 {
     max-width: 500px;
     width: 100%;
 }
-
-.join-icon {
-    font-size: 4rem;
-    margin-bottom: 1rem;
-}
-
 .join-card h2 {
     margin: 0 0 0.5rem 0;
     color: #1f2937;
 }
-
 .join-card p {
     color: #6b7280;
     margin: 0 0 2rem 0;
 }
-
-.join-form {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 2rem;
-    flex-wrap: wrap;
-}
-
-.join-form input {
-    flex: 1;
-    min-width: 200px;
-    padding: 0.75rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 1rem;
-    text-transform: uppercase;
-    text-align: center;
-    font-weight: bold;
-}
-
-.join-form input:focus {
-    outline: none;
-    border-color: #3b82f6;
-}
-
-.join-tips {
-    text-align: left;
-    background: #f8fafc;
-    padding: 1.5rem;
-    border-radius: 8px;
-    border-left: 4px solid #3b82f6;
-}
-
-.join-tips h4 {
-    margin: 0 0 1rem 0;
-    color: #374151;
-}
-
-.join-tips ul {
-    margin: 0;
-    padding-left: 1.5rem;
-}
-
-.join-tips li {
-    color: #6b7280;
-    margin-bottom: 0.5rem;
-}
-
 /* 桌面版优化 */
 @media (min-width: 1024px) {
     .container {
@@ -2272,29 +1759,14 @@ h1 {
         gap: 1.5rem;
     }
 }
-
 /* 移动端响应式 */
 @media (max-width: 768px) {
 
     /* 工作台响应式 */
-    .dashboard-stats {
-        grid-template-columns: 1fr;
-        gap: 0.75rem;
-    }
 
     .stat-card {
         padding: 1rem;
         gap: 0.75rem;
-    }
-
-    .stat-icon {
-        width: 50px;
-        height: 50px;
-        font-size: 1.5rem;
-    }
-
-    .stat-number {
-        font-size: 1.5rem;
     }
 
     .quick-boards-grid {
@@ -2313,14 +1785,6 @@ h1 {
 
     .join-card {
         padding: 2rem 1.5rem;
-    }
-
-    .join-form {
-        flex-direction: column;
-    }
-
-    .join-form input {
-        min-width: auto;
     }
 
     .form-card {
@@ -2344,7 +1808,6 @@ h1 {
         font-size: 1.5rem;
     }
 }
-
 .assignee-dropdown {
     position: absolute;
     z-index: 2000;
@@ -2356,7 +1819,6 @@ h1 {
     max-height: 240px;
     overflow-y: auto;
 }
-
 .assignee-option {
     padding: 0.5rem 0.75rem;
     border-radius: 6px;
@@ -2364,19 +1826,15 @@ h1 {
     font-size: 0.85rem;
     color: var(--gray-700);
 }
-
 .assignee-option:hover {
     background: #eff6ff;
     color: var(--primary-dark);
 }
-
 .assignee-option.selected {
     background: #dbeafe;
     color: var(--primary-dark);
     font-weight: 600;
 }
-
-
 /* 待办列和归档列的编辑框精确匹配原文本 */
 .column[data-status="todo"] .inline-title-input,
 .archive-column .inline-title-input,
@@ -2386,20 +1844,17 @@ h1 {
     width: 100%;
     margin: 0;
 }
-
 /* Prevent inline editors from expanding width */
 .inline-title-input,
 .inline-description-textarea {
     max-width: 100%;
 }
-
 /* Keep card layout from stretching due to long text */
 .card-title,
 .card-description {
     word-break: break-word;
     overflow-wrap: anywhere;
 }
-
 /* =============================================
    现代极简主题覆盖（不改动结构，仅覆写样式）
    ============================================= */
@@ -2432,20 +1887,17 @@ h1 {
 
     --transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
 }
-
 /* 背景更素雅 */
 body {
     background: linear-gradient(180deg, #f6f7fb 0%, #eef1f7 100%);
     color: var(--gray-800);
 }
-
 /* 顶部条更简洁：去重阴影，轻边框 */
 .header {
     background: #ffffff;
     box-shadow: none;
     border-bottom: 1px solid var(--gray-200);
 }
-
 /* 顶部按钮统一风格 */
 .header button,
 #backToProjects,
@@ -2473,7 +1925,6 @@ body {
     box-shadow: var(--shadow);
     border-color: var(--gray-400);
 }
-
 /* 重要操作维持主色但更扁平 */
 #exportBtn, #importBtn, #archiveBtn, .btn-primary {
     background: var(--primary-color) !important;
@@ -2489,13 +1940,11 @@ body {
     background: var(--danger-color) !important;
     border: 1px solid transparent !important;
 }
-
 /* 看板布局留白更舒适 */
 .board-container {
     gap: 1.5rem;
     padding: 2rem;
 }
-
 /* 列更卡片化、弱阴影、细边框 */
 .column {
     background: #fff;
@@ -2508,7 +1957,6 @@ body {
     border-bottom: 1px solid var(--gray-200);
     color: var(--gray-800);
 }
-
 /* 卡片更干净：细边框+悬浮提升 */
 .card {
     background: #fff;
@@ -2525,7 +1973,6 @@ body {
 .card-footer {
     border-top: 1px solid var(--gray-200);
 }
-
 /* 动作按钮更中性，减少视觉噪音 */
 .action-btn,
 .archive-btn,
@@ -2548,29 +1995,22 @@ body {
     transform: translateY(-1px) scale(1.02);
 }
 /* 左右移动维持轻微色彩提示 */
-.move-left { color: #2563eb; }
-.move-right { color: #059669; }
 .archive-btn { color: #f59e0b; }
 .restore-btn { color: #8b5cf6; }
 .detail-btn { color: #6366f1; }
-
 /* 添加任务区域更简洁 */
 .add-card {
     background: var(--gray-50);
     border: 1px dashed var(--gray-300);
 }
 .add-card input[type="text"],
-.task-title-input,
-.assignee-select,
-.date-input {
+.task-title-input {
     background: #fff;
     border: 1px solid var(--gray-300);
     box-shadow: none;
 }
 .add-card input[type="text"]:focus,
-.task-title-input:focus,
-.assignee-select:focus,
-.date-input:focus {
+.task-title-input:focus {
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
@@ -2578,7 +2018,6 @@ body {
     height: 40px;
     border-radius: var(--border-radius-lg);
 }
-
 /* 快速访问卡片与项目卡片统一为白底卡片 */
 .quick-board-card,
 .project-card,
@@ -2595,7 +2034,6 @@ body {
     border-color: var(--primary-light);
     background: #fff;
 }
-
 /* 模态更轻，圆角更大 */
 .modal-content {
     background: #fff;
@@ -2620,7 +2058,6 @@ body {
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
-
 /* 在线用户小徽章 */
 #userList .online-user,
 .user-badge {
@@ -2630,13 +2067,11 @@ body {
     padding: 0.2rem 0.5rem;
     font-size: 0.72rem;
 }
-
 /* 可点击文本悬浮更柔和 */
 .title-text.clickable:hover,
 .description-text.clickable:hover {
     background: rgba(59, 130, 246, 0.12) !important;
 }
-
 /* 深色模式（跟随系统） */
 @media (prefers-color-scheme: dark) {
     :root {
@@ -2747,8 +2182,6 @@ body {
     .form-group select,
     .add-card input[type="text"],
     .task-title-input,
-    .assignee-select,
-    .date-input,
     .inline-title-input,
     .inline-description-textarea,
     .inline-date-input {
@@ -2756,6 +2189,7 @@ body {
         color: var(--gray-700);
         border: 1px solid var(--gray-300);
     }
+    .form-group input::-moz-placeholder, .form-group textarea::-moz-placeholder, .task-title-input::-moz-placeholder { color: var(--gray-500); }
     .form-group input::placeholder,
     .form-group textarea::placeholder,
     .task-title-input::placeholder { color: var(--gray-500); }
@@ -2774,7 +2208,6 @@ body {
         background: rgba(59, 130, 246, 0.18) !important;
     }
 }
-
 /* =============================================
    现代极简主题微调（排版、徽章、悬浮、拖拽提示）
    ============================================= */
@@ -2787,7 +2220,6 @@ body {
 .card-description {
     color: var(--gray-600);
 }
-
 /* 数量徽章更精致 */
 .count {
     background: var(--gray-100);
@@ -2797,12 +2229,10 @@ body {
     padding: 0 0.5rem;
     font-weight: 600;
 }
-
 /* 顶部导航与面包屑更稳重 */
 .board-breadcrumb, .project-breadcrumb {
     letter-spacing: -0.015em;
 }
-
 /* 卡片聚焦与悬浮态更柔和 */
 .card:hover {
     transform: translateY(-1px);
@@ -2811,7 +2241,6 @@ body {
     border-color: var(--primary-light);
     box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
 }
-
 /* 负责人与日期为胶囊样式，交互更明显 */
 .card-assignee,
 .card-deadline {
@@ -2821,7 +2250,6 @@ body {
 .card-deadline:hover {
     transform: translateY(-1px);
 }
-
 /* 拖拽提示（有 :has 支持则增强） */
 @supports selector(:has(*)) {
     .cards:has(.card.dragging) .card:not(.dragging) {
@@ -2837,7 +2265,6 @@ body {
     transform: scale(0.998);
     box-shadow: var(--shadow-md);
 }
-
 /* 顶部添加区域更轻盈 */
 .add-card-top {
     background: rgba(0,0,0,0.02);
@@ -2845,11 +2272,9 @@ body {
 .add-card .keyboard-hint {
     opacity: .7;
 }
-
 /* 在线用户徽章间距与样式优化 */
 .online-users { border: 1px solid var(--gray-300); background: var(--gray-50); }
 #userList .online-user { margin-right: 0.25rem; }
-
 /* 动作区背景轻微毛玻璃（在支持的浏览器） */
 .card-center-actions {
     backdrop-filter: saturate(1.1) blur(2px);
@@ -2857,23 +2282,19 @@ body {
     padding: 2px 4px;
     border-radius: 8px;
 }
-
 /* 暗色模式微调 */
 @media (prefers-color-scheme: dark) {
     .count { background: #0b1220; border-color: var(--gray-300); color: var(--gray-700); }
     .online-users { background: #0b1220; border-color: var(--gray-300); }
     .card-center-actions { background: rgba(255,255,255,0.04); }
 }
-
 /* 间距：上方添加任务与第一张卡片保持更舒适距离 */
 .add-card-top {
     margin-bottom: 0.75rem; /* 分隔顶部添加区与第一张卡片 */
 }
-
 /* 拖拽时隐藏中部操作按钮，避免闪烁 */
 .card.dragging .card-center-actions { visibility: hidden !important; opacity: 0 !important; }
 .dragging-cards .card-center-actions { visibility: hidden !important; opacity: 0 !important; }
-
 /* 红色危险按钮文本对比度修复（始终白字） */
 .header .logout-btn,
 .header #logoutBtn,
@@ -2884,7 +2305,6 @@ body {
 }
 .header .logout-btn:hover,
 .header #logoutBtn:hover { filter: brightness(0.95); }
-
 /* 首页/看板选择页：看板图标与卡片优化 */
 .quick-boards-grid { gap: 1.25rem; }
 .quick-board-card {
@@ -2912,11 +2332,9 @@ body {
     background: rgba(59,130,246,0.08);
     color: var(--primary-dark);
 }
-
 /* 项目卡片微调，与看板卡片风格一致 */
 .project-card { border: 1px solid var(--gray-200); box-shadow: var(--shadow-sm); }
 .project-card:hover { border-color: var(--primary-light); box-shadow: var(--shadow-md); }
-
 /* 暗色模式下首页样式同步优化 */
 @media (prefers-color-scheme: dark) {
     .header .logout-btn,
@@ -2935,27 +2353,22 @@ body {
     }
     .board-project { background: rgba(59,130,246,0.18); color: #cfe0ff; }
 }
-
 /* SVG 图标尺寸与配色（继承容器颜色） */
 .board-icon svg { width: 22px; height: 22px; display: block; }
 .quick-board-card .board-icon { color: #ffffff; }
-
 /* 首页与项目页标题与分区留白优化 */
 .dashboard-section h2, .board-section h2 { display: flex; align-items: center; gap: .5rem; }
 .dashboard-section { margin-bottom: 2.25rem; }
 .board-section { margin-bottom: 2rem; }
-
 /* Prevent board header from wrapping into two lines and align content */
 .header > .container { display: flex; flex-wrap: nowrap; }
 .board-header-left { flex: 1 1 auto; min-width: 0; }
 .header .header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 1rem; }
-
 /* 图标色彩与区域和谐（更柔和、更现代） */
 .dashboard-section h2 [data-icon],
 .board-section h2 [data-icon] { color: var(--gray-400); }
 .dashboard-section h2 [data-icon] svg,
 .board-section h2 [data-icon] svg { width: 20px; height: 20px; }
-
 /* 看板卡片左侧图标：柔和底色 + 主色描边 */
 .quick-board-card .board-icon {
     background: rgba(59,130,246,0.10);
@@ -2967,14 +2380,12 @@ body {
     background: rgba(59,130,246,0.14);
     border-color: rgba(59,130,246,0.28);
 }
-
 /* 项目标注更克制，避免颜色冲突 */
 .board-project {
     background: var(--gray-100);
     color: var(--gray-600);
     border: 1px solid var(--gray-200);
 }
-
 @media (prefers-color-scheme: dark) {
     .dashboard-section h2 [data-icon] { color: var(--gray-600); }
     .quick-board-card .board-icon {
@@ -2988,24 +2399,20 @@ body {
         border: 1px solid var(--gray-300);
     }
 }
-
 /* Match board header height and top alignment with homepage */
 #boardPage .header { padding: 1rem 0; margin-top: 0; }
 #boardPage .header > .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; }
 /* #boardPage .board-header-left { display: flex; align-items: center; } */
 #boardPage .board-breadcrumb { margin: 0; font-size: 1.75rem; }
-
 /* Ensure project/board select headers keep their spacing */
 #projectPage .project-header { margin-bottom: 2rem; }
 #boardSelectPage .board-select-header { margin-bottom: 2rem; }
-
 /* 修复"加入项目"按钮图标大小与对齐 */
 .create-board-form button,
 .projects-header .btn-primary,
 .projects-header .btn-secondary { height: 40px; display: inline-flex; align-items: center; gap: 8px; }
 .projects-header .btn-secondary .btn-icon svg { width: 18px; height: 18px; }
 .projects-header .btn-primary .btn-icon svg { width: 18px; height: 18px; }
-
 /* Archive page header alignment and compact buttons */
 #archivePage .header { padding: 0.75rem 0; }
 #archivePage .header > .container { padding: 0 2rem; display: flex; justify-content: space-between; align-items: center; }
@@ -3021,7 +2428,6 @@ body {
 #archivePage .header .clear-archive-btn:hover {
     background: var(--danger-dark) !important;
 }
-
 @media (prefers-color-scheme: dark) {
     #archivePage .header .clear-archive-btn {
         background: var(--danger-dark) !important;
@@ -3029,23 +2435,19 @@ body {
         border-color: transparent;
     }
 }
-
 /* 无图标模式：隐藏占位并调整间距 */
 /* icons visible globally */
 .projects-header .header-actions { gap: 0.75rem; }
 .quick-board-card { padding-left: 1.25rem; }
-
 /* 仅隐藏看板卡片内部图标（其他图标保留） */
 .quick-board-card .board-icon { display: none !important; }
 .projects-header .header-actions { gap: 0.75rem; }
 .quick-board-card { padding-left: 1.25rem; }
-
 /* Board and project card icon sizes */
 .board-icon { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--primary-color); color: #fff; }
 .board-icon svg { width: 18px; height: 18px; }
 .project-card .project-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-right: 6px; }
 .project-card .project-icon svg { width: 18px; height: 18px; }
-
 /* Harmonize top navbar buttons on project and board-select pages */
 #boardSelectPage .board-select-header .header-actions {
     display: flex;
@@ -3086,7 +2488,6 @@ body {
 #boardSelectPage .board-select-header .header-actions .logout-btn:hover {
     background: var(--danger-dark);
 }
-
 /* Project page top-right logout button consistency */
 #projectPage .project-header .logout-btn {
     height: 36px;
@@ -3100,24 +2501,20 @@ body {
 #projectPage .project-header .logout-btn:hover {
     background: var(--danger-dark);
 }
-
 /* === Trello-like compact overrides (non-destructive) === */
 /* 布局与背景更接近 Trello */
 body {
     background: #f5f6f8;
 }
-
 #boardPage .header {
     background: transparent;
     box-shadow: none;
     padding: 0.5rem 1rem;
 }
-
 .header .container {
     padding: 0.5rem 0;
     max-width: 100%;
 }
-
 .header-actions button,
 .header button,
 .btn-primary,
@@ -3128,11 +2525,9 @@ body {
     border-radius: 4px;
     box-shadow: none;
 }
-
 .header-actions { gap: 0.5rem; }
 .online-users { padding: 4px 8px; font-size: 12px; }
 .user-badge { padding: 2px 6px; font-size: 11px; }
-
 .board-container {
     display: flex;
     align-items: flex-start;
@@ -3141,7 +2536,6 @@ body {
     overflow-x: auto;
     height: calc(100vh - 64px);
 }
-
 /* 列更窄更紧凑 */
 .column, .archive-column {
     width: 272px; /* Trello 常见列宽 */
@@ -3153,7 +2547,6 @@ body {
     box-shadow: none;
     border: none;
 }
-
 .column h3, .archive-column h3 {
     margin: 0 0 8px 4px;
     padding: 0;
@@ -3161,14 +2554,12 @@ body {
     font-size: 14px;
     color: #44546f;
 }
-
 .count {
     background: transparent;
     color: #6b778c;
     padding: 0 4px;
     font-size: 12px;
 }
-
 /* 卡片更像 Trello：白底、轻边框、少阴影、紧凑间距 */
 .cards { gap: 8px; margin-bottom: 8px; }
 .card {
@@ -3177,19 +2568,13 @@ body {
     border-radius: 8px;
     padding: 8px 10px;
 }
-
 .card:hover { background: #fafbfc; border-color: #c1c7d0; }
-
 .card-title { font-size: 14px; margin-bottom: 6px; }
 .card-description { font-size: 12px; color: #6b778c; margin-bottom: 6px; max-height: 100px; }
-
 .card-footer, .card-meta { border-top: none; padding-top: 0; margin-top: 4px; color: #6b778c; font-size: 11px; }
-
 .card-assignee { background: #e9f2ff; color: #0c66e4; font-size: 11px; padding: 2px 6px; border-radius: 12px; }
 .card-assignee.unassigned { background: #f4f5f7; color: #97a0af; }
-
 .card-deadline { color: #5e6c84; font-size: 11px; }
-
 /* 顶部 inline 操作按钮只在 hover 时显现，体积更小 */
 .card-center-actions { gap: 6px; }
 .card-center-actions .action-btn,
@@ -3200,39 +2585,28 @@ body {
     padding: 4px 6px;
     border-radius: 4px;
 }
-
 /* 添加卡片输入区简化 */
 .add-card { margin-top: 8px; }
-.input-row-inline { gap: 6px; }
-.left-inputs { gap: 6px; }
 .task-title-input { height: 32px; padding: 0 8px; font-size: 13px; }
-.assignee-select, .date-input { height: 32px; font-size: 12px; }
-
 /* 面包屑标题更紧凑 */
 .board-breadcrumb { font-size: 16px; color: #172b4d; margin: 0; }
-
 /* 归档页面和普通列保持一致风格 */
 .archive-container { padding: 12px; }
 .archive-column { background: #ebecf0; }
-
 /* 登录与项目页整体字号收紧一点点 */
 .login-form input, .login-form button { font-size: 14px; }
 .project-header h1, .board-select-header h1 { font-size: 20px; }
 .quick-boards-grid, .projects-grid { gap: 12px; }
 .project-card, .quick-board-card { padding: 10px; border-radius: 8px; }
-
 /* 辅助色调更低干扰 */
 .title-text.clickable:hover, .description-text.clickable:hover { background: #e9f2ff !important; }
 .card-assignee.clickable:hover { background: #e1ecff !important; transform: none !important; }
-
 /* 滚动优化：列容器可滚动，卡片区域填充剩余高度 */
 .column { max-height: calc(100vh - 88px); overflow-y: auto; }
-
 /* === Trello-like refinements (phase 2) === */
 :root {
     --board-bg-url: none; /* e.g., url('https://images.unsplash.com/photo-...') */
 }
-
 /* 可选：看板背景图（与 Trello 类似的全屏背景） */
 #boardPage {
     background-image: var(--board-bg-url);
@@ -3241,7 +2615,6 @@ body {
     background-repeat: no-repeat;
     background-attachment: fixed;
 }
-
 /* 头部保持单行并收紧 */
 #boardPage .header .container {
     display: flex;
@@ -3250,30 +2623,25 @@ body {
     gap: 0.5rem;
     flex-wrap: nowrap;
 }
-
 /* .board-header-left { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; } */
 .board-breadcrumb { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .header-actions { flex: 0 0 auto; flex-wrap: nowrap; }
-
 /* 列更接近 Trello 的视觉（浅灰半透明 + 细边框） */
 .column, .archive-column {
     background: rgba(241, 242, 244, 0.92);
     border: 1px solid #dfe1e6;
 }
-
 /* 卡片 hover 更克制 */
 .card:hover {
     transform: none;
     box-shadow: none;
 }
-
 /* 拖拽时隐藏中部按钮避免闪烁 */
 .card.dragging .card-center-actions,
 .dragging-cards .card-center-actions {
     visibility: hidden !important;
     opacity: 0 !important;
 }
-
 /* 退出按钮的对比度修正 */
 .header .logout-btn,
 .header #logoutBtn,
@@ -3284,7 +2652,6 @@ body {
 }
 .header .logout-btn:hover,
 .header #logoutBtn:hover { filter: brightness(0.95); }
-
 /* === Trello design tokens & minimal card UI === */
 :root{
     --list-width:272px;
@@ -3300,41 +2667,37 @@ body {
     --bg:#f6f7f9;
     --card-bg:#fff;
 }
-
 /* board/list */
 .board-container{ display:flex; gap:var(--list-gap); padding:12px; overflow:auto; background:var(--bg); height:calc(100vh - 64px); }
 .column{ width:var(--list-width); min-width:var(--list-width); max-width:var(--list-width); background:transparent; box-shadow:none; padding:0; border:none; }
 .column h3{ margin:6px 6px 8px; padding:0; border:none; font-size:14px; }
 .cards{ display:flex; flex-direction:column; gap:8px; padding:0 6px 8px; }
-
 /* minimal card front */
 .card{ background:var(--card-bg); border-radius:var(--card-radius); box-shadow:var(--card-shadow); padding:var(--card-padding); border:1px solid var(--border); }
 .card:hover{ box-shadow:var(--card-hover-shadow); }
 .card .card-title{ font-size:14.5px; font-weight:600; line-height:1.3; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; margin:0; }
 .card .card-description{ display:none !important; }
 .card .card-footer{ display:none !important; }
-
 .card-labels{ display:flex; gap:4px; margin-bottom:6px; min-height:var(--label-height); }
 .label{ height:var(--label-height); border-radius:6px; flex:0 0 36px; }
-.label-red{ background:#f87171; } .label-green{ background:#34d399; }
-.label-blue{ background:#60a5fa; } .label-yellow{ background:#fbbf24; } .label-purple{ background:#a78bfa; }
-
+.label-red{ background:#f87171; }
+.label-green{ background:#34d399; }
+.label-blue{ background:#60a5fa; }
+.label-yellow{ background:#fbbf24; }
+.label-purple{ background:#a78bfa; }
 .card-badges{ display:flex; flex-wrap:wrap; gap:var(--badge-gap); margin-top:6px; color:var(--muted); font-size:12px; }
 .badge{ display:inline-flex; align-items:center; gap:4px; }
 .badge-user{ width:20px; height:20px; border-radius:50%; background:#111; color:#fff; justify-content:center; font-size:11px; }
 .badge-due.overdue{ color:#ef4444; }
 .badge-due.soon{ color:#f59e0b; }
-
 .card-quick{ position:absolute; top:6px; right:6px; opacity:0; transition:opacity .12s; border:0; background:transparent; font-size:18px; line-height:1; cursor:pointer; }
 .card:hover .card-quick{ opacity:1; }
-
 /* drawer modal (right panel) */
 #cardModal[hidden]{ display:none; }
 #cardModal{ position:fixed; inset:0; z-index:1100; }
 #cardModal .modal-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.35); }
 #cardModal .modal-panel{ position:absolute; right:0; top:0; height:100%; width:min(720px, 92vw); background:#fff; box-shadow:-8px 0 24px rgba(0,0,0,.2); padding:20px; overflow:auto; transform:translateX(100%); transition:transform .15s ease-out; }
 #cardModal.open .modal-panel{ transform:translateX(0); }
-
 /* drawer content sections */
 .drawer-section{ margin-bottom:16px; }
 .drawer-section h4{ font-size:14px; margin:0 0 8px; color:#111827; }
@@ -3344,10 +2707,8 @@ body {
 .drawer-labels{ display:flex; gap:8px; flex-wrap:wrap; }
 .drawer-label{ width:28px; height:16px; border-radius:6px; cursor:pointer; border:1px solid rgba(17,24,39,.08); }
 .drawer-badges{ display:flex; gap:8px; color:var(--muted); font-size:12px; }
-
 /* util */
 .visually-hidden{ position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
-
 /* === Minimal Trello-like card and collapsed add form (compact) === */
 .card {
     background-color: #FFFFFF;
@@ -3359,28 +2720,23 @@ body {
     position: relative;
 }
 .card:hover { box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
-
 /* title clamp to 3 lines */
 .card .card-title { margin: 0; font-size: 14px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 /* hide verbose areas from old layout */
 .card .card-description, .card .card-footer { display: none !important; }
-
 /* badges (icons only) */
 .card-badges { display:flex; align-items:center; gap:8px; margin-top:6px; color:#6b7280; font-size:12px; }
 .badge-icon { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:4px; }
 .badge-icon.due.overdue { color: #ef4444; }
 .badge-user { width:20px; height:20px; border-radius:50%; background:#111827; color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:11px; margin-left:auto; }
-
 /* hover pencil */
 .card-quick { position:absolute; top:6px; right:6px; opacity:0; transition:opacity .12s; border:0; background:transparent; font-size:16px; line-height:1; cursor:pointer; }
 .card:hover .card-quick { opacity:1; }
-
 /* collapsed add card */
 .add-card.collapsed .input-row-inline { display: none; }
 .add-card.collapsed .add-card-link { display: inline-block; }
 .add-card .add-card-link { display:none; color:#0c66e4; background:transparent; border:0; padding:4px 6px; cursor:pointer; font-size:13px; }
 .add-card .add-card-link:hover { text-decoration: underline; }
-
 /* === Trello-like lists & composer visuals === */
 .list { background: #ebecf0; border: 1px solid #dfe1e6; border-radius: 8px; padding: 8px; width: var(--list-width); min-width: var(--list-width); max-width: var(--list-width); display:flex; flex-direction:column; gap:8px; }
 .list-header { display:flex; align-items:center; justify-content:space-between; margin: 2px 4px 6px; }
@@ -3388,9 +2744,7 @@ body {
 .list-title-input { width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-weight:600; background:#fff; }
 .list-menu { width:28px; height:28px; border:0; background:transparent; border-radius:6px; color:#6b778c; cursor:pointer; }
 .list-menu:hover { background:rgba(9,30,66,.08); }
-
 .cards { display:flex; flex-direction:column; gap:8px; }
-
 /* composer inside list */
 .card-composer { margin-top:auto; }
 .card-composer .composer-open { display:inline-block; color:#0c66e4; background:transparent; border:0; padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px; }
@@ -3402,7 +2756,6 @@ body {
 .card-composer .btn-primary { padding:6px 10px; border-radius:6px; border:0; background:#0c66e4; color:#fff; }
 .card-composer .composer-cancel { width:28px; height:28px; border:0; border-radius:6px; background:transparent; cursor:pointer; color:#0c66e4; font-weight:700; font-size:18px; }
 .card-composer .composer-cancel:hover { background:rgba(12,102,228,.10); color:#0b5bd7; }
-
 /* add another list entry */
 .add-list { background: transparent; border:0; border-radius:8px; width: var(--list-width); min-width: var(--list-width); max-width: var(--list-width); display:flex; align-items:flex-start; }
 .add-list .add-list-open { width:100%; min-height:40px; text-align:left; background:rgba(236,238,240,.8); border:1px dashed #dfe1e6; border-radius:8px; color:#0c66e4; padding:8px 10px; cursor:pointer; }
@@ -3412,14 +2765,11 @@ body {
 .add-list .actions { display:flex; gap:8px; margin-top:6px; }
 .add-list .actions .btn-primary { padding:6px 10px; border-radius:6px; border:0; background:#0c66e4; color:#fff; }
 .add-list .add-list-cancel { padding:6px 10px; border-radius:6px; border:0; background:transparent; }
-
 /* inline card title input */
 .card-title-input { width:100%; border:1px solid var(--border); border-radius:6px; padding:2px 8px 6px; font-size:14px; font-weight:600; line-height: 1.28; }
-
 /* title spacing and button alignment */
 .card .card-title { padding-right: 28px; display: block; }
 .card-quick { top: 2px; line-height: 1; }
-
 /* tighten card spacing and list paddings */
 .board-container { gap: var(--list-gap); padding: 12px; }
 .list { padding: 6px; gap: 6px; }
@@ -3427,30 +2777,23 @@ body {
 .card { padding: 8px 10px; margin-bottom: 6px; }
 /* reduce distance from card to list border */
 .list .cards { padding: 2px; }
-
 /* composer sits right after last card, compact paddings */
 .card-composer { margin-top: 0; }
 .card-composer textarea { min-height: 56px; padding: 8px; }
 .card-composer .btn-primary { height: 32px; }
 .card-composer .composer-open { width: 100%; text-align: left; color:#0c66e4; }
-
 /* hover pencil / open-details button */
 .card-quick { position:absolute; top:6px; right:6px; opacity:0; transition:opacity .12s; border:0; background:transparent; font-size:16px; line-height:1; cursor:pointer; color:#44546f; }
 .card:hover .card-quick { opacity:1; }
-
 /* add-card open button matches list background */
 .card-composer .composer-open { width: 100%; text-align: left; color:#44546f; background: #ebecf0; border: 1px dashed #dfe1e6; }
 .card-composer .composer-open:hover { background:#e3e5e9; }
-
 /* composer state toggle */
 .card-composer:not(.is-open) .composer { display:none; }
 .card-composer.is-open .composer-open { display:none; }
-
 /* list dragging visual */
 .list.dragging { transform: rotate(1.5deg) scale(1.02); box-shadow: 0 8px 16px rgba(9,30,66,.25); opacity: .98; }
-
 .list-placeholder { background: rgba(236,238,240,.8); border: 2px dashed #d0d4da; border-radius: 8px; box-shadow: inset 0 0 0 2px rgba(9,30,66,.05), 0 4px 8px rgba(9,30,66,.12); }
-
 /* textual assignee and deadline chips (previous style) */
 .card-badges { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .card-assignee { font-weight:500; color:#0c66e4; background:#e9f2ff; padding:2px 8px; border-radius:12px; font-size:12px; border:2px solid transparent; }
@@ -3459,7 +2802,6 @@ body {
 .card-deadline.unset { color:#97a0af; }
 .card-assignee.clickable:hover { background:#e1ecff !important; }
 .card-deadline.clickable:hover { background:#e9ecef !important; }
-
 /* === Compact card height tweaks === */
 .cards { gap: 4px; }
 .list { padding: 4px; }
@@ -3467,66 +2809,50 @@ body {
 .card .card-title { font-size: 13.5px; line-height: 1.25; -webkit-line-clamp: 2; }
 .card-badges { gap: 6px; margin-top: 4px; }
 .card-assignee, .card-deadline { padding: 1px 6px; font-size: 11px; min-height: 18px; }
-
 /* place composer right after last card */
 .list .cards { flex: 0 0 auto; }
-
 /* blend add-card button with list background */
 .card-composer { margin-top: 0; padding: 4px 6px; background: transparent; }
 .card-composer .composer-open { display:inline-flex; align-items:center; gap:6px; width:100%; text-align:left; color:#44546f; background: transparent; border: 0; padding:6px 8px; border-radius:6px; }
 .card-composer .composer-open::before { content:'+'; font-weight:600; }
 .card-composer .composer-open:hover { background: rgba(9,30,66,.06); }
-
 /* card dragging placeholder */
 .card-placeholder { background: rgba(236,238,240,.6); border: 2px dashed #d0d4da; border-radius: 10px; box-shadow: inset 0 0 0 2px rgba(9,30,66,.05), 0 3px 6px rgba(9,30,66,.12); }
-
 /* replace icons: list menu delete X and edit pencil */
 .list .list-header .list-menu { color: #ef4444; font-weight: 700; }
 .list .list-header .list-menu::before { content: '×'; font-size: 16px; }
 .list .list-header .list-menu { width: 28px; height: 28px; display:flex; align-items:center; justify-content:center; }
-
 /* card edit pencil (left arrow-like) */
 .card-quick { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
 .card-quick::before { content: '✎'; }
-
 /* remove dashed border for add buttons */
 .add-list .add-list-open { border: 0; background: rgba(236,238,240,.8); }
 .card-composer .composer-open { border: 0; }
-
 /* extra-compact card top spacing */
 .card { padding-top: 4px; padding-bottom: 6px; }
-
 /* list delete button hover only */
 .list .list-header .list-menu { opacity: 0; transition: opacity .12s; }
 .list:hover .list-header .list-menu { opacity: 1; }
-
 /* deadline chip remove emoji spacing */
 .card-deadline { padding-left: 6px; }
-
 /* card edit pencil left-oriented */
 .card-quick { width:24px; height:24px; display:inline-flex; align-items:center; justify-content:center; background:transparent; border:0; }
 .card-quick::before { content: ''; }
 .card-quick { mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 7L17 10L9 18H6V15L14 7Z" fill="black"/></svg>') no-repeat center / 16px 16px; -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\"><path d=\"M14 7L17 10L9 18H6V15L14 7Z\" fill=\"black\"/></svg>') no-repeat center / 16px 16px; background-color:#44546f; }
 .card:hover .card-quick { background-color:#2e3a59; }
-
 /* hide empty labels container */
 .card-labels:empty { display: none !important; }
-
 /* left align lists (columns) */
 .board-container { justify-content: flex-start; }
-
 /* header alignment like home/project: left title, right buttons */
 .header > .container { display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap; }
 #boardPage .header .container { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: nowrap; }
-
-
 /* refined: only date/user align right; keep other badges left */
 .card .card-badges { justify-content: flex-start; }
 .card .card-badges:has(.card-deadline) .card-deadline { margin-left: auto; }
 .card .card-badges:not(:has(.card-deadline)) .card-assignee { margin-left: auto; }
 /* lower title a bit more */
 .card .card-title { margin-top: 6px; }
-
 /* === Board header spacing and title width (align with project page) === */
 #boardPage .header {
     padding-left: 0;
@@ -3551,7 +2877,6 @@ body {
     overflow: hidden;
     text-overflow: ellipsis; /* prevent title from taking too much width */
 }
-
 /* Board switcher dropdown */
 .board-switcher-menu {
     position: fixed;
@@ -3593,7 +2918,6 @@ body {
     cursor: pointer;
 }
 .board-switcher-create:hover { background: #e5e7eb; }
-
 .board-switcher-list { padding: 6px 0; }
 .board-switcher-item {
     display: flex;
@@ -3613,7 +2937,6 @@ body {
 .board-switcher-rename { width: 22px; height: 22px; border: 1px solid #e5e7eb; border-radius: 4px; background: #fff; color: #64748b; cursor: pointer; }
 .board-switcher-rename:hover { background: #fff; color: #374151; border-color: #d1d5db; }
 .board-switcher-empty { padding: 16px; text-align: center; color: #6b7280; }
-
 @media (prefers-color-scheme: dark) {
     .board-switcher-menu { background: #0f172a; border-color: var(--gray-300); }
     .board-switcher-header { border-bottom-color: var(--gray-300); }
@@ -3625,7 +2948,6 @@ body {
     .board-switcher-rename { background: #0f172a; color: #9ca3af; border-color: var(--gray-300); }
     .board-switcher-rename:hover { background: #111827; color: #e5e7eb; border-color: var(--gray-300); }
 }
-
 /* Toasts */
 .toast-container {
     position: fixed;
@@ -3648,18 +2970,11 @@ body {
     max-width: 320px;
 }
 .toast.show { transform: translateY(0); opacity: 1; }
-.toast-success { background: #047857; }
-.toast-error { background: #b91c1c; }
-.toast-info { background: #1f2937; }
-
 /* Ensure modal-header generic class shares styles */
 .modal-header { background: #f8fafc; border-bottom: 1px solid #e2e8f0; color: #1e293b; padding: 1rem 1.5rem; display: flex; justify-content: space-between; align-items: center; }
-
 @media (prefers-color-scheme: dark) {
     .toast { background: rgba(0,0,0,.85); }
-    .toast-info { background: #111827; }
 }
-
 /* archive quick button on card - compact, neutral */
 .card-quick-archive {
     position: absolute;
@@ -3683,12 +2998,10 @@ body {
 }
 .card:hover .card-quick-archive { opacity: 1; }
 .card-quick-archive:hover { background-color: #eef2ff; border-color: #c7d2fe; box-shadow: 0 2px 6px rgba(0,0,0,0.18); color: #1e40af; }
-
 @media (prefers-color-scheme: dark) {
     .card-quick-archive { color: #cbd5e1; }
     .card-quick-archive:hover { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #93c5fd; }
 }
-
 /* Archive page refinements */
 .archive-container {
     max-width: 920px;
@@ -3710,7 +3023,6 @@ body {
 .archive-column .cards { gap: 8px; }
 .archive-column .card { background: #fff; border: 1px solid var(--gray-200); opacity: 1; }
 .archive-column .card:hover { background: #fafafa; }
-
 /* empty state alignment */
 #archivedCards:empty::before {
     content: '暂无归档任务';
@@ -3719,7 +3031,6 @@ body {
     color: #6b7280;
     padding: 24px 0;
 }
-
 /* Dark mode tweaks for archive */
 @media (prefers-color-scheme: dark) {
     .card-quick-archive { background: #d97706; }
@@ -3727,12 +3038,10 @@ body {
     .archive-column h3 { border-bottom-color: var(--gray-300); color: var(--gray-700); }
     #archivedCards:empty::before { color: var(--gray-700); }
 }
-
 /* restore chip on archived cards */
 .card-actions-row { margin-top: 8px; display: flex; justify-content: flex-end; }
 .restore-chip { height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--gray-300); background: #f3f4f6; color: #374151; cursor: pointer; font-size: 12px; }
 .restore-chip:hover { background: #e5e7eb; }
-
 /* Archive page header (align with project header) */
 #archivePage .header {
     background: #ffffff;
@@ -3749,12 +3058,10 @@ body {
 }
 #archivePage .header h1 { font-size: 20px; margin: 0; color: #1f2937; }
 #archivePage .header .header-actions { display: flex; gap: 0.75rem; }
-
 @media (prefers-color-scheme: dark) {
     #archivePage .header { background: #0f172a; border-bottom-color: var(--gray-300); }
     #archivePage .header h1 { color: var(--gray-700); }
 }
-
 /* === Final overrides: unify quick icons alignment and hover visuals (refined) === */
 .card-quick,
 .card-quick-archive {
@@ -3774,7 +3081,6 @@ body {
 }
 .card:hover .card-quick,
 .card:hover .card-quick-archive { opacity: 1; }
-
 /* Edit (pencil) */
 .card-quick {
     right: 6px;
@@ -3783,7 +3089,6 @@ body {
     background-position: center;
     background-size: 16px 16px;
 }
-
 /* Archive (check) */
 .card-quick-archive {
     right: 36px; /* 6px gap from edit */
@@ -3792,7 +3097,6 @@ body {
     background-position: center;
     background-size: 16px 16px;
 }
-
 /* Hover/Focus visuals: soft blue, clear on white backgrounds */
 .card-quick:hover,
 .card-quick-archive:hover { background-color: #eef2ff; border-color: #dbeafe; box-shadow: 0 2px 6px rgba(0,0,0,0.12); color: #1e40af; }
@@ -3800,7 +3104,6 @@ body {
 .card-quick-archive:focus-visible { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
 .card-quick:focus,
 .card-quick-archive:focus { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
-
 @media (prefers-color-scheme: dark) {
     .card-quick,
     .card-quick-archive { color: #cbd5e1; }
@@ -3809,7 +3112,6 @@ body {
     .card-quick:focus-visible,
     .card-quick-archive:focus-visible { background-color: rgba(255,255,255,0.10); border-color: var(--gray-300); box-shadow: 0 0 0 3px rgba(99,102,241,0.28); color: #bfdbfe; }
 }
-
 /* Fix legacy mask and enforce hover/focus for quick actions */
 .card-quick { -webkit-mask: none; mask: none; }
 .card:hover .card-quick,
@@ -3826,7 +3128,6 @@ body {
     .card:hover .card-quick-archive:focus,
     .card:hover .card-quick-archive:focus-visible { background-color: rgba(255,255,255,0.10); border-color: var(--gray-300); box-shadow: 0 0 0 3px rgba(99,102,241,0.28); color: #bfdbfe; }
 }
-
 /* === Archive page visual polish === */
 #archivePage .archive-container { max-width: 960px; margin: 0 auto; padding: 16px 12px; }
 #archivePage .archive-column { padding: 16px; border-radius: 12px; border: 1px solid var(--gray-200); background: #fff; box-shadow: var(--shadow-sm); }
@@ -3837,7 +3138,6 @@ body {
 #archivedCards .card:hover { border-color: var(--primary-light); box-shadow: var(--shadow-md); transform: translateY(-1px); }
 #archivedCards .restore-chip { background: #eef2ff; border-color: #dbeafe; color: #1e40af; }
 #archivedCards .restore-chip:hover { background: #e0e7ff; border-color: #c7d2fe; color: #1e3a8a; box-shadow: var(--shadow-sm); }
-
 @media (prefers-color-scheme: dark) {
   #archivePage .archive-column { background: #0f172a; border-color: var(--gray-300); box-shadow: var(--shadow-sm); }
   #archivePage .archive-column h3 { border-bottom-color: var(--gray-300); color: var(--gray-700); }
@@ -3845,22 +3145,12 @@ body {
   #archivedCards .card { background: #0f172a; border-color: var(--gray-300); box-shadow: var(--shadow-sm); }
   #archivedCards .card:hover { border-color: var(--primary-light); box-shadow: var(--shadow-md); }
 }
-
 /* Center archive layout and prevent header button wrapping */
 #archivePage .header .header-actions button { white-space: nowrap; display: inline-flex; align-items: center; }
 #archivePage .archive-container { max-width: 1200px; margin: 0 auto; padding: 24px 2rem; display: flex; justify-content: center; }
 #archivePage .archive-column { width: min(760px, 100%); }
-
 /* inline actions in archived cards */
 .actions-inline { display: inline-flex; gap: 8px; }
-.delete-chip { height: 26px; padding: 0 10px; border-radius: 6px; border: 1px solid #fecaca; background: #fee2e2; color: #b91c1c; cursor: pointer; font-size: 12px; }
-.delete-chip:hover { background: #fecaca; border-color: #fca5a5; color: #991b1b; box-shadow: var(--shadow-sm); }
-
-@media (prefers-color-scheme: dark) {
-  .delete-chip { background: rgba(239,68,68,0.18); border-color: var(--gray-300); color: #fca5a5; }
-  .delete-chip:hover { background: rgba(239,68,68,0.28); border-color: var(--gray-300); color: #fecaca; }
-}
-
 /* Quick delete icon for archived cards */
 .card-quick-delete {
     position: absolute;
@@ -3883,10 +3173,248 @@ body {
 .card:hover .card-quick-delete { opacity: 1; background-color: #fee2e2; border-color: #fecaca; color: #b91c1c; }
 .card-quick-delete:hover { background-color: #fee2e2; border-color: #fecaca; box-shadow: 0 2px 6px rgba(0,0,0,0.12); color: #b91c1c; }
 .card-quick-delete:focus, .card-quick-delete:focus-visible { outline: none; background-color: #fecaca; border-color: #fca5a5; box-shadow: 0 0 0 3px rgba(239,68,68,0.18); color: #991b1b; }
-
 @media (prefers-color-scheme: dark) {
   .card-quick-delete { color: #cbd5e1; }
   .card:hover .card-quick-delete { background-color: rgba(239,68,68,0.18); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #fca5a5; }
   .card-quick-delete:hover { background-color: rgba(239,68,68,0.18); border-color: var(--gray-300); color: #fca5a5; }
   .card-quick-delete:focus, .card-quick-delete:focus-visible { background-color: rgba(239,68,68,0.24); border-color: var(--gray-300); box-shadow: 0 0 0 3px rgba(239,68,68,0.28); color: #fecaca; }
 }
+/* Compact Board CSS (generated from current effective styles) */
+:root {
+    /* Core tokens */
+    --primary-color: #3b82f6;
+    --primary-dark: #2563eb;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f6f7f9;
+    --card-bg: #fff;
+
+    /* Trello-like tokens */
+    --list-width: 272px;
+    --list-gap: 12px;
+    --card-radius: 10px;
+    --card-padding: 10px;
+    --card-shadow: 0 1px 0 rgba(9,30,66,.25);
+    --card-hover-shadow: 0 4px 8px rgba(9,30,66,.25);
+    --label-height: 8px;
+}
+/* Board layout */
+#boardPage .board-container {
+    display: flex;
+    gap: var(--list-gap);
+    padding: 12px;
+    overflow: auto;
+    background: var(--bg);
+    height: calc(100vh - 64px);
+    justify-content: center;
+}
+/* List */
+#boardPage .list {
+    background: #ebecf0;
+    border: 1px solid #dfe1e6;
+    border-radius: 8px;
+    padding: 6px;
+    width: var(--list-width);
+    min-width: var(--list-width);
+    max-width: var(--list-width);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+#boardPage .list-header { display: flex; align-items: center; justify-content: space-between; margin: 2px 4px 6px; }
+#boardPage .list-title { font-size: 14px; font-weight: 600; margin: 0; }
+#boardPage .cards { display: flex; flex-direction: column; gap: 4px; padding: 2px; }
+/* Card (compact front) */
+#boardPage .card {
+    background: var(--card-bg);
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    margin-bottom: 4px;
+    position: relative;
+    cursor: pointer;
+}
+#boardPage .card:hover { box-shadow: var(--card-hover-shadow); }
+/* Title: clamp and slight top offset */
+#boardPage .card .card-title {
+    margin: 0;
+    margin-top: 6px;
+    padding-right: 28px; /* keep space for pencil */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.25;
+}
+/* Hide verbose areas on front */
+#boardPage .card .card-description,
+#boardPage .card .card-footer { display: none !important; }
+/* Labels row */
+#boardPage .card-labels { display: flex; gap: 4px; margin-bottom: 6px; min-height: var(--label-height); }
+#boardPage .label { height: var(--label-height); border-radius: 6px; flex: 0 0 36px; }
+#boardPage .label-red { background: #f87171; }
+#boardPage .label-green { background: #34d399; }
+#boardPage .label-blue { background: #60a5fa; }
+#boardPage .label-yellow { background: #fbbf24; }
+#boardPage .label-purple { background: #a78bfa; }
+/* Badges row */
+#boardPage .card-badges { display: flex; align-items: center; gap: 6px; margin-top: 4px; color: #6b7280; font-size: 12px; }
+#boardPage .badge { display: inline-flex; align-items: center; gap: 4px; }
+#boardPage .badge-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 4px; }
+#boardPage .badge-user { width: 20px; height: 20px; border-radius: 50%; background: #111827; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; margin-left: auto; }
+#boardPage .badge-icon.due.overdue { color: #ef4444; }
+/* Only align date/user to right; keep other icons left */
+#boardPage .card .card-badges { justify-content: flex-start; }
+#boardPage .card .card-badges:has(.card-deadline) .card-deadline { margin-left: auto; }
+#boardPage .card .card-badges:not(:has(.card-deadline)) .card-assignee { margin-left: auto; }
+/* Assignee & deadline chips */
+#boardPage .card-assignee {
+    font-weight: 500;
+    color: #0c66e4;
+    background: #e9f2ff;
+    padding: 1px 6px;
+    border-radius: 12px;
+    font-size: 11px;
+    border: 2px solid transparent;
+}
+#boardPage .card-assignee.unassigned { color: #97a0af; background: #f4f5f7; }
+#boardPage .card-assignee.clickable:hover { background: #e1ecff !important; }
+#boardPage .card-deadline {
+    background: #f4f5f7;
+    color: #57606a;
+    padding: 1px 6px;
+    border-radius: 12px;
+    font-size: 11px;
+    border: 2px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    min-height: 18px;
+    padding-left: 6px;
+}
+#boardPage .card-deadline.unset { color: #97a0af; }
+#boardPage .card-deadline.clickable:hover { background: #e9ecef !important; }
+/* Hover pencil / open-details button */
+#boardPage .card-quick {
+    position: absolute;
+    top: 6px; right: 6px;
+    opacity: 0; transition: opacity .12s;
+    border: 0; background: transparent; line-height: 1; cursor: pointer;
+    width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; color: #44546f;
+    mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 7L17 10L9 18H6V15L14 7Z" fill="black"/></svg>') no-repeat center / 16px 16px;
+    -webkit-mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M14 7L17 10L9 18H6V15L14 7Z" fill="black"/></svg>') no-repeat center / 16px 16px;
+    background-color: #44546f;
+}
+#boardPage .card:hover .card-quick { opacity: 1; background-color: #2e3a59; }
+/* Inline card title input (used by quick edit) */
+#boardPage .card-title-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 8px 6px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.28;
+}
+/* Center action buttons (appear on hover, don't shift date) */
+#boardPage .card-footer-top { position: relative; display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px; min-height: 28px; }
+#boardPage .card-center-actions {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    display: inline-flex; align-items: center; gap: 6px; visibility: hidden;
+}
+#boardPage .card:hover .card-center-actions { visibility: visible; }
+#boardPage .card-center-actions .action-btn,
+#boardPage .card-center-actions .archive-btn,
+#boardPage .card-center-actions .restore-btn,
+#boardPage .card-center-actions .detail-btn { pointer-events: auto; width: 24px; height: 24px; }
+/* Hide hover buttons during dragging */
+#boardPage .card.dragging .card-center-actions,
+#boardPage .dragging-cards .card-center-actions { visibility: hidden !important; opacity: 0 !important; }
+/* Composer (collapsed by default) */
+#boardPage .card-composer { margin-top: 0; }
+#boardPage .card-composer .composer-open {
+    display: inline-flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+    color: #44546f; background: transparent; border: 0; padding: 6px 8px; border-radius: 6px;
+}
+#boardPage .card-composer .composer-open::before { content: '+'; font-weight: 600; }
+#boardPage .card-composer .composer-open:hover { background: rgba(9,30,66,.06); }
+#boardPage .card-composer .composer { display: none; }
+#boardPage .card-composer.is-open .composer { display: block; }
+#boardPage .card-composer textarea {
+    width: 100%; min-height: 56px; border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+    font-size: 14px; resize: vertical; box-shadow: 0 1px 0 rgba(9,30,66,.1); background: #fff;
+}
+/* Keep lists centered horizontally */
+#boardPage .board-container { justify-content: center; }
+/* === Global base styles (merged) === */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+    color: #1f2937; /* var(--gray-800) fallback */
+    width: 100%;
+    min-height: 100vh;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+/* Scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; -webkit-transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+html { scrollbar-width: thin; scrollbar-color: #d1d5db #f3f4f6; }
+/* Focus styles */
+*:focus { outline: 2px solid transparent; outline-offset: 2px; }
+*:focus-visible { outline: 2px solid #3b82f6; outline-offset: 2px; border-radius: 4px; }
+/* Clickable target expansion */
+.clickable { cursor: pointer; position: relative; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+.clickable::after { content: ''; position: absolute; top: -4px; left: -4px; right: -4px; bottom: -4px; min-width: 44px; min-height: 44px; pointer-events: none; }
+/* Page helpers */
+.page { min-height: 100vh; width: 100%; }
+.hidden { display: none !important; }
+.container { width: 100%; padding: 2rem; max-width: 1400px; margin: 0 auto; }
+/* Login page */
+#loginPage .container { max-width: 420px; margin: 0 auto; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); border: 1px solid rgba(255,255,255,0.2); }
+#loginPage { display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+h1 { text-align: center; margin-bottom: 1.5rem; color: #3b82f6; font-weight: 700; font-size: 1.875rem; letter-spacing: -0.025em; }
+.login-form h2 { margin-bottom: 1rem; color: #374151; font-weight: 600; font-size: 1.25rem; }
+.login-form input { width: 100%; padding: 0.875rem 1rem; margin-bottom: 1rem; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 1rem; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); background: #f9fafb; font-weight: 400; }
+.login-form input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); background: white; transform: translateY(-1px); }
+.login-form input::-moz-placeholder { color: #9ca3af; }
+.login-form input::placeholder { color: #9ca3af; }
+.login-form button { width: 100%; padding: 0.875rem 1rem; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.login-form button:hover { background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); transform: translateY(-1px); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); }
+.login-form button:active { transform: translateY(0); box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.login-form p { text-align: center; margin-top: 1rem; color: #6b7280; }
+.login-form a { color: #2563eb; text-decoration: none; }
+.login-form a:hover { text-decoration: underline; }
+/* Header */
+.header { background: white; padding: 1rem 2rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+.header-actions { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+.online-users { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 0.875rem; }
+#userList { display: flex; gap: 0.25rem; }
+.user-badge { background: #10b981; color: white; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+.header button { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.875rem; transition: all 0.2s; }
+#exportBtn { background: #059669; color: white; }
+#exportBtn:hover { background: #047857; }
+#logoutBtn { background: #dc2626; color: white; }
+#logoutBtn:hover { background: #b91c1c; }
+/* Board page container (background, layout) */
+#boardPage { display: flex; flex-direction: column; min-height: 100vh; align-items: stretch; justify-content: stretch; background-image: var(--board-bg-url); background-position: center center; background-size: cover; background-repeat: no-repeat; background-attachment: fixed; }
+/* Archive page minimal */
+.archive-container { flex: 1; padding: 1.5rem; max-width: 600px; margin: 0 auto; }
+.archive-column { background: white; border-radius: 8px; padding: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 2px dashed #d1d5db; background: #f9fafb; }
+.archive-column h3 { color: #6b7280; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e5e7eb; font-size: 1.125rem; }
+.archive-column .cards { display: flex; flex-direction: column; gap: 0.75rem; }
+.archive-column .card { opacity: 0.8; background: #f3f4f6; }
+.archive-column .card:hover { opacity: 1; background: #e5e7eb; }
+/* Header alignment like home/project */
+.header > .container { display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap; }
+#boardPage .header .container { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: nowrap; }

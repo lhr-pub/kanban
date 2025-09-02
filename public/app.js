@@ -1299,8 +1299,12 @@ function createCardElement(card, status) {
         ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}')" aria-label="归档"></button>`
         : '';
 
+    const deleteBtn = (status === 'archived')
+        ? `<button class="card-quick-delete" onclick="event.stopPropagation(); deleteArchivedCard('${card.id}')" aria-label="删除"></button>`
+        : '';
+
     const restoreChip = (status === 'archived')
-        ? `<div class="card-actions-row"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button></div>`
+        ? `<div class="card-actions-row"><div class="actions-inline"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button></div></div>`
         : '';
 
     const badges = `${descIcon}${deadlineHtml}${assigneeHtml}`;
@@ -1311,11 +1315,12 @@ function createCardElement(card, status) {
         ${badges ? `<div class="card-badges">${badges}</div>` : ''}
         ${restoreChip}
         ${archiveBtn}
+        ${deleteBtn}
         ${moreBtn}
     `;
 
     cardElement.addEventListener('click', (e) => {
-        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.restore-chip')) return;
+        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.restore-chip')) return;
         if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
         if (e.target.closest('.card-title')) { inlineEditCardTitle(cardElement); return; }
         openEditModal(card.id);
@@ -3558,4 +3563,16 @@ function uiToast(message, type) {
     container.appendChild(t);
     setTimeout(() => { t.classList.add('show'); }, 10);
     setTimeout(() => { t.classList.remove('show'); t.addEventListener('transitionend', () => t.remove(), { once: true }); }, 2500);
+}
+
+// 删除归档卡片
+async function deleteArchivedCard(cardId){
+    const ok = await uiConfirm('确定要删除该归档任务吗？此操作不可恢复。','删除任务');
+    if (!ok) return;
+    const idx = (boardData.archived||[]).findIndex(c=>c.id===cardId);
+    if (idx !== -1) { boardData.archived.splice(idx,1); }
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type:'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId }));
+    }
+    renderArchive();
 }
