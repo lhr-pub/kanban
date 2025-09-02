@@ -3138,20 +3138,20 @@ function enableListsDrag() {
 
 // 新增：重命名看板（项目看板页）
 function promptRenameBoard(oldName) {
-    renameBoardRequest(currentProjectId, oldName, false);
+    return renameBoardRequest(currentProjectId, oldName, false);
 }
 
 // 新增：重命名看板（首页快捷看板）
 function promptRenameBoardFromHome(oldName, projectId) {
-    renameBoardRequest(projectId, oldName, true);
+    return renameBoardRequest(projectId, oldName, true);
 }
 
 async function renameBoardRequest(projectId, oldName, isHome) {
     const input = await uiPrompt('输入新的看板名称', oldName, '重命名看板');
-    if (input === null) return; // 取消
+    if (input === null) return { success: false };
     const newName = input.trim();
-    if (!newName) { uiToast('新名称不能为空','error'); return; }
-    if (newName === oldName) return;
+    if (!newName) { uiToast('新名称不能为空','error'); return { success: false }; }
+    if (newName === oldName) return { success: false };
 
     try {
         const response = await fetch('/api/rename-board', {
@@ -3171,12 +3171,15 @@ async function renameBoardRequest(projectId, oldName, isHome) {
                 loadBoardData();
             }
             uiToast('重命名成功','success');
+            return { success: true, newName };
         } else {
             uiToast(result.message || '重命名失败','error');
+            return { success: false };
         }
     } catch (error) {
         console.error('Rename board error:', error);
         uiToast('重命名失败','error');
+        return { success: false };
     }
 }
 
@@ -3418,19 +3421,17 @@ function showBoardSwitcherAt(rect, boards) {
             editBtn.className = 'board-switcher-rename';
             editBtn.title = '重命名';
             editBtn.textContent = '✎';
-            editBtn.onclick = (ev) => {
+            editBtn.onclick = async (ev) => {
                 ev.stopPropagation();
-                promptRenameBoard(name);
-                // After rename, refresh cache and UI
-                setTimeout(async () => {
-                    try {
-                        const resp = await fetch(`/api/project-boards/${currentProjectId}`);
-                        const data = await resp.json();
-                        boards = Array.isArray(data.boards) ? data.boards : [];
-                        projectBoardsCache[currentProjectId] = boards;
-                        renderList(search.value);
-                    } catch {}
-                }, 0);
+                const result = await promptRenameBoard(name);
+                if (!result || !result.success) return;
+                try {
+                    const resp = await fetch(`/api/project-boards/${currentProjectId}`);
+                    const data = await resp.json();
+                    boards = Array.isArray(data.boards) ? data.boards : [];
+                    projectBoardsCache[currentProjectId] = boards;
+                    renderList(search.value);
+                } catch {}
             };
             item.onclick = (ev) => {
                 ev.stopPropagation();
