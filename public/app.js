@@ -14,6 +14,11 @@ let inlineEditorOpening = false;
 let pendingFocusSelector = null;
 let pendingFocusCaretIndex = null;
 
+// Board switcher state
+let boardSwitcherMenu = null;
+let boardSwitcherOpen = false;
+let projectBoardsCache = Object.create(null);
+
 // 拖拽状态（支持跨列）
 let draggingCardId = null;
 let draggingFromStatus = null;
@@ -148,6 +153,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // 看板名称下拉切换
+    const currentBoardNameEl = document.getElementById('currentBoardName');
+    if (currentBoardNameEl) {
+        currentBoardNameEl.addEventListener('click', openBoardSwitcher);
+    }
+
     // 绑定键盘事件
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
@@ -177,6 +188,17 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+
+    // 为创建看板输入框绑定回车键事件
+    const newBoardNameInput = document.getElementById('newBoardName');
+    if (newBoardNameInput) {
+        newBoardNameInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && this.value.trim()) {
+                e.preventDefault();
+                createBoard();
+            }
+        });
+    }
 });
 
 // 页面显示函数
@@ -322,7 +344,7 @@ async function handleAuth(e) {
     if (resendStatus) resendStatus.textContent = '';
 
     if (!username || !password || (!isLogin && !email)) {
-        alert(isLogin ? '请填写用户名和密码' : '请填写用户名、邮箱和密码');
+        uiToast(isLogin ? '请填写用户名和密码' : '请填写用户名、邮箱和密码','error');
         return;
     }
 
@@ -346,7 +368,7 @@ async function handleAuth(e) {
                 if (authMessage) {
                     authMessage.textContent = '注册成功，请前往邮箱验证后再登录。';
                 } else {
-                    alert('注册成功，请前往邮箱验证后再登录。');
+                    uiToast('注册成功，请前往邮箱验证后再登录。','success');
                 }
                 formTitle.textContent = '登录';
                 submitBtn.textContent = '登录';
@@ -381,12 +403,12 @@ async function handleAuth(e) {
                     };
                 }
             } else {
-                alert(msg);
+                uiToast(msg,'error');
             }
         }
     } catch (error) {
         console.error('Auth error:', error);
-        alert('网络错误，请稍后重试');
+        uiToast('网络错误，请稍后重试','error');
     }
 }
 
@@ -437,8 +459,8 @@ async function loadUserProjects() {
                             <span class="board-project">${escapeHtml(project.name)}</span>
                         </div>
                         <div class="board-card-actions">
-                            <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="重命名">✎</button>
-                            <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="删除看板">✕</button>
+                            <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="重命名">✎</button>
+                            <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
                         </div>
                     `;
 
@@ -464,8 +486,8 @@ async function loadUserProjects() {
                     创建于: ${new Date(project.created).toLocaleDateString()}
                 </div>
                 <div class="project-card-actions">
-                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeHtml(project.name)}')" title="重命名项目">✎</button>
-                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeHtml(project.name)}')" title="删除项目">✕</button>
+                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button>
+                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>
                 </div>
             `;
 
@@ -475,7 +497,7 @@ async function loadUserProjects() {
 
     } catch (error) {
         console.error('Load projects error:', error);
-        alert('加载项目列表失败');
+        uiToast('加载项目列表失败','error');
     }
 }
 
@@ -513,11 +535,11 @@ function selectProject(projectId, projectName) {
 }
 
 // 新增：重命名项目
-function renameProject() {
-    const input = prompt('输入新的项目名称', currentProjectName || '');
+async function renameProject() {
+    const input = await uiPrompt('输入新的项目名称', currentProjectName || '', '重命名项目');
     if (input === null) return;
     const newName = input.trim();
-    if (!newName) { alert('新名称不能为空'); return; }
+    if (!newName) { uiToast('新名称不能为空','error'); return; }
     if (newName === currentProjectName) return;
 
     fetch('/api/rename-project', {
@@ -532,20 +554,19 @@ function renameProject() {
             const projectTitle = document.getElementById('projectTitle');
             if (projectTitle) projectTitle.textContent = newName;
             updateBoardHeader();
-            // 刷新相关列表展示
             if (!projectPage.classList.contains('hidden')) {
                 loadUserProjects();
             }
             if (!boardSelectPage.classList.contains('hidden')) {
                 loadProjectBoards();
             }
-            alert('项目重命名成功');
+            uiToast('项目重命名成功','success');
         } else {
-            alert(result.message || '项目重命名失败');
+            uiToast(result.message || '项目重命名失败','error');
         }
     }).catch((error) => {
         console.error('Rename project error:', error);
-        alert('项目重命名失败');
+        uiToast('项目重命名失败','error');
     });
 }
 
@@ -667,8 +688,8 @@ async function loadProjectBoards() {
                     <span class="board-project">${escapeHtml(currentProjectName)}</span>
                 </div>
                 <div class="board-card-actions">
-                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeHtml(boardName)}')" title="重命名">✎</button>
-                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeHtml(boardName)}')" title="删除看板">✕</button>
+                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
+                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>
                 </div>
             `;
 
@@ -713,21 +734,20 @@ async function createBoard() {
         if (response.ok) {
             document.getElementById('newBoardName').value = '';
             loadProjectBoards();
-            alert('看板创建成功！');
+            uiToast('看板创建成功！','success');
         } else {
-            alert(result.message || '创建看板失败');
+            uiToast(result.message || '创建看板失败','error');
         }
     } catch (error) {
         console.error('Create board error:', error);
-        alert('创建看板失败');
+        uiToast('创建看板失败','error');
     }
 }
 
 // 删除看板
 async function deleteBoard(boardName) {
-    if (!confirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`)) {
-        return;
-    }
+    const ok = await uiConfirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`, '删除看板');
+    if (!ok) return;
 
     try {
         const response = await fetch('/api/delete-board', {
@@ -745,21 +765,20 @@ async function deleteBoard(boardName) {
 
         if (response.ok) {
             loadProjectBoards();
-            alert('看板删除成功！');
+            uiToast('看板删除成功！','success');
         } else {
-            alert(result.message || '删除看板失败');
+            uiToast(result.message || '删除看板失败','error');
         }
     } catch (error) {
         console.error('Delete board error:', error);
-        alert('删除看板失败');
+        uiToast('删除看板失败','error');
     }
 }
 
 // 从首页删除看板
 async function deleteBoardFromHome(boardName, projectId) {
-    if (!confirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`)) {
-        return;
-    }
+    const ok = await uiConfirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`, '删除看板');
+    if (!ok) return;
 
     try {
         const response = await fetch('/api/delete-board', {
@@ -776,14 +795,14 @@ async function deleteBoardFromHome(boardName, projectId) {
         const result = await response.json();
 
         if (response.ok) {
-            loadUserProjects(); // 重新加载首页项目列表
-            alert('看板删除成功！');
+            loadUserProjects();
+            uiToast('看板删除成功！','success');
         } else {
-            alert(result.message || '删除看板失败');
+            uiToast(result.message || '删除看板失败','error');
         }
     } catch (error) {
         console.error('Delete board from home error:', error);
-        alert('删除看板失败');
+        uiToast('删除看板失败','error');
     }
 }
 
@@ -1088,9 +1107,10 @@ function startListRename(titleEl, list){
 }
 function bindListMenu(section, list){
     const btn = section.querySelector('.list-menu');
-    btn.onclick = (e)=>{
+    btn.onclick = async (e)=>{
         e.stopPropagation();
-        if(confirm('删除该卡组？')){ removeClientList(list.id); }
+        const ok = await uiConfirm('删除该卡组？','删除卡组');
+        if(ok){ removeClientList(list.id); }
     };
 }
 function removeClientList(listId){
@@ -1443,9 +1463,9 @@ function saveCardFromDrawer(){
     renderBoard();
 }
 
-function deleteCardFromDrawer(){
+async function deleteCardFromDrawer(){
     if(!drawerCardId) return;
-    if(!confirm('确定要删除这个任务吗？')) return;
+    { const ok = await uiConfirm('确定要删除这个任务吗？','删除任务'); if (!ok) return; }
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId: drawerCardId
@@ -1708,15 +1728,11 @@ function restoreCard(cardId) {
 }
 
 // 清空归档
-function clearArchive() {
-    if (confirm('确定要清空所有归档任务吗？此操作不可恢复。')) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'clear-archive',
-                projectId: currentProjectId,
-                boardName: currentBoardName
-            }));
-        }
+async function clearArchive() {
+    const ok = await uiConfirm('确定要清空所有归档任务吗？此操作不可恢复。','清空归档');
+    if (!ok) return;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'clear-archive', projectId: currentProjectId, boardName: currentBoardName }));
     }
 }
 
@@ -1789,20 +1805,16 @@ function saveCard() {
 }
 
 // 删除卡片
-function deleteCard() {
+async function deleteCard() {
     if (!editingCardId) return;
-
-    if (confirm('确定要删除这个任务吗？')) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'delete-card',
-                projectId: currentProjectId,
-                boardName: currentBoardName,
-                cardId: editingCardId
-            }));
-        }
-        closeEditModal();
+    const ok = await uiConfirm('确定要删除这个任务吗？','删除任务');
+    if (!ok) return;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId: editingCardId
+        }));
     }
+    closeEditModal();
 }
 
 // 关闭编辑模态框
@@ -2762,6 +2774,11 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// JS字符串转义（用于onclick等）
+function escapeJs(text) {
+    return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 // SVG 图标：看板
 function getBoardIconSVG() {
     return '';
@@ -3062,13 +3079,10 @@ function promptRenameBoardFromHome(oldName, projectId) {
 }
 
 async function renameBoardRequest(projectId, oldName, isHome) {
-    const input = prompt('输入新的看板名称', oldName);
+    const input = await uiPrompt('输入新的看板名称', oldName, '重命名看板');
     if (input === null) return; // 取消
     const newName = input.trim();
-    if (!newName) {
-        alert('新名称不能为空');
-        return;
-    }
+    if (!newName) { uiToast('新名称不能为空','error'); return; }
     if (newName === oldName) return;
 
     try {
@@ -3079,14 +3093,7 @@ async function renameBoardRequest(projectId, oldName, isHome) {
         });
         const result = await response.json();
         if (response.ok) {
-            // 刷新列表
-            if (isHome) {
-                loadUserProjects();
-            } else {
-                loadProjectBoards();
-            }
-
-            // 如果当前看板被重命名，更新本地状态并重连WS
+            if (isHome) { loadUserProjects(); } else { loadProjectBoards(); }
             if (projectId === currentProjectId && currentBoardName === oldName) {
                 currentBoardName = newName;
                 localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
@@ -3095,99 +3102,64 @@ async function renameBoardRequest(projectId, oldName, isHome) {
                 connectWebSocket();
                 loadBoardData();
             }
-            alert('重命名成功');
+            uiToast('重命名成功','success');
         } else {
-            alert(result.message || '重命名失败');
+            uiToast(result.message || '重命名失败','error');
         }
     } catch (error) {
         console.error('Rename board error:', error);
-        alert('重命名失败');
+        uiToast('重命名失败','error');
     }
 }
 
-// 从首页重命名项目
 function renameProjectFromHome(projectId, currentName) {
-    const input = prompt('输入新的项目名称', currentName || '');
-    if (input === null) return;
-    const newName = input.trim();
-    if (!newName) { alert('新名称不能为空'); return; }
-    if (newName === currentName) return;
+    (async () => {
+        const input = await uiPrompt('输入新的项目名称', currentName || '', '重命名项目');
+        if (input === null) return;
+        const newName = input.trim();
+        if (!newName) { uiToast('新名称不能为空','error'); return; }
+        if (newName === currentName) return;
 
-    fetch('/api/rename-project', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, newName })
-    }).then(async (response) => {
-        const result = await response.json().catch(() => ({}));
-        if (response.ok) {
-            // 如果当前全局项目是这个，更新全局名称与存储
-            if (currentProjectId === projectId) {
-                currentProjectName = newName;
-                localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
-                const projectTitle = document.getElementById('projectTitle');
-                if (projectTitle) projectTitle.textContent = newName;
-                updateBoardHeader();
-                if (!boardSelectPage.classList.contains('hidden')) {
-                    loadProjectBoards();
+        fetch('/api/rename-project', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, newName })
+        }).then(async (response) => {
+            const result = await response.json().catch(() => ({}));
+            if (response.ok) {
+                if (currentProjectId === projectId) {
+                    currentProjectName = newName;
+                    localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
+                    const projectTitle = document.getElementById('projectTitle');
+                    if (projectTitle) projectTitle.textContent = newName;
+                    updateBoardHeader();
+                    if (!boardSelectPage.classList.contains('hidden')) { loadProjectBoards(); }
                 }
+                loadUserProjects();
+                uiToast('项目重命名成功','success');
+            } else {
+                uiToast(result.message || '项目重命名失败','error');
             }
-            // 刷新首页项目与看板展示
-            loadUserProjects();
-            alert('项目重命名成功');
-        } else {
-            alert(result.message || '项目重命名失败');
-        }
-    }).catch((error) => {
-        console.error('Rename project (home) error:', error);
-        alert('项目重命名失败');
-    });
+        }).catch((error) => {
+            console.error('Rename project (home) error:', error);
+            uiToast('项目重命名失败','error');
+        });
+    })();
 }
 
 // 删除项目（项目选择页头部按钮）
 function deleteProject() {
     if (!currentProjectId) return;
-    if (!confirm(`确定删除项目 "${currentProjectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`)) return;
-
-    fetch('/api/delete-project', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: currentProjectId })
-    }).then(async (response) => {
-        const result = await response.json().catch(() => ({}));
-        if (response.ok) {
-            // 若正在此项目内，清理并返回首页
-            if (socket) { try { socket.close(); } catch (e) {} }
-            currentProjectId = null;
-            currentProjectName = null;
-            currentBoardName = null;
-            localStorage.removeItem('kanbanCurrentProjectId');
-            localStorage.removeItem('kanbanCurrentProjectName');
-            localStorage.removeItem('kanbanCurrentBoardName');
-            showProjectPage();
-            loadUserProjects();
-            alert('项目删除成功');
-        } else {
-            alert(result.message || '项目删除失败');
-        }
-    }).catch((error) => {
-        console.error('Delete project error:', error);
-        alert('项目删除失败');
-    });
-}
-
-// 从首页删除项目
-function deleteProjectFromHome(projectId, projectName) {
-    if (!confirm(`确定删除项目 "${projectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`)) return;
-
-    fetch('/api/delete-project', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId })
-    }).then(async (response) => {
-        const result = await response.json().catch(() => ({}));
-        if (response.ok) {
-            // 若当前上下文在此项目，退出该项目视图
-            if (currentProjectId === projectId) {
+    (async () => {
+        const ok = await uiConfirm(`确定删除项目 "${currentProjectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`, '删除项目');
+        if (!ok) return;
+        fetch('/api/delete-project', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: currentProjectId })
+        }).then(async (response) => {
+            const result = await response.json().catch(() => ({}));
+            if (response.ok) {
                 if (socket) { try { socket.close(); } catch (e) {} }
                 currentProjectId = null;
                 currentProjectName = null;
@@ -3196,16 +3168,50 @@ function deleteProjectFromHome(projectId, projectName) {
                 localStorage.removeItem('kanbanCurrentProjectName');
                 localStorage.removeItem('kanbanCurrentBoardName');
                 showProjectPage();
+                loadUserProjects();
+                uiToast('项目删除成功','success');
+            } else {
+                uiToast(result.message || '项目删除失败','error');
             }
-            loadUserProjects();
-            alert('项目删除成功');
-        } else {
-            alert(result.message || '项目删除失败');
-        }
-    }).catch((error) => {
-        console.error('Delete project (home) error:', error);
-        alert('项目删除失败');
-    });
+        }).catch((error) => {
+            console.error('Delete project error:', error);
+            uiToast('项目删除失败','error');
+        });
+    })();
+}
+
+// 从首页删除项目
+function deleteProjectFromHome(projectId, projectName) {
+    (async () => {
+        const ok = await uiConfirm(`确定删除项目 "${projectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`, '删除项目');
+        if (!ok) return;
+        fetch('/api/delete-project', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId })
+        }).then(async (response) => {
+            const result = await response.json().catch(() => ({}));
+            if (response.ok) {
+                if (currentProjectId === projectId) {
+                    if (socket) { try { socket.close(); } catch (e) {} }
+                    currentProjectId = null;
+                    currentProjectName = null;
+                    currentBoardName = null;
+                    localStorage.removeItem('kanbanCurrentProjectId');
+                    localStorage.removeItem('kanbanCurrentProjectName');
+                    localStorage.removeItem('kanbanCurrentBoardName');
+                    showProjectPage();
+                }
+                loadUserProjects();
+                uiToast('项目删除成功','success');
+            } else {
+                uiToast(result.message || '项目删除失败','error');
+            }
+        }).catch((error) => {
+            console.error('Delete project (home) error:', error);
+            uiToast('项目删除失败','error');
+        });
+    })();
 }
 
 // Collapsed add-card behavior
@@ -3248,4 +3254,291 @@ function setupAddCardCollapsed(container, status, position) {
 
     // After Enter add, addCard will call collapse too
     container.__collapseAdd = collapse;
+}
+
+// 打开看板切换下拉
+async function openBoardSwitcher(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const anchor = e.currentTarget;
+    const rect = anchor.getBoundingClientRect();
+
+    let boards = projectBoardsCache[currentProjectId];
+    if (!boards) {
+        try {
+            const resp = await fetch(`/api/project-boards/${currentProjectId}`);
+            const data = await resp.json();
+            boards = Array.isArray(data.boards) ? data.boards : [];
+            projectBoardsCache[currentProjectId] = boards;
+        } catch (err) {
+            boards = [];
+        }
+    }
+    showBoardSwitcherAt(rect, boards);
+}
+
+function showBoardSwitcherAt(rect, boards) {
+    hideBoardSwitcher();
+    const menu = document.createElement('div');
+    menu.className = 'board-switcher-menu';
+    menu.style.left = Math.round(rect.left) + 'px';
+    menu.style.top = Math.round(rect.bottom + 6) + 'px';
+
+    // Header with search and create
+    const header = document.createElement('div');
+    header.className = 'board-switcher-header';
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'board-switcher-search';
+    search.placeholder = '搜索看板...';
+    const createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.className = 'board-switcher-create';
+    createBtn.textContent = '创建新看板';
+    createBtn.onclick = async (ev) => {
+        ev.stopPropagation();
+        const name = search.value.trim();
+        if (!name) return;
+        try {
+            const response = await fetch('/api/create-board', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: currentProjectId, boardName: name })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                projectBoardsCache[currentProjectId] = null; // invalidate cache
+                currentBoardName = name;
+                localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
+                hideBoardSwitcher();
+                loadProjectBoards();
+                showBoard();
+            } else {
+                alert(result.message || '创建失败');
+            }
+        } catch (e) {
+            alert('创建失败');
+        }
+    };
+    header.appendChild(search);
+    header.appendChild(createBtn);
+    menu.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'board-switcher-list';
+
+    function renderList(filterText) {
+        list.innerHTML = '';
+        const ft = (filterText || '').toLowerCase();
+        const filtered = boards.filter(n => n.toLowerCase().includes(ft));
+        filtered.forEach((name) => {
+            const item = document.createElement('div');
+            item.className = 'board-switcher-item' + (name === currentBoardName ? ' active' : '');
+            const label = document.createElement('span');
+            label.className = 'board-switcher-label';
+            label.textContent = name;
+            const actions = document.createElement('div');
+            actions.className = 'board-switcher-actions';
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'board-switcher-rename';
+            editBtn.title = '重命名';
+            editBtn.textContent = '✎';
+            editBtn.onclick = (ev) => {
+                ev.stopPropagation();
+                promptRenameBoard(name);
+                // After rename, refresh cache and UI
+                setTimeout(async () => {
+                    try {
+                        const resp = await fetch(`/api/project-boards/${currentProjectId}`);
+                        const data = await resp.json();
+                        boards = Array.isArray(data.boards) ? data.boards : [];
+                        projectBoardsCache[currentProjectId] = boards;
+                        renderList(search.value);
+                    } catch {}
+                }, 0);
+            };
+            item.onclick = (ev) => {
+                ev.stopPropagation();
+                hideBoardSwitcher();
+                if (name !== currentBoardName) {
+                    selectBoard(name);
+                }
+            };
+            actions.appendChild(editBtn);
+            item.appendChild(label);
+            item.appendChild(actions);
+            list.appendChild(item);
+        });
+        if (filtered.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'board-switcher-empty';
+            empty.textContent = '没有匹配的看板';
+            list.appendChild(empty);
+        }
+    }
+
+    renderList('');
+
+    search.addEventListener('input', (ev) => {
+        renderList(search.value);
+    });
+
+    menu.appendChild(list);
+    document.body.appendChild(menu);
+    boardSwitcherMenu = menu;
+    boardSwitcherOpen = true;
+
+    const onBodyClick = (ev) => {
+        if (!boardSwitcherMenu) return;
+        if (!boardSwitcherMenu.contains(ev.target)) {
+            hideBoardSwitcher();
+        }
+    };
+    const onKey = (ev) => { if (ev.key === 'Escape') hideBoardSwitcher(); };
+
+    setTimeout(() => {
+        document.addEventListener('click', onBodyClick, { once: true });
+        document.addEventListener('keydown', onKey, { once: true });
+        search.focus();
+    }, 0);
+}
+
+function hideBoardSwitcher() {
+    if (boardSwitcherMenu && boardSwitcherMenu.parentNode) {
+        boardSwitcherMenu.parentNode.removeChild(boardSwitcherMenu);
+    }
+    boardSwitcherMenu = null;
+    boardSwitcherOpen = false;
+}
+
+// === In-app dialog & toast helpers ===
+function createBaseModal(titleText) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal';
+    const content = document.createElement('div');
+    content.className = 'modal-content edit-modal';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    const h = document.createElement('h3');
+    h.textContent = titleText || '';
+    const close = document.createElement('button');
+    close.className = 'close-btn';
+    close.textContent = '×';
+    header.appendChild(h);
+    header.appendChild(close);
+
+    const body = document.createElement('div');
+    body.className = 'modal-body';
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+
+    content.appendChild(header);
+    content.appendChild(body);
+    content.appendChild(footer);
+    overlay.appendChild(content);
+
+    return { overlay, content, header, body, footer, close };
+}
+
+function uiAlert(message, title) {
+    return new Promise((resolve) => {
+        const { overlay, body, footer, close } = createBaseModal(title || '提示');
+        const p = document.createElement('div');
+        p.textContent = message;
+        body.appendChild(p);
+        const ok = document.createElement('button');
+        ok.className = 'btn-primary';
+        ok.textContent = '确定';
+        ok.onclick = () => { document.body.removeChild(overlay); resolve(); };
+        close.onclick = ok.onclick;
+        footer.appendChild(ok);
+        document.body.appendChild(overlay);
+        setTimeout(() => ok.focus(), 0);
+    });
+}
+
+function uiConfirm(message, title) {
+    return new Promise((resolve) => {
+        const { overlay, body, footer, close } = createBaseModal(title || '确认操作');
+        const p = document.createElement('div');
+        p.textContent = message;
+        body.appendChild(p);
+        const cancel = document.createElement('button');
+        cancel.className = 'btn-secondary';
+        cancel.textContent = '取消';
+        cancel.onclick = () => { document.body.removeChild(overlay); resolve(false); };
+        const ok = document.createElement('button');
+        ok.className = 'btn-danger';
+        ok.textContent = '确认';
+        ok.onclick = () => { document.body.removeChild(overlay); resolve(true); };
+        close.onclick = cancel.onclick;
+        footer.appendChild(cancel);
+        footer.appendChild(ok);
+        document.body.appendChild(overlay);
+        setTimeout(() => ok.focus(), 0);
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') cancel.click();
+            if (e.key === 'Enter') ok.click();
+        });
+    });
+}
+
+function uiPrompt(message, defaultValue, title) {
+    return new Promise((resolve) => {
+        const { overlay, body, footer, close } = createBaseModal(title || '输入名称');
+        const label = document.createElement('div');
+        label.textContent = message;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = defaultValue || '';
+        input.style.width = '100%';
+        input.style.height = '36px';
+        input.style.border = '1px solid #e5e7eb';
+        input.style.borderRadius = '6px';
+        input.style.padding = '0 10px';
+        input.style.marginTop = '10px';
+        body.appendChild(label);
+        body.appendChild(input);
+        const cancel = document.createElement('button');
+        cancel.className = 'btn-secondary';
+        cancel.textContent = '取消';
+        cancel.onclick = () => { document.body.removeChild(overlay); resolve(null); };
+        const ok = document.createElement('button');
+        ok.className = 'btn-primary';
+        ok.textContent = '确定';
+        ok.onclick = () => { const v = (input.value || '').trim(); if (!v) return; document.body.removeChild(overlay); resolve(v); };
+        close.onclick = cancel.onclick;
+        footer.appendChild(cancel);
+        footer.appendChild(ok);
+        document.body.appendChild(overlay);
+        setTimeout(() => { input.focus(); input.select(); }, 0);
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') cancel.click();
+            if (e.key === 'Enter') ok.click();
+        });
+    });
+}
+
+function ensureToastContainer() {
+    let c = document.getElementById('toastContainer');
+    if (!c) {
+        c = document.createElement('div');
+        c.id = 'toastContainer';
+        c.className = 'toast-container';
+        document.body.appendChild(c);
+    }
+    return c;
+}
+
+function uiToast(message, type) {
+    const container = ensureToastContainer();
+    const t = document.createElement('div');
+    t.className = 'toast ' + (type ? 'toast-' + type : '');
+    t.textContent = message;
+    container.appendChild(t);
+    setTimeout(() => { t.classList.add('show'); }, 10);
+    setTimeout(() => { t.classList.remove('show'); t.addEventListener('transitionend', () => t.remove(), { once: true }); }, 2500);
 }

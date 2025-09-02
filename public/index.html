@@ -45,14 +45,6 @@
                 </div>
             </header>
 
-            <!-- 所有看板 -->
-            <div class="dashboard-section">
-                <h2><span data-icon="boards"></span> 所有看板</h2>
-                <div id="quickAccessBoards" class="quick-boards-grid">
-                    <!-- 看板快速访问将动态生成 -->
-                </div>
-            </div>
-
             <!-- 项目管理 -->
             <div class="dashboard-section">
                 <div class="projects-header">
@@ -93,6 +85,14 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 所有看板 -->
+            <div class="dashboard-section">
+                <h2><span data-icon="boards"></span> 所有看板</h2>
+                <div id="quickAccessBoards" class="quick-boards-grid">
+                    <!-- 看板快速访问将动态生成 -->
+                </div>
+            </div>
         </div>
     </div>
 
@@ -115,17 +115,17 @@
             </div>
 
             <div class="board-section">
-                <h2>选择看板</h2>
-                <div id="boardList" class="quick-boards-grid">
-                    <!-- 看板列表将动态生成 -->
-                </div>
-            </div>
-
-            <div class="board-section">
                 <h2>创建新看板</h2>
                 <div class="create-board-form">
                     <input type="text" id="newBoardName" placeholder="看板名称 (如: 开发看板)" required>
                     <button onclick="createBoard()">创建看板</button>
+                </div>
+            </div>
+
+            <div class="board-section">
+                <h2>选择看板</h2>
+                <div id="boardList" class="quick-boards-grid">
+                    <!-- 看板列表将动态生成 -->
                 </div>
             </div>
         </div>
