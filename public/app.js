@@ -706,7 +706,7 @@ async function loadProjectBoards() {
 
     } catch (error) {
         console.error('Load boards error:', error);
-        alert('加载看板列表失败');
+        uiToast('加载看板列表失败','error');
     }
 }
 
@@ -721,7 +721,7 @@ function selectBoard(boardName) {
 async function createBoard() {
     const boardName = document.getElementById('newBoardName').value.trim();
     if (!boardName) {
-        alert('请输入看板名称');
+        uiToast('请输入看板名称','error');
         return;
     }
 
@@ -1476,7 +1476,7 @@ function gatherDrawerUpdates(){
 function saveCardFromDrawer(){
     if(!drawerCardId) return;
     const updates = gatherDrawerUpdates();
-    if (!updates.title) { alert('任务标题不能为空'); return; }
+    if (!updates.title) { uiToast('任务标题不能为空','error'); return; }
 
     // local update to avoid flicker
     for (const s of getAllStatusKeys()){
@@ -2009,21 +2009,58 @@ document.getElementById('importFile').addEventListener('change', function(e) {
 // 解析 Markdown 为看板数据
 function parseMarkdownToBoard(markdown) {
     const lines = markdown.split('\n');
-    const board = { todo: [], doing: [], done: [], archived: [] };
-    let currentSection = null;
+    const board = { archived: [] };
+    const listsMeta = { listIds: [], lists: {} };
+    let currentSectionKey = null;
     let currentCard = null;
+    let listCounter = 0;
 
-    for (const line of lines) {
-        if (line.startsWith('## 📋 待办') || line.startsWith('## TODO')) {
-            currentSection = 'todo';
-        } else if (line.startsWith('## 🔄 进行中') || line.startsWith('## DOING')) {
-            currentSection = 'doing';
-        } else if (line.startsWith('## ✅ 已完成') || line.startsWith('## DONE')) {
-            currentSection = 'done';
-        } else if (line.startsWith('## 📁 归档') || line.startsWith('## ARCHIVED')) {
-            currentSection = 'archived';
-        } else if (line.startsWith('### ') && currentSection) {
-            const title = line.replace(/^### \d+\. /, '').trim();
+    function ensureSection(key){
+        if (!Array.isArray(board[key])) board[key] = [];
+    }
+
+    function normalizeHeadingToKey(h){
+        const t = h.trim().replace(/^##\s+/, '');
+        // legacy quick mapping
+        if (t.startsWith('📋') || /\bTODO\b/i.test(t)) return 'todo';
+        if (t.startsWith('🔄') || /\bDOING\b/i.test(t)) return 'doing';
+        if (t.startsWith('✅') || /\bDONE\b/i.test(t)) return 'done';
+        if (t.startsWith('📁') || /\bARCHIVED\b/i.test(t)) return 'archived';
+        // dynamic: generate a stable status key from title text
+        const base = 'list_' + (++listCounter).toString(36);
+        return base;
+    }
+
+    function addListMetaIfNeeded(title, statusKey){
+        // skip archived in lists meta
+        if (statusKey === 'archived') return;
+        // create a unique stable id for this list title
+        // we cannot derive back original id; generate one
+        const id = 'list_' + (listsMeta.listIds.length + 1).toString(36) + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+        listsMeta.listIds.push(id);
+        listsMeta.lists[id] = { id, title: title, pos: listsMeta.listIds.length - 1, status: statusKey };
+    }
+
+    for (const rawLine of lines) {
+        const line = rawLine.replace(/\r$/, '');
+        if (/^##\s+/.test(line)) {
+            // New section
+            const heading = line;
+            const key = normalizeHeadingToKey(heading);
+            const title = heading.replace(/^##\s+/, '').trim();
+            currentSectionKey = key;
+            ensureSection(key);
+            if (key !== 'todo' && key !== 'doing' && key !== 'done' && key !== 'archived') {
+                addListMetaIfNeeded(title, key);
+            } else if (key !== 'archived') {
+                // legacy named list, also add meta with localized title
+                addListMetaIfNeeded(title, key);
+            }
+            currentCard = null;
+            continue;
+        }
+        if (line.startsWith('### ') && currentSectionKey) {
+            const title = line.replace(/^###\s*\d+\.\s*/, '').trim();
             currentCard = {
                 id: Date.now() + Math.random().toString(),
                 title: title,
@@ -2033,13 +2070,34 @@ function parseMarkdownToBoard(markdown) {
                 created: new Date().toISOString(),
                 deadline: null
             };
-            board[currentSection].push(currentCard);
-        } else if (line.startsWith('**描述:**') && currentCard) {
+            ensureSection(currentSectionKey);
+            board[currentSectionKey].push(currentCard);
+            continue;
+        }
+        if (line.startsWith('**描述:**') && currentCard) {
             currentCard.description = line.replace('**描述:**', '').trim();
-        } else if (line.startsWith('**分配给:**') && currentCard) {
+            continue;
+        }
+        if (line.startsWith('**分配给:**') && currentCard) {
             currentCard.assignee = line.replace('**分配给:**', '').trim();
+            continue;
+        }
+        if (line.startsWith('**截止日期:**') && currentCard) {
+            currentCard.deadline = line.replace('**截止日期:**', '').trim();
+            continue;
         }
     }
+
+    // Attach lists meta if any lists were added
+    if (listsMeta.listIds.length > 0) {
+        board.lists = listsMeta;
+    }
+
+    // Ensure legacy buckets exist if no lists meta (optional)
+    board.todo = board.todo || [];
+    board.doing = board.doing || [];
+    board.done = board.done || [];
+    board.archived = board.archived || [];
 
     return board;
 }
@@ -3400,10 +3458,10 @@ function showBoardSwitcherAt(rect, boards) {
                 loadProjectBoards();
                 showBoard();
             } else {
-                alert(result.message || '创建失败');
+                uiToast(result.message || '创建失败','error');
             }
         } catch (e) {
-            alert('创建失败');
+            uiToast('创建失败','error');
         }
     };
     header.appendChild(search);

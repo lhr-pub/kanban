@@ -910,8 +910,23 @@ app.get('/api/board/:projectId/:boardName', (req, res) => {
         todo: [],
         doing: [],
         done: [],
-        archived: []
+        archived: [],
+        lists: null
     });
+
+    // Ensure lists metadata and arrays exist for dynamic lists
+    if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
+        boardData.lists = {
+            listIds: ['todo','doing','done'],
+            lists: {
+                todo:  { id:'todo',  title:'待办',   pos:0, status:'todo' },
+                doing: { id:'doing', title:'进行中', pos:1, status:'doing' },
+                done:  { id:'done',  title:'已完成', pos:2, status:'done' }
+            }
+        };
+    }
+    ensureListStatusArrays(boardData);
+    writeBoardData(projectId, decodeURIComponent(boardName), boardData);
 
     res.json(boardData);
 });
@@ -926,20 +941,34 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
         todo: [],
         doing: [],
         done: [],
-        archived: []
+        archived: [],
+        lists: null
     });
 
     let markdown = `# ${decodedBoardName}\n\n`;
 
-    const sections = [
-        { key: 'todo', title: '📋 待办', icon: '⭕' },
-        { key: 'doing', title: '🔄 进行中', icon: '🔄' },
-        { key: 'done', title: '✅ 已完成', icon: '✅' },
-        { key: 'archived', title: '📁 归档', icon: '📁' }
-    ];
+    // If lists metadata exists, export in that order and with custom titles
+    let sections = [];
+    if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
+        sections = boardData.lists.listIds
+            .map(id => boardData.lists.lists[id])
+            .filter(meta => meta && meta.status)
+            .sort((a,b)=> (a.pos||0) - (b.pos||0))
+            .map(meta => ({ key: meta.status, title: meta.title || meta.status }));
+        // Append archived at the end if present
+        sections.push({ key: 'archived', title: '📁 归档' });
+    } else {
+        // Fallback to legacy fixed sections
+        sections = [
+            { key: 'todo', title: '📋 待办' },
+            { key: 'doing', title: '🔄 进行中' },
+            { key: 'done', title: '✅ 已完成' },
+            { key: 'archived', title: '📁 归档' }
+        ];
+    }
 
     sections.forEach(section => {
-        const cards = boardData[section.key] || [];
+        const cards = Array.isArray(boardData[section.key]) ? boardData[section.key] : [];
         markdown += `## ${section.title}\n\n`;
 
         if (cards.length === 0) {
@@ -1062,7 +1091,8 @@ function handleJoin(ws, data) {
         todo: [],
         doing: [],
         done: [],
-        archived: []
+        archived: [],
+        lists: null
     });
 
     // Ensure lists metadata exists for dynamic columns
@@ -1124,7 +1154,8 @@ function handleUpdateCard(ws, data) {
     const boardData = readBoardData(projectId, boardName);
 
     let updated = false;
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of Object.keys(boardData)) {
+        if (!Array.isArray(boardData[status])) continue;
         const cardIndex = boardData[status].findIndex(card => card.id === cardId);
         if (cardIndex !== -1) {
             Object.assign(boardData[status][cardIndex], updates);
@@ -1148,7 +1179,7 @@ function handleMoveCard(ws, data) {
     const { projectId, boardName, cardId, fromStatus, toStatus } = data;
     const boardData = readBoardData(projectId, boardName);
 
-    const cardIndex = boardData[fromStatus].findIndex(card => card.id === cardId);
+    const cardIndex = (Array.isArray(boardData[fromStatus]) ? boardData[fromStatus] : []).findIndex(card => card.id === cardId);
     if (cardIndex === -1) {
         ws.send(JSON.stringify({
             type: 'error',
@@ -1158,6 +1189,7 @@ function handleMoveCard(ws, data) {
     }
 
     const card = boardData[fromStatus].splice(cardIndex, 1)[0];
+    if (!Array.isArray(boardData[toStatus])) boardData[toStatus] = [];
     boardData[toStatus].push(card);
 
     if (writeBoardData(projectId, boardName, boardData)) {
@@ -1216,7 +1248,8 @@ function handleDeleteCard(ws, data) {
     const boardData = readBoardData(projectId, boardName);
 
     let deleted = false;
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of Object.keys(boardData)) {
+        if (!Array.isArray(boardData[status])) continue;
         const cardIndex = boardData[status].findIndex(card => card.id === cardId);
         if (cardIndex !== -1) {
             boardData[status].splice(cardIndex, 1);
@@ -1315,25 +1348,77 @@ function handleImportBoard(ws, data) {
     let boardData = readBoardData(projectId, boardName);
 
     try {
+        // Normalize importData structure
+        const incoming = Object.assign({}, importData || {});
+        const incomingLists = (incoming && incoming.lists && Array.isArray(incoming.lists.listIds) && incoming.lists.lists) ? incoming.lists : null;
+
         if (mode === 'overwrite') {
-            boardData = {
-                todo: importData.todo || [],
-                doing: importData.doing || [],
-                done: importData.done || [],
-                archived: importData.archived || []
-            };
+            // Start fresh, but keep lists metadata if provided; otherwise keep existing lists metadata
+            const listsMeta = incomingLists || boardData.lists || null;
+            const next = { archived: Array.isArray(incoming.archived) ? incoming.archived : [] };
+
+            if (listsMeta) {
+                next.lists = listsMeta;
+                // Ensure arrays exist for all statuses from lists
+                ensureListStatusArrays(next);
+                // Merge in any matching statuses from incoming (by status key)
+                for (const id of listsMeta.listIds) {
+                    const st = listsMeta.lists[id] && listsMeta.lists[id].status;
+                    if (!st) continue;
+                    next[st] = Array.isArray(incoming[st]) ? incoming[st] : [];
+                }
+            }
+            // Fallback legacy sections
+            next.todo = next.todo || (Array.isArray(incoming.todo) ? incoming.todo : []);
+            next.doing = next.doing || (Array.isArray(incoming.doing) ? incoming.doing : []);
+            next.done = next.done || (Array.isArray(incoming.done) ? incoming.done : []);
+
+            boardData = next;
         } else {
-            boardData.todo = [...(boardData.todo || []), ...(importData.todo || [])];
-            boardData.doing = [...(boardData.doing || []), ...(importData.doing || [])];
-            boardData.done = [...(boardData.done || []), ...(importData.done || [])];
-            boardData.archived = [...(boardData.archived || []), ...(importData.archived || [])];
+            // Merge mode: append cards for known statuses; create/merge dynamic statuses
+            // Merge lists metadata
+            if (incomingLists) {
+                // If we already have lists, merge positions/titles by id; otherwise use incoming
+                if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
+                    boardData.lists = incomingLists;
+                } else {
+                    const existing = boardData.lists;
+                    const seen = new Set(existing.listIds);
+                    for (const id of incomingLists.listIds) {
+                        if (!seen.has(id)) {
+                            existing.listIds.push(id);
+                            existing.lists[id] = incomingLists.lists[id];
+                        } else {
+                            // Update title/pos if provided
+                            const meta = incomingLists.lists[id];
+                            if (meta) {
+                                existing.lists[id] = Object.assign({}, existing.lists[id] || {}, meta);
+                            }
+                        }
+                    }
+                }
+                ensureListStatusArrays(boardData);
+            }
+
+            // Merge dynamic and legacy arrays: append
+            const keys = new Set(Object.keys(boardData).concat(Object.keys(incoming)));
+            for (const k of keys) {
+                if (k === 'lists') continue;
+                if (Array.isArray(incoming[k])) {
+                    if (!Array.isArray(boardData[k])) boardData[k] = [];
+                    boardData[k] = boardData[k].concat(incoming[k]);
+                }
+            }
+
+            // Legacy fallbacks still covered by above concat
         }
 
-        // 确保所有导入的卡片有唯一ID
-        ['todo', 'doing', 'done', 'archived'].forEach(status => {
-            boardData[status] = boardData[status].map(card => ({
+        // Ensure all card IDs exist
+        Object.keys(boardData).forEach(st => {
+            if (!Array.isArray(boardData[st])) return;
+            boardData[st] = boardData[st].map(card => ({
                 ...card,
-                id: card.id || (Date.now() + Math.random()).toString()
+                id: card && card.id ? card.id : (Date.now() + Math.random()).toString()
             }));
         });
 
