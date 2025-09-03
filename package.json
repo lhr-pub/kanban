@@ -16,6 +16,7 @@
   },
   "scripts": {
     "start": "node -r dotenv/config server.js",
+    "dev": "sh -c 'npm start & npm run dev:web'",
     "build:css": "postcss public/styles.entry.css -o public/style.merged.css",
     "build:css:pretty": "cross-env MINIFY=false postcss public/styles.entry.css -o public/style.merged.css",
     "build:css:min": "cross-env MINIFY=true postcss public/styles.entry.css -o public/style.merged.min.css",
