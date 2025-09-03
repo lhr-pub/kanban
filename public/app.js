@@ -348,6 +348,9 @@ function showProjectPage(replaceHistory) {
     localStorage.removeItem('kanbanCurrentProjectName');
     localStorage.removeItem('kanbanCurrentBoardName');
 
+    // History
+    updateHistory('project', !!replaceHistory);
+
     stopMembershipGuard();
     loadUserInvites();
     loadUserProjects();
@@ -369,6 +372,9 @@ function showBoardSelectPage(replaceHistory) {
     localStorage.setItem('kanbanCurrentProjectId', currentProjectId);
     localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
     localStorage.removeItem('kanbanCurrentBoardName');
+
+    // History
+    updateHistory('boardSelect', !!replaceHistory);
 
     loadProjectBoards();
     startMembershipGuard();
@@ -419,18 +425,12 @@ function showArchive(replaceHistory) {
     renderArchive();
 }
 
-// 智能返回功能
+// 返回到项目或看板选择页（不使用历史）
 function goBack() {
-    try {
-        window.history.back();
-    } catch (e) {
-        if (previousPage === 'project') {
-            showProjectPage();
-        } else if (previousPage === 'boardSelect') {
-            showBoardSelectPage();
-        } else {
-            showProjectPage();
-        }
+    if (previousPage === 'boardSelect') {
+        showBoardSelectPage();
+    } else {
+        showProjectPage();
     }
 }
 
