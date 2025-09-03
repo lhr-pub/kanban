@@ -1229,6 +1229,7 @@ h1 {
     font-size: 0.9rem;
     transition: all 0.2s;
     font-family: inherit;
+    min-height: 38px;
 }
 
 .form-group input:focus,
@@ -1580,7 +1581,7 @@ h1 {
     box-shadow: 0 6px 12px rgba(0,0,0,0.12);
 }
 .project-action-btn.rename-btn { color: #2563eb; border-color: rgba(37,99,235,0.25); }
-.project-action-btn.rename-btn:hover { background: rgba(37,99,235,0.08); }
+.board-action-btn.rename-btn:hover, .project-action-btn.rename-btn:hover { background: rgba(37,99,235,0.08); }
 
 .project-card {
     background: linear-gradient(135deg, #ffffff 0%, #f3f4f6 100%);
@@ -1748,9 +1749,7 @@ h1 {
     color: white;
 }
 
-#backToBoardSelect:hover {
-    background: #4b5563;
-}
+
 
 .empty-state {
     text-align: center;
@@ -2466,10 +2465,13 @@ body {
 #backToBoard:hover,
 #backToBoardSelect:hover,
 #logoutBtn:hover,
-#logoutFromProject:hover {
+#logoutFromProject:hover,
+#boardSelectPage .board-select-header .header-actions button:hover
+ {
     transform: translateY(-1px);
     box-shadow: var(--shadow);
     border-color: var(--gray-400);
+    background: #e5e7eb;
 }
 
 /* 重要操作维持主色但更扁平 */
@@ -3442,7 +3444,7 @@ body {
 .add-list .add-list-cancel { padding:6px 10px; border-radius:6px; border:0; background:transparent; }
 
 /* inline card title input */
-.card-title-input { width:100%; border:1px solid var(--border); border-radius:6px; padding:2px 8px 6px; font-size:14px; font-weight:600; line-height: 1.28; }
+.card-title-input { width:100%; border:1px solid var(--border); border-radius:6px; padding:2px 8px 6px; font-size:14px; font-weight:600; line-height: 1.28; resize: none; overflow: hidden; }
 
 /* title spacing and button alignment */
 .card .card-title { padding-right: 28px; display: block; }
@@ -4036,6 +4038,18 @@ body {
     white-space: pre-line; /* Preserve line breaks for comments */
 }
 
+.post-edit-textarea {
+    width: 100%;
+    min-height: 80px;
+    resize: none;
+    overflow: hidden;
+    border: 1px solid var(--gray-300);
+    border-radius: 6px;
+    padding: 0.5rem 0.625rem;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
 .post-actions {
     display: flex;
     gap: 0.5rem;
@@ -4064,6 +4078,8 @@ body {
     padding: 0.75rem;
     border: 1px solid var(--gray-300);
     transition: var(--transition);
+    resize: none;
+    overflow: hidden;
 }
 
 #editPostsInput:focus {
@@ -4094,6 +4110,23 @@ body {
 /* Reduce other elements to prioritize posts */
 .form-group:not([for="editPostsInput"]) {
     margin-bottom: 0.5rem;
+}
+
+#editModal textarea {
+    resize: none;
+    overflow: hidden;
+    min-height: 38px;
+}
+
+/* Field-specific baselines for better initial sizing */
+#editCardTitle {
+    min-height: 48px; /* ~2 lines for title */
+}
+#editCardDescription {
+    min-height: 120px;
+}
+#editPostsInput {
+    min-height: 120px;
 }
 
 .modal-header, .modal-footer {

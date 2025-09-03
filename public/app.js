@@ -141,6 +141,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 看板选择页面事件
     document.getElementById('backToProjects').addEventListener('click', showProjectPage);
     document.getElementById('logoutFromBoard').addEventListener('click', logout);
+    const manageBtn = document.getElementById('manageMembersBtn');
+    if (manageBtn) manageBtn.addEventListener('click', openMembersModal);
 
     // 看板页面事件
     document.getElementById('logoutBtn').addEventListener('click', logout);
@@ -675,6 +677,7 @@ async function loadProjectBoards() {
 
         // 保存项目成员列表用于分配用户选项
         window.currentProjectMembers = data.members;
+        window.currentProjectOwner = data.owner;
 
         const boardList = document.getElementById('boardList');
         boardList.innerHTML = '';
@@ -928,6 +931,21 @@ function handleWebSocketMessage(data) {
                 showProjectPage();
                 loadUserProjects();
                 uiToast('当前项目已被删除','error');
+            }
+            break;
+        case 'member-removed':
+            if (data.projectId === currentProjectId && data.username === currentUser) {
+                // 自己被移除出项目：断开连接并返回首页
+                try { if (socket) socket.close(); } catch (e) {}
+                currentProjectId = null;
+                currentProjectName = null;
+                currentBoardName = null;
+                localStorage.removeItem('kanbanCurrentProjectId');
+                localStorage.removeItem('kanbanCurrentProjectName');
+                localStorage.removeItem('kanbanCurrentBoardName');
+                showProjectPage();
+                loadUserProjects();
+                uiToast('已被移出项目','error');
             }
             break;
     }
@@ -1255,22 +1273,26 @@ function bindComposer(section, list){
 
 function inlineEditCardTitle(cardEl){
     const view = cardEl.querySelector('.card-title');
-    const old = view.textContent || '';
-    const input = document.createElement('input');
-    input.className = 'card-title-input'; input.type='text'; input.value = old;
-    view.replaceWith(input); input.focus(); input.select();
-    let canceled=false;
+    const old = view ? (view.textContent || '') : '';
+    const input = document.createElement('textarea');
+    input.className = 'card-title-input';
+    input.value = old;
+    input.rows = 1;
+    if (view) view.replaceWith(input);
+    try { autoResizeTextarea(input); } catch(e) {}
+    input.focus();
+    try { input.setSelectionRange(old.length, old.length); } catch(e) {}
+    let canceled = false;
     input.addEventListener('keydown',(e)=>{
-        if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
-        if(e.key==='Escape'){ canceled=true; input.blur(); }
-        if(e.key==='e' && e.ctrlKey) { e.preventDefault(); }
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { e.preventDefault(); canceled = true; input.blur(); }
     });
     input.addEventListener('blur', ()=>{
         const val = input.value.trim();
-        const next = (canceled? old : (val || old));
-        const t = document.createElement('div'); t.className='card-title'; t.textContent=next; t.tabIndex=0;
+        const next = (canceled ? old : (val || old));
+        const t = document.createElement('div'); t.className='card-title'; t.textContent = next; t.tabIndex = 0;
         input.replaceWith(t);
-        if(!canceled && val && val!==old){ saveCardTitle(cardEl.dataset.cardId, val); }
+        if (!canceled && val && val !== old) { saveCardTitle(cardEl.dataset.cardId, val); }
     });
 }
 
@@ -1344,6 +1366,9 @@ function createCardElement(card, status) {
     cardElement.addEventListener('click', (e) => {
         if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.restore-chip')) return;
         if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
+        // If inline editors are open within this card, keep editing instead of opening details
+        const inlineEditor = cardElement.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
+        if (inlineEditor) { try { inlineEditor.focus(); } catch(e) {} return; }
         if (e.target.closest('.card-title')) { inlineEditCardTitle(cardElement); return; }
         openEditModal(card.id);
     });
@@ -1797,12 +1822,24 @@ function openEditModal(cardId) {
     document.getElementById('editCardTitle').value = card.title;
     document.getElementById('editCardDescription').value = card.description || '';
     document.getElementById('editCardDeadline').value = card.deadline || '';
+    // ensure initial sizing reflects current content right away
+    try {
+        autoResizeTextarea(document.getElementById('editCardTitle'));
+        autoResizeTextarea(document.getElementById('editCardDescription'));
+    } catch (e) {}
     document.getElementById('editCardCreated').textContent = `创建于: ${new Date(card.created).toLocaleString()}`;
     document.getElementById('editCardAuthor').textContent = `创建者: ${card.author}`;
 
     // 更新分配用户下拉列表
     updateAssigneeOptions();
     document.getElementById('editCardAssignee').value = card.assignee || '';
+
+    // Auto-resize textareas in modal
+    try {
+        autoResizeTextarea(document.getElementById('editCardTitle'));
+        autoResizeTextarea(document.getElementById('editCardDescription'));
+        autoResizeTextarea(document.getElementById('editPostsInput'));
+    } catch (e) {}
 
     // 渲染讨论/评论
     try { renderEditPostsList(card); } catch(e) {}
@@ -1816,6 +1853,20 @@ function openEditModal(cardId) {
     }
 
     editModal.classList.remove('hidden');
+    // After showing, size textareas based on actual rendered content (run multiple ticks)
+    (function(){
+        const run = () => {
+            try {
+                autoResizeTextarea(document.getElementById('editCardTitle'));
+                autoResizeTextarea(document.getElementById('editCardDescription'));
+                autoResizeTextarea(document.getElementById('editPostsInput'));
+            } catch (e) {}
+        };
+        run();
+        try { requestAnimationFrame(run); } catch (e) {}
+        setTimeout(run, 0);
+        setTimeout(run, 50);
+    })();
 
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
@@ -2989,6 +3040,24 @@ function focusWithCaret(element, caretIndex) {
     setTimeout(tryFocus, 0);
 }
 
+// NEW: Auto-resize helper for textareas
+function autoResizeTextarea(el) {
+    if (!el) return;
+    const resize = () => {
+        el.style.height = 'auto';
+        const min = parseInt((window.getComputedStyle(el).minHeight || '0'), 10) || 0;
+        const next = Math.max(min, el.scrollHeight);
+        el.style.height = next + 'px';
+    };
+    el.style.overflow = 'hidden';
+    el.style.resize = 'none';
+    if (!el.__autoResizeBound) {
+        el.addEventListener('input', resize);
+        el.__autoResizeBound = true;
+    }
+    resize();
+}
+
 // 根据原span内容与点击坐标，获取字符索引
 function getCaretIndexFromSpan(spanEl, clientX, clientY) {
     if (!spanEl) return 0;
@@ -3780,6 +3849,14 @@ function startEditPost(postId){
     const cancelBtn = document.createElement('button'); cancelBtn.className='btn-secondary'; cancelBtn.textContent='取消'; cancelBtn.onclick = ()=> renderEditPostsList(card);
     item.appendChild(ta);
     const actions = document.createElement('div'); actions.className='post-actions'; actions.appendChild(saveBtn); actions.appendChild(cancelBtn); item.appendChild(actions);
+    // After insertion, run multi-tick autosize to avoid initial 1-line flash
+    (function(){
+        const run = () => { try { autoResizeTextarea(ta); } catch (e) {} };
+        run();
+        try { requestAnimationFrame(run); } catch (e) {}
+        setTimeout(run, 0);
+        setTimeout(run, 50);
+    })();
 }
 
 function saveEditPost(postId, newText){
@@ -3848,3 +3925,148 @@ function adjustBoardCentering() {
 
 // Call after render and on resize
 window.addEventListener('resize', adjustBoardCentering);
+
+// 成员管理：打开/关闭
+function openMembersModal() {
+    const modal = document.getElementById('membersModal');
+    if (!modal) return;
+    // 填充邀请码与成员列表
+    document.getElementById('inviteCodeText').textContent = document.getElementById('projectInviteCode').textContent || '------';
+    const isOwner = window.currentProjectOwner && currentUser === window.currentProjectOwner;
+    const addRow = document.getElementById('addMemberRow');
+    if (addRow) addRow.style.display = isOwner ? '' : 'none';
+    const regenBtn = document.getElementById('regenerateInviteBtn');
+    if (regenBtn) regenBtn.style.display = isOwner ? '' : 'none';
+    renderMembersList();
+    modal.classList.remove('hidden');
+}
+
+function closeMembersModal() {
+    const modal = document.getElementById('membersModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function renderMembersList() {
+    const wrap = document.getElementById('membersList');
+    if (!wrap) return;
+    const members = (window.currentProjectMembers || []).slice();
+    const owner = window.currentProjectOwner;
+    const isOwner = owner && currentUser === owner;
+    if (!members.length) {
+        wrap.innerHTML = '<div class="empty-state">暂无成员</div>';
+        return;
+    }
+    wrap.innerHTML = members.map(u => {
+        const isOwnerUser = owner && u === owner;
+        // 只有所有者能移除他人；非所有者只能移除自己
+        let right = '';
+        if (isOwnerUser) {
+            right = '<span style="font-size:12px;color:#6b7280">所有者</span>';
+        } else if (isOwner || u === currentUser) {
+            right = `<button class="btn-secondary" data-remove="${escapeHtml(u)}">移除</button>`;
+        } else {
+            right = '';
+        }
+        return `<div class=\"card-info\" style=\"margin-bottom:8px; display:flex; align-items:center; justify-content:space-between\"><span>${escapeHtml(u)}</span><span>${right}</span></div>`;
+    }).join('');
+    wrap.querySelectorAll('button[data-remove]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const username = e.currentTarget.getAttribute('data-remove');
+            if (!username) return;
+            const ok = await uiConfirm(`确定移除成员 “${username}” 吗？`, '移除成员');
+            if (!ok) return;
+            try {
+                const resp = await fetch('/api/remove-project-member', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projectId: currentProjectId, username, actor: currentUser })
+                });
+                const result = await resp.json();
+                if (resp.ok) {
+                    // 若是自我移除，立即退出项目
+                    if (username === currentUser) {
+                        try { if (socket) socket.close(); } catch (e2) {}
+                        currentProjectId = null;
+                        currentProjectName = null;
+                        currentBoardName = null;
+                        localStorage.removeItem('kanbanCurrentProjectId');
+                        localStorage.removeItem('kanbanCurrentProjectName');
+                        localStorage.removeItem('kanbanCurrentBoardName');
+                        showProjectPage();
+                        loadUserProjects();
+                        uiToast('已退出项目','success');
+                        return;
+                    }
+                    window.currentProjectMembers = result.members || [];
+                    renderMembersList();
+                    document.getElementById('projectMembers').textContent = (window.currentProjectMembers || []).join(', ');
+                    updateAssigneeOptions();
+                    uiToast('已移除成员','success');
+                } else {
+                    uiToast(result.message || '移除成员失败','error');
+                }
+            } catch (err) {
+                console.error('remove member error', err);
+                uiToast('移除成员失败','error');
+            }
+        });
+    });
+}
+
+async function addProjectMember() {
+    const input = document.getElementById('addMemberInput');
+    if (!input) return;
+    const username = (input.value || '').trim();
+    if (!username) { uiToast('请输入用户名','error'); return; }
+    try {
+        const resp = await fetch('/api/add-project-member', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: currentProjectId, username })
+        });
+        const result = await resp.json();
+        if (resp.ok) {
+            input.value = '';
+            window.currentProjectMembers = result.members || [];
+            renderMembersList();
+            document.getElementById('projectMembers').textContent = (window.currentProjectMembers || []).join(', ');
+            updateAssigneeOptions();
+            uiToast('已添加成员','success');
+        } else {
+            uiToast(result.message || '添加成员失败','error');
+        }
+    } catch (err) {
+        console.error('add member error', err);
+        uiToast('添加成员失败','error');
+    }
+}
+
+function copyInviteCode() {
+    const code = document.getElementById('inviteCodeText').textContent || '';
+    if (!code) { uiToast('暂无邀请码','error'); return; }
+    try {
+        navigator.clipboard.writeText(code).then(() => uiToast('邀请码已复制','success'));
+    } catch (e) {
+        uiToast('复制失败','error');
+    }
+}
+
+async function regenerateInviteCode() {
+    try {
+        const ok = await uiConfirm('确定要重置当前项目的邀请码吗？已有旧码将失效。', '重置邀请码');
+        if (!ok) return;
+        const resp = await fetch('/api/regenerate-invite-code', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: currentProjectId, actor: currentUser })
+        });
+        const result = await resp.json();
+        if (resp.ok) {
+            document.getElementById('projectInviteCode').textContent = result.inviteCode;
+            document.getElementById('inviteCodeText').textContent = result.inviteCode;
+            uiToast('邀请码已重置','success');
+        } else {
+            uiToast(result.message || '重置失败','error');
+        }
+    } catch (err) {
+        console.error('regen invite error', err);
+        uiToast('重置失败','error');
+    }
+}

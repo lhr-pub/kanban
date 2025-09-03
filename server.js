@@ -626,7 +626,8 @@ app.get('/api/project-boards/:projectId', (req, res) => {
     res.json({
         inviteCode: project.inviteCode,
         members: project.members,
-        boards: project.boards
+        boards: project.boards,
+        owner: project.owner
     });
 });
 
@@ -670,6 +671,122 @@ app.post('/api/rename-project', (req, res) => {
     } else {
         return res.status(500).json({ message: '保存项目数据失败' });
     }
+});
+
+// 新增：项目成员管理 - 添加成员
+app.post('/api/add-project-member', (req, res) => {
+    const { projectId, username } = req.body || {};
+    if (!projectId || !username) {
+        return res.status(400).json({ message: '项目ID和用户名不能为空' });
+    }
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+
+    project.members = Array.isArray(project.members) ? project.members : [];
+    if (project.members.includes(username)) {
+        return res.status(400).json({ message: '该用户已是项目成员' });
+    }
+
+    project.members.push(username);
+    user.projects = Array.isArray(user.projects) ? user.projects : [];
+    if (!user.projects.includes(projectId)) user.projects.push(projectId);
+
+    const ok = writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users);
+    if (!ok) return res.status(500).json({ message: '保存失败' });
+
+    return res.json({ message: '已添加成员', members: project.members });
+});
+
+// 新增：项目成员管理 - 移除成员（不能移除所有者）
+app.post('/api/remove-project-member', (req, res) => {
+    const { projectId, username, actor } = req.body || {};
+    if (!projectId || !username) {
+        return res.status(400).json({ message: '项目ID和用户名不能为空' });
+    }
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+
+    // 权限：只有所有者可以移除他人；非所有者只能移除自己
+    const isOwner = project.owner && actor === project.owner;
+    const isSelf = actor && username && actor === username;
+    if (!isOwner && !isSelf) {
+        return res.status(403).json({ message: '无权限移除其他成员' });
+    }
+
+    if (project.owner && project.owner === username) {
+        return res.status(400).json({ message: '无法移除项目所有者' });
+    }
+
+    project.members = Array.isArray(project.members) ? project.members : [];
+    const idx = project.members.indexOf(username);
+    if (idx === -1) return res.status(404).json({ message: '该用户不在项目中' });
+
+    project.members.splice(idx, 1);
+
+    // 从用户的项目列表中移除
+    const user = users[username];
+    if (user && Array.isArray(user.projects)) {
+        users[username].projects = user.projects.filter(id => id !== projectId);
+    }
+
+    const ok = writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users);
+    if (!ok) return res.status(500).json({ message: '保存失败' });
+
+    // 广播成员移除事件到该项目下所有看板
+    try {
+        (project.boards || []).forEach(boardName => {
+            broadcastToBoard(projectId, boardName, {
+                type: 'member-removed',
+                projectId,
+                username
+            });
+        });
+    } catch (e) {
+        console.warn('Broadcast member-removed warning:', e && e.message ? e.message : e);
+    }
+
+    return res.json({ message: '已移除成员', members: project.members });
+});
+
+// 新增：项目成员管理 - 重置邀请码
+app.post('/api/regenerate-invite-code', (req, res) => {
+    const { projectId, actor } = req.body || {};
+    if (!projectId) return res.status(400).json({ message: '项目ID不能为空' });
+
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+
+    if (!actor || actor !== project.owner) {
+        return res.status(403).json({ message: '只有所有者可以重置邀请码' });
+    }
+
+    project.inviteCode = generateInviteCode();
+
+    if (!writeJsonFile(projectsFile, projects)) {
+        return res.status(500).json({ message: '保存失败' });
+    }
+
+    return res.json({ message: '邀请码已重置', inviteCode: project.inviteCode });
 });
 
 // 新增：删除项目API

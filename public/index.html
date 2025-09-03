@@ -105,6 +105,7 @@
                 </h1>
                 <div class="header-actions">
                     <button id="backToProjects">返回首页</button>
+                    <button id="manageMembersBtn" class="btn-secondary">管理成员</button>
                     <button id="logoutFromBoard" class="logout-btn">退出登录</button>
                 </div>
             </header>
@@ -221,7 +222,7 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label for="editCardTitle">任务标题</label>
-                    <input type="text" id="editCardTitle" placeholder="输入任务标题..." required>
+                    <textarea id="editCardTitle" placeholder="输入任务标题..." rows="1" required></textarea>
                 </div>
 
                 <div class="form-row">
@@ -261,6 +262,46 @@
                 <button onclick="saveCard()" class="btn-primary">保存</button>
                 <button onclick="deleteCard()" class="btn-danger">删除</button>
                 <button onclick="closeEditModal()" class="btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 成员管理模态框 -->
+    <div id="membersModal" class="modal hidden">
+        <div class="modal-content edit-modal">
+            <div class="modal-header">
+                <h3>成员管理</h3>
+                <button class="close-btn" onclick="closeMembersModal()" title="关闭">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>项目成员</label>
+                    <div id="membersList"></div>
+                </div>
+                <div class="form-row" id="addMemberRow">
+                    <div class="form-group flex-2">
+                        <label for="addMemberInput">添加成员（用户名）</label>
+                        <input type="text" id="addMemberInput" placeholder="输入用户名">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>&nbsp;</label>
+                        <button class="btn-primary" onclick="addProjectMember()">添加</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>邀请码</label>
+                    <div class="card-info">
+                        <span>当前邀请码：<span id="inviteCodeText">------</span></span>
+                        <div>
+                            <button class="btn-secondary" onclick="copyInviteCode()">复制</button>
+                            <button class="btn-primary" id="regenerateInviteBtn"
+                                onclick="regenerateInviteCode()">重置</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeMembersModal()" class="btn-secondary">关闭</button>
             </div>
         </div>
     </div>
