@@ -1962,7 +1962,8 @@ async function exportMarkdown() {
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
         } else {
-            console.error('Export error:', error);
+            const text = await response.text().catch(()=> '');
+            console.error('Export error:', response.status, text);
             uiToast('导出失败','error');
         }
     } catch (error) {

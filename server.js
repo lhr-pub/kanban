@@ -952,7 +952,7 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
     if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
         sections = boardData.lists.listIds
             .map(id => boardData.lists.lists[id])
-            .filter(meta => meta && meta.status)
+            .filter(meta => meta && meta.status && meta.status !== 'archived')
             .sort((a,b)=> (a.pos||0) - (b.pos||0))
             .map(meta => ({ key: meta.status, title: meta.title || meta.status }));
         // Append archived at the end if present
@@ -1313,7 +1313,21 @@ function handleRestoreCard(ws, data) {
     }
 
     const card = boardData.archived.splice(cardIndex, 1)[0];
-    boardData.todo.push(card);
+
+    // Ensure 'done' list exists (create if missing)
+    if (!Array.isArray(boardData.done)) boardData.done = [];
+    if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
+        boardData.lists = { listIds: [], lists: {} };
+    }
+    // if no list entry maps to status 'done', add default
+    const hasDoneMeta = Object.values(boardData.lists.lists || {}).some(m => m && m.status === 'done');
+    if (!hasDoneMeta) {
+        const id = 'done';
+        if (!boardData.lists.listIds.includes(id)) boardData.lists.listIds.push(id);
+        boardData.lists.lists[id] = boardData.lists.lists[id] || { id, title:'已完成', pos: boardData.lists.listIds.length - 1, status:'done' };
+    }
+
+    boardData.done.push(card);
 
     if (writeBoardData(projectId, boardName, boardData)) {
         createBackup(projectId, boardName, boardData);
@@ -1378,25 +1392,46 @@ function handleImportBoard(ws, data) {
             // Merge mode: append cards for known statuses; create/merge dynamic statuses
             // Merge lists metadata
             if (incomingLists) {
-                // If we already have lists, merge positions/titles by id; otherwise use incoming
+                // Ensure target lists exists
                 if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
-                    boardData.lists = incomingLists;
-                } else {
-                    const existing = boardData.lists;
-                    const seen = new Set(existing.listIds);
-                    for (const id of incomingLists.listIds) {
-                        if (!seen.has(id)) {
-                            existing.listIds.push(id);
-                            existing.lists[id] = incomingLists.lists[id];
-                        } else {
-                            // Update title/pos if provided
-                            const meta = incomingLists.lists[id];
-                            if (meta) {
-                                existing.lists[id] = Object.assign({}, existing.lists[id] || {}, meta);
-                            }
+                    boardData.lists = { listIds: [], lists: {} };
+                }
+                const existing = boardData.lists;
+
+                // Build title -> {id, status} map (case-insensitive)
+                const titleMap = new Map();
+                existing.listIds.forEach(id => {
+                    const m = existing.lists[id];
+                    if (m && m.title) titleMap.set(String(m.title).toLowerCase(), { id, status: m.status });
+                });
+
+                // For each incoming list, find same-title list; if found, merge into that status; else append new list
+                incomingLists.listIds.forEach(inId => {
+                    const meta = incomingLists.lists[inId];
+                    if (!meta || !meta.title) return;
+                    const key = String(meta.title).toLowerCase();
+                    const hit = titleMap.get(key);
+                    if (hit) {
+                        // Keep existing id/status; optionally update title/pos
+                        existing.lists[hit.id] = Object.assign({}, existing.lists[hit.id] || {}, { title: meta.title });
+                        // Merge incoming cards into this status bucket
+                        const st = hit.status;
+                        if (Array.isArray(incoming[meta.status])) {
+                            if (!Array.isArray(boardData[st])) boardData[st] = [];
+                            boardData[st] = boardData[st].concat(incoming[meta.status]);
+                        }
+                    } else {
+                        // Append as new list
+                        const newId = 'list_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+                        const st = meta.status || ('list_' + Math.random().toString(36).slice(2,8));
+                        if (!existing.listIds.includes(newId)) existing.listIds.push(newId);
+                        existing.lists[newId] = { id: newId, title: meta.title, pos: existing.listIds.length - 1, status: st };
+                        if (Array.isArray(incoming[meta.status])) {
+                            if (!Array.isArray(boardData[st])) boardData[st] = [];
+                            boardData[st] = boardData[st].concat(incoming[meta.status]);
                         }
                     }
-                }
+                });
                 ensureListStatusArrays(boardData);
             }
 
@@ -1404,6 +1439,8 @@ function handleImportBoard(ws, data) {
             const keys = new Set(Object.keys(boardData).concat(Object.keys(incoming)));
             for (const k of keys) {
                 if (k === 'lists') continue;
+                // Skip any list statuses that were merged by title above to avoid double-add
+                if (incomingLists && incomingLists.listIds.some(id => (incomingLists.lists[id]||{}).status === k)) continue;
                 if (Array.isArray(incoming[k])) {
                     if (!Array.isArray(boardData[k])) boardData[k] = [];
                     boardData[k] = boardData[k].concat(incoming[k]);
