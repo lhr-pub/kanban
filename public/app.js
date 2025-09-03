@@ -80,6 +80,58 @@ function getAllStatusKeys(){
     return Object.keys(boardData).filter(k => Array.isArray(boardData[k]));
 }
 
+// History navigation state
+let isHandlingPopstate = false;
+function updateHistory(page, replace) {
+    if (isHandlingPopstate) return;
+    const state = {
+        page,
+        projectId: currentProjectId,
+        projectName: currentProjectName,
+        boardName: currentBoardName
+    };
+    try {
+        if (replace) {
+            window.history.replaceState(state, '');
+        } else {
+            window.history.pushState(state, '');
+        }
+    } catch (e) {}
+}
+function bindPopstateRouter() {
+    window.addEventListener('popstate', function(e) {
+        const s = e.state || {};
+        isHandlingPopstate = true;
+        try {
+            switch (s.page) {
+                case 'board':
+                    currentProjectId = s.projectId || currentProjectId;
+                    currentProjectName = s.projectName || currentProjectName;
+                    currentBoardName = s.boardName || currentBoardName;
+                    showBoard(true);
+                    break;
+                case 'boardSelect':
+                    currentProjectId = s.projectId || currentProjectId;
+                    currentProjectName = s.projectName || currentProjectName;
+                    showBoardSelectPage(true);
+                    break;
+                case 'archive':
+                    currentProjectId = s.projectId || currentProjectId;
+                    currentProjectName = s.projectName || currentProjectName;
+                    currentBoardName = s.boardName || currentBoardName;
+                    showArchive(true);
+                    break;
+                case 'project':
+                default:
+                    showProjectPage(true);
+                    break;
+            }
+        } finally {
+            isHandlingPopstate = false;
+        }
+    });
+}
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 渲染静态图标
@@ -112,20 +164,20 @@ document.addEventListener('DOMContentLoaded', function() {
             currentProjectId = savedCurrentProjectId;
             currentProjectName = savedCurrentProjectName;
             if (savedPageState === 'boardSelect') {
-                showBoardSelectPage();
+                showBoardSelectPage(true);
             } else if (savedPageState === 'board' && savedCurrentBoardName) {
                 currentBoardName = savedCurrentBoardName;
-                showBoard();
+                showBoard(true);
             } else if (savedPageState === 'archive' && savedCurrentBoardName) {
                 currentBoardName = savedCurrentBoardName;
-                showBoard();
+                showBoard(true);
                 // 稍后显示归档页面
                 setTimeout(() => showArchive(), 100);
             } else {
-                showProjectPage();
+                showProjectPage(true);
             }
         } else {
-            showProjectPage();
+            showProjectPage(true);
         }
     } else {
         showLoginPage();
@@ -211,6 +263,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Add listener for resizing
     window.addEventListener('resize', adjustBoardCentering);
+
+    // Bind popstate router once
+    bindPopstateRouter();
 });
 
 // 页面显示函数
@@ -222,7 +277,7 @@ function showLoginPage() {
     archivePage.classList.add('hidden');
 }
 
-function showProjectPage() {
+function showProjectPage(replaceHistory) {
     previousPage = 'project';
     loginPage.classList.add('hidden');
     projectPage.classList.remove('hidden');
@@ -236,11 +291,14 @@ function showProjectPage() {
     localStorage.removeItem('kanbanCurrentProjectName');
     localStorage.removeItem('kanbanCurrentBoardName');
 
+    // History
+    updateHistory('project', !!replaceHistory);
+
     loadUserInvites();
     loadUserProjects();
 }
 
-function showBoardSelectPage() {
+function showBoardSelectPage(replaceHistory) {
     previousPage = 'boardSelect';
     loginPage.classList.add('hidden');
     projectPage.classList.add('hidden');
@@ -257,10 +315,13 @@ function showBoardSelectPage() {
     localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
     localStorage.removeItem('kanbanCurrentBoardName');
 
+    // History
+    updateHistory('boardSelect', !!replaceHistory);
+
     loadProjectBoards();
 }
 
-function showBoard() {
+function showBoard(replaceHistory) {
     if (!previousPage) {
         previousPage = 'project'; // 如果直接进入看板，设置默认返回到项目页面
     }
@@ -276,6 +337,9 @@ function showBoard() {
     localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
     localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
 
+    // History
+    updateHistory('board', !!replaceHistory);
+
     updateBoardHeader();
     loadBoardData();
     connectWebSocket();
@@ -289,25 +353,31 @@ function showBoard() {
     updateAssigneeOptions();
 }
 
-function showArchive() {
+function showArchive(replaceHistory) {
     boardPage.classList.add('hidden');
     archivePage.classList.remove('hidden');
 
     // 保存页面状态
     localStorage.setItem('kanbanPageState', 'archive');
 
+    // History
+    updateHistory('archive', !!replaceHistory);
+
     renderArchive();
 }
 
 // 智能返回功能
 function goBack() {
-    if (previousPage === 'project') {
-        showProjectPage();
-    } else if (previousPage === 'boardSelect') {
-        showBoardSelectPage();
-    } else {
-        // 默认返回项目页面
-        showProjectPage();
+    try {
+        window.history.back();
+    } catch (e) {
+        if (previousPage === 'project') {
+            showProjectPage();
+        } else if (previousPage === 'boardSelect') {
+            showBoardSelectPage();
+        } else {
+            showProjectPage();
+        }
     }
 }
 
