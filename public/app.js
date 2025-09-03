@@ -551,6 +551,7 @@ async function handleAuth(e) {
 
 // 加载用户数据
 async function loadUserProjects() {
+    if (!currentUser) return;
     const token = ++userProjectsLoadToken;
     try {
         const response = await fetch(`/api/user-projects/${currentUser}`);
@@ -2354,6 +2355,7 @@ function cancelImport() {
 
 // 退出登录
 function logout() {
+    stopMembershipGuard();
     if (socket) {
         socket.close();
         socket = null;
@@ -4476,6 +4478,7 @@ let membershipGuardTimer = null;
 let userProjectsLoadToken = 0;
 
 function forceExitCurrentProject(toastMsg) {
+    if (!currentUser) { stopMembershipGuard(); return; }
     try { if (socket) socket.close(); } catch (e) {}
     currentProjectId = null;
     currentProjectName = null;
@@ -4492,6 +4495,7 @@ function startMembershipGuard() {
     stopMembershipGuard();
     if (!currentProjectId) return;
     membershipGuardTimer = setInterval(async () => {
+        if (!currentUser || !currentProjectId) { stopMembershipGuard(); return; }
         try {
             const resp = await fetch(`/api/project-boards/${currentProjectId}`);
             if (!resp.ok) { forceExitCurrentProject('已被移出项目'); return; }
