@@ -149,6 +149,33 @@ document.addEventListener('DOMContentLoaded', function() {
             url.searchParams.delete('verified');
             window.history.replaceState({}, document.title, url.pathname + url.search);
         }
+        // 如果存在重置密码令牌，提示用户设置新密码
+        const resetToken = url.searchParams.get('resetToken');
+        if (resetToken) {
+            // 显示登录页以便弹窗
+            showLoginPage();
+            setTimeout(async () => {
+                const data = await openPasswordDialog('设置新密码', false);
+                if (!data) return;
+                try {
+                    const rs = await fetch('/api/reset-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: resetToken, newPassword: data.newPwd })
+                    });
+                    const rj = await rs.json().catch(()=>({}));
+                    if (rs.ok) {
+                        uiToast('密码已重置，请使用新密码登录','success');
+                        url.searchParams.delete('resetToken');
+                        window.history.replaceState({}, document.title, url.pathname + url.search);
+                    } else {
+                        uiToast(rj.message || '重置失败','error');
+                    }
+                } catch(e) {
+                    uiToast('网络错误，请稍后再试','error');
+                }
+            }, 50);
+        }
     } catch {}
 
     // 检查是否已登录
@@ -191,6 +218,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('logoutFromProject').addEventListener('click', logout);
     const invitesBtn = document.getElementById('invitesBtn');
     if (invitesBtn) invitesBtn.addEventListener('click', openInvitesModal);
+    const changePwdProj = document.getElementById('changePasswordProject');
+    if (changePwdProj) changePwdProj.addEventListener('click', changePasswordFlow);
 
     // 看板选择页面事件
     document.getElementById('backToProjects').addEventListener('click', showProjectPage);
@@ -205,6 +234,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
+    const changePwdBoard = document.getElementById('changePasswordBoard');
+    if (changePwdBoard) changePwdBoard.addEventListener('click', changePasswordFlow);
 
     // 绑定模态框事件
     editModal.addEventListener('click', function(e) {
@@ -218,6 +249,32 @@ document.addEventListener('DOMContentLoaded', function() {
     if (currentBoardNameEl) {
         currentBoardNameEl.addEventListener('click', openBoardSwitcher);
         currentBoardNameEl.setAttribute('title', '切换看板');
+    }
+
+    // 忘记密码链接
+    const forgotLink = document.getElementById('forgotPasswordLink');
+    if (forgotLink) {
+        forgotLink.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = await uiPrompt('请输入注册邮箱（或直接提交用户名字段后点确定）', '', '找回密码');
+            const username = document.getElementById('username')?.value?.trim();
+            if (!email && !username) { uiToast('请先填写邮箱或用户名','error'); return; }
+            try {
+                const rs = await fetch('/api/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(email ? { email } : { username })
+                });
+                const rj = await rs.json().catch(()=>({}));
+                if (rs.ok) {
+                    uiToast('如果该邮箱存在，我们已发送重置邮件','success');
+                } else {
+                    uiToast(rj.message || '发送失败','error');
+                }
+            } catch(e) {
+                uiToast('网络错误，请稍后再试','error');
+            }
+        });
     }
 
     // 绑定键盘事件
@@ -440,8 +497,9 @@ async function handleAuth(e) {
 
         if (response.ok) {
             if (isLogin) {
-                currentUser = username;
-                localStorage.setItem('kanbanUser', username);
+                const canonical = (result && result.username) ? result.username : username;
+                currentUser = canonical;
+                localStorage.setItem('kanbanUser', canonical);
                 showProjectPage();
             } else {
                 if (authMessage) {
@@ -4447,4 +4505,144 @@ function startMembershipGuard() {
 
 function stopMembershipGuard() {
     if (membershipGuardTimer) { clearInterval(membershipGuardTimer); membershipGuardTimer = null; }
+}
+
+// 修改密码流程（需要旧密码）
+async function changePasswordFlow() {
+    try {
+        const data = await openPasswordDialog('修改密码', true);
+        if (!data) return;
+        const rs = await fetch('/api/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, oldPassword: data.oldPwd, newPassword: data.newPwd })
+        });
+        const rj = await rs.json().catch(()=>({}));
+        if (rs.ok) {
+            uiToast('密码已更新','success');
+        } else {
+            uiToast(rj.message || '修改失败','error');
+        }
+    } catch(e) {
+        uiToast('网络错误，请稍后再试','error');
+    }
+}
+
+// 单次对话框：可选旧密码 + 新密码两次确认
+function openPasswordDialog(title, needOld) {
+    return new Promise((resolve) => {
+        const { overlay, body, footer, close } = createBaseModal(title || '设置密码');
+
+        function makeRow(labelText, type = 'password', autocompleteValue, nameValue, lpIgnore) {
+            const wrap = document.createElement('div');
+            const label = document.createElement('div');
+            label.textContent = labelText;
+            label.style.marginTop = '6px';
+            const input = document.createElement('input');
+            input.type = type;
+            if (autocompleteValue) input.autocomplete = autocompleteValue;
+            if (nameValue) input.name = nameValue;
+            if (lpIgnore) input.setAttribute('data-lpignore', 'true');
+            input.setAttribute('autocapitalize','off');
+            input.setAttribute('autocorrect','off');
+            input.setAttribute('spellcheck','false');
+            input.style.width = '100%';
+            input.style.height = '36px';
+            input.style.border = '1px solid #e5e7eb';
+            input.style.borderRadius = '6px';
+            input.style.padding = '0 10px';
+            input.style.marginTop = '6px';
+            // 防密码管理器自动填充：默认只读，用户交互后解锁并清空
+            input.readOnly = true;
+            const unlock = () => { input.readOnly = false; input.value = ''; };
+            input.addEventListener('focus', unlock, { once: true });
+            input.addEventListener('mousedown', unlock, { once: true });
+            wrap.appendChild(label);
+            wrap.appendChild(input);
+            return { wrap, input };
+        }
+
+        // 蜜罐：诱导密码管理器自动填充到隐藏输入，而非真实字段
+        const honeyWrap = document.createElement('div');
+        honeyWrap.style.position = 'absolute';
+        honeyWrap.style.width = '1px';
+        honeyWrap.style.height = '1px';
+        honeyWrap.style.overflow = 'hidden';
+        honeyWrap.style.opacity = '0';
+        const honeyUser = document.createElement('input');
+        honeyUser.type = 'text';
+        honeyUser.autocomplete = 'username';
+        const honeyPass = document.createElement('input');
+        honeyPass.type = 'password';
+        honeyPass.autocomplete = 'current-password';
+        honeyWrap.appendChild(honeyUser);
+        honeyWrap.appendChild(honeyPass);
+        body.appendChild(honeyWrap);
+
+        let oldRow = null;
+        if (needOld) {
+            oldRow = makeRow('当前密码', 'password', 'off', 'opwd', true);
+            body.appendChild(oldRow.wrap);
+            // 强制用户手输旧密码：彻底屏蔽自动填充
+            try {
+                oldRow.input.setAttribute('autocomplete', 'off');
+                oldRow.input.setAttribute('data-1p-ignore', 'true');
+                oldRow.input.setAttribute('data-lpignore', 'true');
+                oldRow.input.setAttribute('data-form-type', 'other');
+                oldRow.input.name = 'opwd-' + Math.random().toString(36).slice(2);
+                oldRow.input.value = '';
+                oldRow.input.readOnly = true;
+                oldRow.input.type = 'text';
+                const forceUnlock = () => { oldRow.input.type = 'password'; oldRow.input.readOnly = false; oldRow.input.value = ''; };
+                oldRow.input.addEventListener('focus', forceUnlock, { once: true });
+                oldRow.input.addEventListener('mousedown', forceUnlock, { once: true });
+                setTimeout(() => { try { oldRow.input.value = ''; } catch(e){} }, 0);
+                setTimeout(() => { try { oldRow.input.value = ''; } catch(e){} }, 300);
+            } catch(e) {}
+        }
+        const newRow = makeRow('新密码（至少6位）', 'password', 'new-password', 'new-password', true);
+        const confirmRow = makeRow('确认新密码', 'password', 'new-password', 'new-password', true);
+        body.appendChild(newRow.wrap);
+        body.appendChild(confirmRow.wrap);
+
+        const cancel = document.createElement('button');
+        cancel.className = 'btn-secondary';
+        cancel.textContent = '取消';
+        cancel.onclick = () => { document.body.removeChild(overlay); resolve(null); };
+
+        const ok = document.createElement('button');
+        ok.className = 'btn-primary';
+        ok.textContent = '确定';
+        ok.onclick = () => {
+            const oldPwd = needOld ? (oldRow.input.value || '') : null;
+            const p1 = (newRow.input.value || '').trim();
+            const p2 = (confirmRow.input.value || '').trim();
+            if (needOld && !oldPwd) { oldRow.input.focus(); return; }
+            if (p1.length < 6) { uiToast('新密码至少6位','error'); newRow.input.focus(); return; }
+            if (p1 !== p2) { uiToast('两次输入的密码不一致','error'); confirmRow.input.focus(); return; }
+            document.body.removeChild(overlay);
+            resolve({ oldPwd, newPwd: p1 });
+        };
+
+        close.onclick = cancel.onclick;
+        footer.appendChild(cancel);
+        footer.appendChild(ok);
+        document.body.appendChild(overlay);
+        setTimeout(() => { (needOld ? oldRow.input : newRow.input).focus(); }, 0);
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') cancel.click();
+            if (e.key === 'Enter') ok.click();
+        });
+    });
+}
+
+function ensureToastContainer() {
+    let c = document.getElementById('toastContainer');
+    if (!c) {
+        c = document.createElement('div');
+        c.id = 'toastContainer';
+        c.className = 'toast-container';
+        document.body.appendChild(c);
+    }
+    return c;
 }

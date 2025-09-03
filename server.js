@@ -169,6 +169,60 @@ async function sendVerificationEmail(toEmail, username, token, baseUrl) {
     console.log(`[DEV] Verification link for ${username}: ${verifyUrl}`);
 }
 
+// 发送找回密码邮件
+async function sendPasswordResetEmail(toEmail, username, token, baseUrl) {
+    const resetUrl = `${baseUrl}/?resetToken=${encodeURIComponent(token)}`;
+
+    if (emailEnabled && mailTransporter) {
+        const from = process.env.MAIL_FROM || (emailConfig.auth ? emailConfig.auth.user : 'no-reply@example.com');
+        try {
+            const info = await mailTransporter.sendMail({
+                from,
+                to: toEmail,
+                subject: '看板 - 重置密码',
+                text: `您好 ${username}，\n\n我们收到了您的密码重置请求。请点击以下链接设置新密码（1小时内有效）：\n${resetUrl}\n\n如果非本人操作，请忽略本邮件。`,
+                html: `<p>您好 <b>${username}</b>，</p><p>我们收到了您的密码重置请求。请点击以下链接设置新密码（1小时内有效）：</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>如果非本人操作，请忽略本邮件。</p>`
+            });
+            console.log(`[MAIL] 已发送重置密码邮件至 ${toEmail}. messageId=${info && info.messageId}`);
+            return;
+        } catch (e) {
+            console.error('[MAIL] 重置密码邮件发送失败（SMTP）:', e && e.message ? e.message : e);
+            console.log(`[DEV] Reset link for ${username}: ${resetUrl}`);
+            return;
+        }
+    }
+
+    const useEtherealDefault = (process.env.NODE_ENV || 'development') !== 'production';
+    const useEthereal = (process.env.USE_ETHEREAL || (useEtherealDefault ? 'true' : 'false')) === 'true';
+    if (useEthereal) {
+        try {
+            const testAccount = await nodemailer.createTestAccount();
+            const etherealTransporter = nodemailer.createTransport({
+                host: testAccount.smtp.host,
+                port: testAccount.smtp.port,
+                secure: testAccount.smtp.secure,
+                auth: { user: testAccount.user, pass: testAccount.pass }
+            });
+            const info = await etherealTransporter.sendMail({
+                from: testAccount.user,
+                to: toEmail,
+                subject: '看板 - 重置密码 (Ethereal 测试)',
+                text: `您好 ${username}，\n\n我们收到了您的密码重置请求。请点击以下链接设置新密码（1小时内有效）：\n${resetUrl}\n\n如果非本人操作，请忽略本邮件。`,
+                html: `<p>您好 <b>${username}</b>，</p><p>我们收到了您的密码重置请求。请点击以下链接设置新密码（1小时内有效）：</p><p><a href="${resetUrl}">${resetUrl}</a></p><p>如果非本人操作，请忽略本邮件。</p>`
+            });
+            const preview = nodemailer.getTestMessageUrl(info);
+            console.log(`[MAIL][ETHEREAL] 重置密码预览链接: ${preview}`);
+            return;
+        } catch (e) {
+            console.error('[MAIL][ETHEREAL] 重置密码邮件发送失败:', e && e.message ? e.message : e);
+            console.log(`[DEV] Reset link for ${username}: ${resetUrl}`);
+            return;
+        }
+    }
+
+    console.log(`[DEV] Reset link for ${username}: ${resetUrl}`);
+}
+
 // 生成邀请码
 function generateInviteCode() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -269,7 +323,22 @@ app.post('/api/login', (req, res) => {
     const usersFile = path.join(dataDir, 'users.json');
     const users = readJsonFile(usersFile, {});
 
-    const user = users[username];
+    // 支持用户名或邮箱登录
+    let canonicalUsername = null;
+    let user = users[username];
+    if (!user) {
+        const input = String(username).toLowerCase();
+        for (const [uname, u] of Object.entries(users)) {
+            if (u && u.email && String(u.email).toLowerCase() === input) {
+                canonicalUsername = uname;
+                user = u;
+                break;
+            }
+        }
+    } else {
+        canonicalUsername = username;
+    }
+
     if (!user) {
         return res.status(400).json({ message: '用户不存在' });
     }
@@ -284,7 +353,7 @@ app.post('/api/login', (req, res) => {
         return res.status(400).json({ message: '密码错误' });
     }
 
-    res.json({ message: '登录成功', username });
+    res.json({ message: '登录成功', username: canonicalUsername });
 });
 
 // 邮箱验证回调
@@ -367,6 +436,128 @@ app.post('/api/resend-verification', async (req, res) => {
         console.error('Resend verification error:', e);
         return res.status(500).json({ message: '发送失败，请稍后重试' });
     }
+});
+
+// 找回密码（发送重置邮件）
+app.post('/api/forgot-password', async (req, res) => {
+    try {
+        const { email, username } = req.body || {};
+        if ((!email || !String(email).trim()) && (!username || !String(username).trim())) {
+            return res.status(400).json({ message: '请提供邮箱或用户名' });
+        }
+        const usersFile = path.join(dataDir, 'users.json');
+        const users = readJsonFile(usersFile, {});
+
+        // 定位用户（优先 email）
+        let targetUsername = null;
+        let targetUser = null;
+        if (email) {
+            const lower = String(email).toLowerCase();
+            for (const [uname, u] of Object.entries(users)) {
+                if (u && u.email && String(u.email).toLowerCase() === lower) { targetUsername = uname; targetUser = u; break; }
+            }
+        }
+        if (!targetUser && username) {
+            const u = users[username];
+            if (u && u.email) { targetUsername = username; targetUser = u; }
+        }
+
+        // 总是返回成功提示，避免枚举
+        if (!targetUser) {
+            return res.json({ message: '如果该邮箱存在，我们已发送重置邮件' });
+        }
+
+        // 频率限制（60s）
+        const now = Date.now();
+        const last = targetUser.lastResetSentAt ? new Date(targetUser.lastResetSentAt).getTime() : 0;
+        if (now - last < 60 * 1000) {
+            const wait = Math.ceil((60 * 1000 - (now - last)) / 1000);
+            return res.status(429).json({ message: `请稍后再试（${wait}s）` });
+        }
+
+        // 生成或刷新重置令牌
+        targetUser.resetToken = crypto.randomBytes(32).toString('hex');
+        targetUser.resetTokenExpires = new Date(now + 60 * 60 * 1000).toISOString(); // 1小时
+        targetUser.lastResetSentAt = new Date(now).toISOString();
+
+        if (!writeJsonFile(usersFile, users)) {
+            return res.status(500).json({ message: '发送失败，请稍后再试' });
+        }
+
+        try {
+            const baseUrl = process.env.BASE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+            await sendPasswordResetEmail(targetUser.email, targetUsername, targetUser.resetToken, baseUrl);
+        } catch (e) {
+            console.error('Forgot password send mail error:', e);
+        }
+        return res.json({ message: '如果该邮箱存在，我们已发送重置邮件' });
+    } catch (e) {
+        console.error('Forgot password error:', e);
+        return res.status(500).json({ message: '服务暂不可用，请稍后再试' });
+    }
+});
+
+// 使用令牌重置密码
+app.post('/api/reset-password', (req, res) => {
+    const { token, newPassword } = req.body || {};
+    if (!token || typeof token !== 'string' || !newPassword || String(newPassword).trim().length < 6) {
+        return res.status(400).json({ message: '参数无效，密码至少6位' });
+    }
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+
+    let matchedUsername = null;
+    let matchedUser = null;
+    for (const [uname, u] of Object.entries(users)) {
+        if (u && u.resetToken === token) { matchedUsername = uname; matchedUser = u; break; }
+    }
+    if (!matchedUser) {
+        return res.status(400).json({ message: '重置链接无效，请重新申请' });
+    }
+    if (matchedUser.resetTokenExpires && new Date(matchedUser.resetTokenExpires) < new Date()) {
+        return res.status(400).json({ message: '重置链接已过期，请重新申请' });
+    }
+
+    matchedUser.password = crypto.createHash('sha256').update(String(newPassword).trim()).digest('hex');
+    delete matchedUser.resetToken;
+    delete matchedUser.resetTokenExpires;
+
+    // 已验证邮箱不做更改；若历史数据未验证，这次通过邮箱也可视为已验证
+    if (matchedUser.verified === false) {
+        matchedUser.verified = true;
+    }
+
+    if (!writeJsonFile(usersFile, users)) {
+        return res.status(500).json({ message: '保存失败，请稍后再试' });
+    }
+    return res.json({ message: '密码已重置，请使用新密码登录' });
+});
+
+// 修改密码（需要提供旧密码）
+app.post('/api/change-password', (req, res) => {
+    const { username, oldPassword, newPassword } = req.body || {};
+    if (!username || !oldPassword || !newPassword) {
+        return res.status(400).json({ message: '缺少必要参数' });
+    }
+    if (String(newPassword).trim().length < 6) {
+        return res.status(400).json({ message: '新密码至少6位' });
+    }
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+
+    const oldHash = crypto.createHash('sha256').update(String(oldPassword)).digest('hex');
+    if (user.password !== oldHash) return res.status(400).json({ message: '旧密码不正确' });
+
+    user.password = crypto.createHash('sha256').update(String(newPassword).trim()).digest('hex');
+
+    if (!writeJsonFile(usersFile, users)) {
+        return res.status(500).json({ message: '修改失败，请稍后再试' });
+    }
+
+    res.json({ message: '密码已更新' });
 });
 
 // 管理员登录（独立）
