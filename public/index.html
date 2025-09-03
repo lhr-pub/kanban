@@ -10,7 +10,7 @@
 
 <body>
     <!-- 登录页面 -->
-    <div id="loginPage" class="page">
+    <div id="loginPage" class="page hidden">
         <div class="container">
             <h1>多人协作看板</h1>
             <div class="login-form">
@@ -21,7 +21,7 @@
                     <span id="resendStatus" style="margin-left:.5rem;"></span>
                 </div>
                 <form id="authForm">
-                    <input type="text" id="username" placeholder="用户名" required>
+                    <input type="text" id="username" placeholder="用户名或邮箱" required>
                     <input type="email" id="email" placeholder="邮箱（用于验证）" style="display:none">
                     <input type="password" id="password" placeholder="密码" required>
                     <button type="submit" id="submitBtn">登录</button>
@@ -29,6 +29,9 @@
                 <p>
                     <span id="switchText">还没有账号？</span>
                     <a href="#" id="switchMode">注册</a>
+                </p>
+                <p>
+                    <a href="#" id="forgotPasswordLink">忘记密码？</a>
                 </p>
             </div>
         </div>
@@ -41,17 +44,12 @@
                 <h1>工作台</h1>
                 <div class="user-info">
                     <span id="currentUserName">用户名</span>
+                    <button id="invitesBtn" class="btn-secondary">管理邀请 <span id="invitesBadge" class="count"
+                            style="margin-left:6px; display:none;">0</span></button>
+                    <button id="changePasswordProject" class="btn-secondary">修改密码</button>
                     <button id="logoutFromProject" class="logout-btn">退出登录</button>
                 </div>
             </header>
-
-            <!-- 所有看板 -->
-            <div class="dashboard-section">
-                <h2><span data-icon="boards"></span> 所有看板</h2>
-                <div id="quickAccessBoards" class="quick-boards-grid">
-                    <!-- 看板快速访问将动态生成 -->
-                </div>
-            </div>
 
             <!-- 项目管理 -->
             <div class="dashboard-section">
@@ -93,6 +91,14 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 所有看板 -->
+            <div class="dashboard-section">
+                <h2><span data-icon="boards"></span> 所有看板</h2>
+                <div id="quickAccessBoards" class="quick-boards-grid">
+                    <!-- 看板快速访问将动态生成 -->
+                </div>
+            </div>
         </div>
     </div>
 
@@ -104,21 +110,16 @@
                     <span class="home-link" onclick="showProjectPage()">首页</span> / <span id="projectTitle">项目名称</span>
                 </h1>
                 <div class="header-actions">
+                    <button id="manageMembersBtn" class="btn-secondary">管理成员</button>
                     <button id="backToProjects">返回首页</button>
                     <button id="logoutFromBoard" class="logout-btn">退出登录</button>
                 </div>
             </header>
 
             <div class="project-info">
-                <p><strong>邀请码：</strong><span id="projectInviteCode" class="invite-code">------</span></p>
+                <p><strong>邀请码：</strong><span id="projectInviteCode" class="invite-code">------</span> <button
+                        class="btn-secondary" onclick="copyProjectInviteCode()">复制</button></p>
                 <p><strong>项目成员：</strong><span id="projectMembers">loading...</span></p>
-            </div>
-
-            <div class="board-section">
-                <h2>选择看板</h2>
-                <div id="boardList" class="quick-boards-grid">
-                    <!-- 看板列表将动态生成 -->
-                </div>
             </div>
 
             <div class="board-section">
@@ -126,6 +127,13 @@
                 <div class="create-board-form">
                     <input type="text" id="newBoardName" placeholder="看板名称 (如: 开发看板)" required>
                     <button onclick="createBoard()">创建看板</button>
+                </div>
+            </div>
+
+            <div class="board-section">
+                <h2>选择看板</h2>
+                <div id="boardList" class="quick-boards-grid">
+                    <!-- 看板列表将动态生成 -->
                 </div>
             </div>
         </div>
@@ -156,60 +164,8 @@
             </div>
         </header>
 
-        <main class="board-container">
-            <!-- 待办列 -->
-            <div class="column" data-status="todo">
-                <h3>待办 <span class="count" id="todoCount">0</span></h3>
-                <div class="cards" id="todoCards"></div>
-                <div class="add-card">
-                    <div class="input-row-inline">
-                        <div class="left-inputs">
-                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newTodoTitle" required
-                                class="task-title-input">
-                            <select id="newTodoAssignee" class="assignee-select" title="分配给">
-                                <option value="">未分配</option>
-                            </select>
-                        </div>
-                        <input type="date" id="newTodoDeadline" title="截止日期" class="date-input">
-                    </div>
-                </div>
-            </div>
-
-            <!-- 进行中列 -->
-            <div class="column" data-status="doing">
-                <h3>进行中 <span class="count" id="doingCount">0</span></h3>
-                <div class="cards" id="doingCards"></div>
-                <div class="add-card">
-                    <div class="input-row-inline">
-                        <div class="left-inputs">
-                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoingTitle" required
-                                class="task-title-input">
-                            <select id="newDoingAssignee" class="assignee-select" title="分配给">
-                                <option value="">未分配</option>
-                            </select>
-                        </div>
-                        <input type="date" id="newDoingDeadline" title="截止日期" class="date-input">
-                    </div>
-                </div>
-            </div>
-
-            <!-- 已完成列 -->
-            <div class="column" data-status="done">
-                <h3>已完成 <span class="count" id="doneCount">0</span></h3>
-                <div class="cards" id="doneCards"></div>
-                <div class="add-card">
-                    <div class="input-row-inline">
-                        <div class="left-inputs">
-                            <input type="text" placeholder="输入任务标题，按回车快速添加..." id="newDoneTitle" required
-                                class="task-title-input">
-                            <select id="newDoneAssignee" class="assignee-select" title="分配给">
-                                <option value="">未分配</option>
-                            </select>
-                        </div>
-                        <input type="date" id="newDoneDeadline" title="截止日期" class="date-input">
-                    </div>
-                </div>
-            </div>
+        <main class="board-container" id="listsContainer">
+            <!-- 动态卡组列表将由 JS 渲染 -->
         </main>
     </div>
 
@@ -273,7 +229,7 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label for="editCardTitle">任务标题</label>
-                    <input type="text" id="editCardTitle" placeholder="输入任务标题..." required>
+                    <textarea id="editCardTitle" placeholder="输入任务标题..." rows="1" required></textarea>
                 </div>
 
                 <div class="form-row">
@@ -294,6 +250,14 @@
                     <label for="editCardDescription">任务描述</label>
                     <textarea id="editCardDescription" placeholder="详细描述任务内容..." rows="3"></textarea>
                 </div>
+                <div class="form-group">
+                    <label for="editPostsInput">讨论/评论</label>
+                    <div id="editPostsList" class="posts-list"></div>
+                    <textarea id="editPostsInput" placeholder="发表新的评论或更新..." rows="3"></textarea>
+                    <div class="posts-actions">
+                        <button id="editPostsSubmit" class="btn-secondary">发布</button>
+                    </div>
+                </div>
 
                 <div class="card-info">
                     <span id="editCardCreated"></span>
@@ -305,6 +269,66 @@
                 <button onclick="saveCard()" class="btn-primary">保存</button>
                 <button onclick="deleteCard()" class="btn-danger">删除</button>
                 <button onclick="closeEditModal()" class="btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邀请管理（首页导航栏按钮触发） -->
+    <div id="invitesModal" class="modal hidden">
+        <div class="modal-content edit-modal">
+            <div class="modal-header">
+                <h3>管理邀请</h3>
+                <button class="close-btn" onclick="closeInvitesModal()" title="关闭">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="invitesModalList"></div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeInvitesModal()" class="btn-secondary">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 成员管理模态框 -->
+    <div id="membersModal" class="modal hidden">
+        <div class="modal-content edit-modal">
+            <div class="modal-header">
+                <h3>成员管理</h3>
+                <button class="close-btn" onclick="closeMembersModal()" title="关闭">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>项目成员</label>
+                    <div id="membersList"></div>
+                </div>
+                <div class="form-row" id="addMemberRow">
+                    <div class="form-group flex-2">
+                        <label for="addMemberInput">添加成员（用户名）</label>
+                        <input type="text" id="addMemberInput" placeholder="输入用户名">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>&nbsp;</label>
+                        <button class="btn-primary" onclick="addProjectMember()">添加</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>邀请码</label>
+                    <div class="card-info">
+                        <span>当前邀请码：<span id="inviteCodeText">------</span></span>
+                        <div>
+                            <button class="btn-secondary" onclick="copyInviteCode()">复制</button>
+                            <button class="btn-primary" id="regenerateInviteBtn"
+                                onclick="regenerateInviteCode()">重置</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>待审批申请</label>
+                    <div id="pendingRequestsList"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeMembersModal()" class="btn-secondary">关闭</button>
             </div>
         </div>
     </div>

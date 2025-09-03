@@ -275,3 +275,22 @@ NODE_ENV=development
 
 ## 📄 许可
 本项目采用 MIT 协议开源。
+
+## UI 变更说明（Trello 风格）
+
+- 小卡片正面：仅显示标签色条、标题（最多 3 行）、徽标行（截止日期/清单进度/评论数/附件数/负责人）。
+- 详情改为右侧抽屉：标题、描述（支持 Markdown）、负责人、截止日期、标签、多清单、附件与评论计数、优先级。
+- 样式令牌：在 `public/style.css` 追加了 Trello 变量（列宽/间距、卡片半径与阴影、徽标与标签尺寸等）。
+- 动画与性能：抽屉滑入/悬浮阴影过渡 ≤150ms；仍保持原有拖拽/排序/归档/导入导出；消息类型不变（`add-card/update-card/move-card/reorder-cards/...`）。
+- 可选字段（前端增强，兼容旧数据）：`labels: string[]`, `checklist?: { items?: {text:string,done:boolean}[], done:number, total:number }`, `commentsCount?: number`, `attachmentsCount?: number`, `priority?: "low"|"med"|"high"`。
+
+### 快捷键与交互
+- 抽屉内：Ctrl/Cmd+Enter 保存描述；Esc 关闭并还原焦点。
+- 卡片：点击任意区域打开抽屉；悬浮右上角出现“更多/还原”按钮（不占位）。
+
+## 验收清单（Trello 极简版）
+- [ ] 卡片正面仅有：标签色条、标题、徽标行；描述不在正面显示。
+- [ ] 打开抽屉可编辑标题/描述/负责人/日期/标签/清单/优先级，保存即走 `update-card`（仅变更字段）。
+- [ ] 拖拽/排序/移动列/归档/还原/导入导出均可用（消息类型与后端兼容）。
+- [ ] 输入与日期/下拉交互无布局抖动；过渡动画 ≤150ms。
+- [ ] 桌面与移动可用；基本 A11y：控件 `aria-label`，Esc 关闭，焦点管理正确。

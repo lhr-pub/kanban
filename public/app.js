@@ -14,6 +14,11 @@ let inlineEditorOpening = false;
 let pendingFocusSelector = null;
 let pendingFocusCaretIndex = null;
 
+// Board switcher state
+let boardSwitcherMenu = null;
+let boardSwitcherOpen = false;
+let projectBoardsCache = Object.create(null);
+
 // 拖拽状态（支持跨列）
 let draggingCardId = null;
 let draggingFromStatus = null;
@@ -33,6 +38,100 @@ const editModal = document.getElementById('editModal');
 const importModal = document.getElementById('importModal');
 let importFileData = null;
 
+// ===== Trello-like Lists Adapter (frontend only, keeps backend payloads) =====
+// Map legacy sections to dynamic lists on the client. Persist via existing fields.
+let clientLists = null; // { listIds:[], lists:{id:{id,title,pos,status}}, order:['todo','doing','done'] }
+
+function getClientListsStorageKey(){
+    const pid = currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
+    const bname = currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
+    return `kanbanClientLists:${pid}:${bname}`;
+}
+function loadClientListsFromStorage(){
+    try {
+        const raw = localStorage.getItem(getClientListsStorageKey());
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.listIds) && parsed.lists) return parsed;
+    } catch(e) { console.warn('Load clientLists failed', e); }
+    return null;
+}
+function saveClientListsToStorage(){
+    try { localStorage.setItem(getClientListsStorageKey(), JSON.stringify(clientLists)); } catch(e) { console.warn('Save clientLists failed', e); }
+}
+
+function ensureClientLists() {
+    if (clientLists) return clientLists;
+    const restored = loadClientListsFromStorage();
+    if (restored) { clientLists = restored; return clientLists; }
+    const defaults = [
+        { id: 'todo', title: '待办', pos: 0, status: 'todo' },
+        { id: 'doing', title: '进行中', pos: 1, status: 'doing' },
+        { id: 'done', title: '已完成', pos: 2, status: 'done' }
+    ];
+    clientLists = { listIds: defaults.map(l=>l.id), lists: Object.fromEntries(defaults.map(l=>[l.id,l])) };
+    saveClientListsToStorage();
+    return clientLists;
+}
+
+function getCardsByStatus(status) { return (boardData[status] || []).slice(); }
+
+function getAllStatusKeys(){
+    return Object.keys(boardData).filter(k => Array.isArray(boardData[k]));
+}
+
+// History navigation state
+let isHandlingPopstate = false;
+function updateHistory(page, replace) {
+    if (isHandlingPopstate) return;
+    const state = {
+        page,
+        projectId: currentProjectId,
+        projectName: currentProjectName,
+        boardName: currentBoardName
+    };
+    try {
+        if (replace) {
+            window.history.replaceState(state, '');
+        } else {
+            window.history.pushState(state, '');
+        }
+    } catch (e) {}
+}
+function bindPopstateRouter() {
+    window.addEventListener('popstate', function(e) {
+        const s = e.state || {};
+        isHandlingPopstate = true;
+        try {
+            switch (s.page) {
+                case 'board':
+                    currentProjectId = s.projectId || currentProjectId;
+                    currentProjectName = s.projectName || currentProjectName;
+                    currentBoardName = s.boardName || currentBoardName;
+                    showBoard(true);
+                    break;
+                case 'boardSelect':
+                    currentProjectId = s.projectId || currentProjectId;
+                    currentProjectName = s.projectName || currentProjectName;
+                    showBoardSelectPage(true);
+                    break;
+                case 'archive':
+                    currentProjectId = s.projectId || currentProjectId;
+                    currentProjectName = s.projectName || currentProjectName;
+                    currentBoardName = s.boardName || currentBoardName;
+                    showArchive(true);
+                    break;
+                case 'project':
+                default:
+                    showProjectPage(true);
+                    break;
+            }
+        } finally {
+            isHandlingPopstate = false;
+        }
+    });
+}
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 渲染静态图标
@@ -50,6 +149,33 @@ document.addEventListener('DOMContentLoaded', function() {
             url.searchParams.delete('verified');
             window.history.replaceState({}, document.title, url.pathname + url.search);
         }
+        // 如果存在重置密码令牌，提示用户设置新密码
+        const resetToken = url.searchParams.get('resetToken');
+        if (resetToken) {
+            // 显示登录页以便弹窗
+            showLoginPage();
+            setTimeout(async () => {
+                const data = await openPasswordDialog('设置新密码', false);
+                if (!data) return;
+                try {
+                    const rs = await fetch('/api/reset-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: resetToken, newPassword: data.newPwd })
+                    });
+                    const rj = await rs.json().catch(()=>({}));
+                    if (rs.ok) {
+                        uiToast('密码已重置，请使用新密码登录','success');
+                        url.searchParams.delete('resetToken');
+                        window.history.replaceState({}, document.title, url.pathname + url.search);
+                    } else {
+                        uiToast(rj.message || '重置失败','error');
+                    }
+                } catch(e) {
+                    uiToast('网络错误，请稍后再试','error');
+                }
+            }, 50);
+        }
     } catch {}
 
     // 检查是否已登录
@@ -65,20 +191,20 @@ document.addEventListener('DOMContentLoaded', function() {
             currentProjectId = savedCurrentProjectId;
             currentProjectName = savedCurrentProjectName;
             if (savedPageState === 'boardSelect') {
-                showBoardSelectPage();
+                showBoardSelectPage(true);
             } else if (savedPageState === 'board' && savedCurrentBoardName) {
                 currentBoardName = savedCurrentBoardName;
-                showBoard();
+                showBoard(true);
             } else if (savedPageState === 'archive' && savedCurrentBoardName) {
                 currentBoardName = savedCurrentBoardName;
-                showBoard();
+                showBoard(true);
                 // 稍后显示归档页面
                 setTimeout(() => showArchive(), 100);
             } else {
-                showProjectPage();
+                showProjectPage(true);
             }
         } else {
-            showProjectPage();
+            showProjectPage(true);
         }
     } else {
         showLoginPage();
@@ -90,10 +216,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 项目页面事件
     document.getElementById('logoutFromProject').addEventListener('click', logout);
+    const invitesBtn = document.getElementById('invitesBtn');
+    if (invitesBtn) invitesBtn.addEventListener('click', openInvitesModal);
+    const changePwdProj = document.getElementById('changePasswordProject');
+    if (changePwdProj) changePwdProj.addEventListener('click', changePasswordFlow);
 
     // 看板选择页面事件
     document.getElementById('backToProjects').addEventListener('click', showProjectPage);
     document.getElementById('logoutFromBoard').addEventListener('click', logout);
+    const manageBtn = document.getElementById('manageMembersBtn');
+    if (manageBtn) manageBtn.addEventListener('click', openMembersModal);
 
     // 看板页面事件
     document.getElementById('logoutBtn').addEventListener('click', logout);
@@ -102,6 +234,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
+    const changePwdBoard = document.getElementById('changePasswordBoard');
+    if (changePwdBoard) changePwdBoard.addEventListener('click', changePasswordFlow);
 
     // 绑定模态框事件
     editModal.addEventListener('click', function(e) {
@@ -109,6 +243,39 @@ document.addEventListener('DOMContentLoaded', function() {
             closeEditModal();
         }
     });
+
+    // 看板名称下拉切换
+    const currentBoardNameEl = document.getElementById('currentBoardName');
+    if (currentBoardNameEl) {
+        currentBoardNameEl.addEventListener('click', openBoardSwitcher);
+        currentBoardNameEl.setAttribute('title', '切换看板');
+    }
+
+    // 忘记密码链接
+    const forgotLink = document.getElementById('forgotPasswordLink');
+    if (forgotLink) {
+        forgotLink.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = await uiPrompt('请输入注册邮箱（或直接提交用户名字段后点确定）', '', '找回密码');
+            const username = document.getElementById('username')?.value?.trim();
+            if (!email && !username) { uiToast('请先填写邮箱或用户名','error'); return; }
+            try {
+                const rs = await fetch('/api/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(email ? { email } : { username })
+                });
+                const rj = await rs.json().catch(()=>({}));
+                if (rs.ok) {
+                    uiToast('如果该邮箱存在，我们已发送重置邮件','success');
+                } else {
+                    uiToast(rj.message || '发送失败','error');
+                }
+            } catch(e) {
+                uiToast('网络错误，请稍后再试','error');
+            }
+        });
+    }
 
     // 绑定键盘事件
     document.addEventListener('keydown', function(e) {
@@ -126,14 +293,36 @@ document.addEventListener('DOMContentLoaded', function() {
     ['todo', 'doing', 'done'].forEach(status => {
         const titleInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Title`);
         if (titleInput) {
-            titleInput.addEventListener('keypress', function(e) {
+            let inputLock = false;
+            titleInput.addEventListener('keydown', function(e) {
+                if (e.isComposing || e.keyCode === 229) return; // IME composing
                 if (e.key === 'Enter' && this.value.trim()) {
                     e.preventDefault();
+                    if (inputLock) return;
+                    inputLock = true;
                     addCard(status, 'bottom');
+                    setTimeout(()=>{ inputLock = false; }, 250);
                 }
             });
         }
     });
+
+    // 为创建看板输入框绑定回车键事件
+    const newBoardNameInput = document.getElementById('newBoardName');
+    if (newBoardNameInput) {
+        newBoardNameInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && this.value.trim()) {
+                e.preventDefault();
+                createBoard();
+            }
+        });
+    }
+
+    // Add listener for resizing
+    window.addEventListener('resize', adjustBoardCentering);
+
+    // Bind popstate router once
+    bindPopstateRouter();
 });
 
 // 页面显示函数
@@ -145,7 +334,7 @@ function showLoginPage() {
     archivePage.classList.add('hidden');
 }
 
-function showProjectPage() {
+function showProjectPage(replaceHistory) {
     previousPage = 'project';
     loginPage.classList.add('hidden');
     projectPage.classList.remove('hidden');
@@ -159,10 +348,15 @@ function showProjectPage() {
     localStorage.removeItem('kanbanCurrentProjectName');
     localStorage.removeItem('kanbanCurrentBoardName');
 
+    // History
+    updateHistory('project', !!replaceHistory);
+
+    stopMembershipGuard();
+    loadUserInvites();
     loadUserProjects();
 }
 
-function showBoardSelectPage() {
+function showBoardSelectPage(replaceHistory) {
     previousPage = 'boardSelect';
     loginPage.classList.add('hidden');
     projectPage.classList.add('hidden');
@@ -179,10 +373,14 @@ function showBoardSelectPage() {
     localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
     localStorage.removeItem('kanbanCurrentBoardName');
 
+    // History
+    updateHistory('boardSelect', !!replaceHistory);
+
     loadProjectBoards();
+    startMembershipGuard();
 }
 
-function showBoard() {
+function showBoard(replaceHistory) {
     if (!previousPage) {
         previousPage = 'project'; // 如果直接进入看板，设置默认返回到项目页面
     }
@@ -198,6 +396,9 @@ function showBoard() {
     localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
     localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
 
+    // History
+    updateHistory('board', !!replaceHistory);
+
     updateBoardHeader();
     loadBoardData();
     connectWebSocket();
@@ -211,24 +412,24 @@ function showBoard() {
     updateAssigneeOptions();
 }
 
-function showArchive() {
+function showArchive(replaceHistory) {
     boardPage.classList.add('hidden');
     archivePage.classList.remove('hidden');
 
     // 保存页面状态
     localStorage.setItem('kanbanPageState', 'archive');
 
+    // History
+    updateHistory('archive', !!replaceHistory);
+
     renderArchive();
 }
 
-// 智能返回功能
+// 返回到项目或看板选择页（不使用历史）
 function goBack() {
-    if (previousPage === 'project') {
-        showProjectPage();
-    } else if (previousPage === 'boardSelect') {
+    if (previousPage === 'boardSelect') {
         showBoardSelectPage();
     } else {
-        // 默认返回项目页面
         showProjectPage();
     }
 }
@@ -279,7 +480,7 @@ async function handleAuth(e) {
     if (resendStatus) resendStatus.textContent = '';
 
     if (!username || !password || (!isLogin && !email)) {
-        alert(isLogin ? '请填写用户名和密码' : '请填写用户名、邮箱和密码');
+        uiToast(isLogin ? '请填写用户名和密码' : '请填写用户名、邮箱和密码','error');
         return;
     }
 
@@ -296,14 +497,15 @@ async function handleAuth(e) {
 
         if (response.ok) {
             if (isLogin) {
-                currentUser = username;
-                localStorage.setItem('kanbanUser', username);
+                const canonical = (result && result.username) ? result.username : username;
+                currentUser = canonical;
+                localStorage.setItem('kanbanUser', canonical);
                 showProjectPage();
             } else {
                 if (authMessage) {
                     authMessage.textContent = '注册成功，请前往邮箱验证后再登录。';
                 } else {
-                    alert('注册成功，请前往邮箱验证后再登录。');
+                    uiToast('注册成功，请前往邮箱验证后再登录。','success');
                 }
                 formTitle.textContent = '登录';
                 submitBtn.textContent = '登录';
@@ -338,17 +540,18 @@ async function handleAuth(e) {
                     };
                 }
             } else {
-                alert(msg);
+                uiToast(msg,'error');
             }
         }
     } catch (error) {
         console.error('Auth error:', error);
-        alert('网络错误，请稍后重试');
+        uiToast('网络错误，请稍后重试','error');
     }
 }
 
 // 加载用户数据
 async function loadUserProjects() {
+    const token = ++userProjectsLoadToken;
     try {
         const response = await fetch(`/api/user-projects/${currentUser}`);
         const projects = await response.json();
@@ -357,8 +560,11 @@ async function loadUserProjects() {
         document.getElementById('currentUserName').textContent = currentUser;
 
         if (projects.length === 0) {
-            document.getElementById('quickAccessBoards').innerHTML = '<div class="empty-state">还没有加入任何项目，请先创建或加入一个项目！</div>';
-            document.getElementById('projectsList').innerHTML = '<div class="empty-state">还没有项目，创建第一个项目开始协作吧！</div>';
+            if (token !== userProjectsLoadToken) return;
+            const qab = document.getElementById('quickAccessBoards');
+            const pl = document.getElementById('projectsList');
+            if (qab) qab.innerHTML = '<div class="empty-state">还没有加入任何项目，请先创建或加入一个项目！</div>';
+            if (pl) pl.innerHTML = '<div class="empty-state">还没有项目，创建第一个项目开始协作吧！</div>';
             return;
         }
 
@@ -366,8 +572,9 @@ async function loadUserProjects() {
         const projectsList = document.getElementById('projectsList');
 
         // 清空现有内容，避免重复
-        quickAccessBoards.innerHTML = '';
-        projectsList.innerHTML = '';
+        if (token !== userProjectsLoadToken) return;
+        if (quickAccessBoards) quickAccessBoards.innerHTML = '';
+        if (projectsList) projectsList.innerHTML = '';
 
         // 加载所有看板和项目数据
         for (const project of projects) {
@@ -377,6 +584,7 @@ async function loadUserProjects() {
 
                 // 添加快速访问看板
                 boardsData.boards.forEach(boardName => {
+                    if (token !== userProjectsLoadToken) return;
                     const boardCard = document.createElement('div');
                     boardCard.className = 'quick-board-card board-card-with-actions';
                     boardCard.onclick = () => {
@@ -387,19 +595,22 @@ async function loadUserProjects() {
                         showBoard();
                     };
 
+                    const owner = (boardsData.boardOwners && boardsData.boardOwners[boardName]) || '';
+
                     boardCard.innerHTML = `
                         <span class="board-icon" data-icon="boards"></span>
                         <div class="board-details">
                             <h4>${escapeHtml(boardName)}</h4>
                             <span class="board-project">${escapeHtml(project.name)}</span>
                         </div>
+                        ${owner ? `<div class="card-owner">创建者：${escapeHtml(owner)}</div>` : ''}
                         <div class="board-card-actions">
-                            <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="重命名">✎</button>
-                            <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="删除看板">✕</button>
+                            <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
+                            <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
                         </div>
                     `;
 
-                    quickAccessBoards.appendChild(boardCard);
+                    if (token === userProjectsLoadToken && quickAccessBoards) quickAccessBoards.appendChild(boardCard);
                     renderIconsInDom(boardCard);
                 });
 
@@ -408,6 +619,7 @@ async function loadUserProjects() {
             }
 
             // 添加项目卡片到项目管理Tab
+            if (token !== userProjectsLoadToken) continue;
             const projectCard = document.createElement('div');
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(project.id, project.name);
@@ -415,24 +627,25 @@ async function loadUserProjects() {
             projectCard.innerHTML = `
                 <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(project.name)}</h3>
                 <div class="project-info">
-                    邀请码: <span class="invite-code">${project.inviteCode}</span><br>
+                    邀请码: <span class="invite-code">${project.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(project.inviteCode)}')">复制</button><br>
                     成员: ${project.memberCount}人<br>
                     看板: ${project.boardCount}个<br>
                     创建于: ${new Date(project.created).toLocaleDateString()}
                 </div>
                 <div class="project-card-actions">
-                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeHtml(project.name)}')" title="重命名项目">✎</button>
-                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeHtml(project.name)}')" title="删除项目">✕</button>
+                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button>
+                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>
                 </div>
+                <div class="card-owner">所有者：${escapeHtml(project.owner || '')}</div>
             `;
 
-            projectsList.appendChild(projectCard);
+            if (token === userProjectsLoadToken && projectsList) projectsList.appendChild(projectCard);
             renderIconsInDom(projectCard);
         }
 
     } catch (error) {
         console.error('Load projects error:', error);
-        alert('加载项目列表失败');
+        uiToast('加载项目列表失败','error');
     }
 }
 
@@ -470,11 +683,11 @@ function selectProject(projectId, projectName) {
 }
 
 // 新增：重命名项目
-function renameProject() {
-    const input = prompt('输入新的项目名称', currentProjectName || '');
+async function renameProject() {
+    const input = await uiPrompt('输入新的项目名称', currentProjectName || '', '重命名项目');
     if (input === null) return;
     const newName = input.trim();
-    if (!newName) { alert('新名称不能为空'); return; }
+    if (!newName) { uiToast('新名称不能为空','error'); return; }
     if (newName === currentProjectName) return;
 
     fetch('/api/rename-project', {
@@ -489,20 +702,19 @@ function renameProject() {
             const projectTitle = document.getElementById('projectTitle');
             if (projectTitle) projectTitle.textContent = newName;
             updateBoardHeader();
-            // 刷新相关列表展示
             if (!projectPage.classList.contains('hidden')) {
                 loadUserProjects();
             }
             if (!boardSelectPage.classList.contains('hidden')) {
                 loadProjectBoards();
             }
-            alert('项目重命名成功');
+            uiToast('项目重命名成功','success');
         } else {
-            alert(result.message || '项目重命名失败');
+            uiToast(result.message || '项目重命名失败','error');
         }
     }).catch((error) => {
         console.error('Rename project error:', error);
-        alert('项目重命名失败');
+        uiToast('项目重命名失败','error');
     });
 }
 
@@ -510,7 +722,7 @@ function renameProject() {
 async function createProject() {
     const projectName = document.getElementById('newProjectName').value.trim();
     if (!projectName) {
-        alert('请输入项目名称');
+        uiToast('请输入项目名称','error');
         return;
     }
 
@@ -531,13 +743,13 @@ async function createProject() {
         if (response.ok) {
             hideCreateProjectForm();
             loadUserProjects();
-            alert(`项目创建成功！\n项目名称: ${projectName}\n邀请码: ${result.inviteCode}\n\n请保存邀请码，用于邀请团队成员！`);
+            uiToast(`项目创建成功！邀请码：${result.inviteCode}`,'success');
         } else {
-            alert(result.message || '创建项目失败');
+            uiToast(result.message || '创建项目失败','error');
         }
     } catch (error) {
         console.error('Create project error:', error);
-        alert('创建项目失败');
+        uiToast('创建项目失败','error');
     }
 }
 
@@ -545,7 +757,7 @@ async function createProject() {
 async function joinProject() {
     const inviteCode = document.getElementById('inviteCode').value.trim().toUpperCase();
     if (!inviteCode || inviteCode.length !== 6) {
-        alert('请输入6位邀请码');
+        uiToast('请输入6位邀请码','error');
         return;
     }
 
@@ -566,13 +778,13 @@ async function joinProject() {
         if (response.ok) {
             hideJoinProjectForm();
             loadUserProjects();
-            alert('成功加入项目！');
+            uiToast('已提交申请，等待项目所有者审批','success');
         } else {
-            alert(result.message || '加入项目失败');
+            uiToast(result.message || '加入项目失败','error');
         }
     } catch (error) {
         console.error('Join project error:', error);
-        alert('加入项目失败');
+        uiToast('加入项目失败','error');
     }
 }
 
@@ -603,6 +815,9 @@ async function loadProjectBoards() {
 
         // 保存项目成员列表用于分配用户选项
         window.currentProjectMembers = data.members;
+        window.currentProjectOwner = data.owner;
+        window.currentBoardOwners = data.boardOwners || {};
+        window.currentPendingRequests = data.pendingRequests || [];
 
         const boardList = document.getElementById('boardList');
         boardList.innerHTML = '';
@@ -617,15 +832,19 @@ async function loadProjectBoards() {
             boardCard.className = 'quick-board-card board-card-with-actions';
             boardCard.onclick = () => selectBoard(boardName);
 
+            const owner = (window.currentBoardOwners && window.currentBoardOwners[boardName]) || '';
+            const canManage = (currentUser && (currentUser === window.currentProjectOwner || currentUser === owner));
+
             boardCard.innerHTML = `
                 <div class="board-icon" style="display:none"></div>
                 <div class="board-details">
                     <h4>${escapeHtml(boardName)}</h4>
                     <span class="board-project">${escapeHtml(currentProjectName)}</span>
                 </div>
-                <div class="board-card-actions">
-                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeHtml(boardName)}')" title="重命名">✎</button>
-                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeHtml(boardName)}')" title="删除看板">✕</button>
+                ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
+                <div class="board-card-actions" ${canManage ? '' : 'style="display:none"'}>
+                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
+                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>
                 </div>
             `;
 
@@ -634,7 +853,7 @@ async function loadProjectBoards() {
 
     } catch (error) {
         console.error('Load boards error:', error);
-        alert('加载看板列表失败');
+        uiToast('加载看板列表失败','error');
     }
 }
 
@@ -649,7 +868,7 @@ function selectBoard(boardName) {
 async function createBoard() {
     const boardName = document.getElementById('newBoardName').value.trim();
     if (!boardName) {
-        alert('请输入看板名称');
+        uiToast('请输入看板名称','error');
         return;
     }
 
@@ -661,7 +880,8 @@ async function createBoard() {
             },
             body: JSON.stringify({
                 projectId: currentProjectId,
-                boardName
+                boardName,
+                actor: currentUser
             })
         });
 
@@ -670,21 +890,20 @@ async function createBoard() {
         if (response.ok) {
             document.getElementById('newBoardName').value = '';
             loadProjectBoards();
-            alert('看板创建成功！');
+            uiToast('看板创建成功！','success');
         } else {
-            alert(result.message || '创建看板失败');
+            uiToast(result.message || '创建看板失败','error');
         }
     } catch (error) {
         console.error('Create board error:', error);
-        alert('创建看板失败');
+        uiToast('创建看板失败','error');
     }
 }
 
 // 删除看板
 async function deleteBoard(boardName) {
-    if (!confirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`)) {
-        return;
-    }
+    const ok = await uiConfirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`, '删除看板');
+    if (!ok) return;
 
     try {
         const response = await fetch('/api/delete-board', {
@@ -694,7 +913,8 @@ async function deleteBoard(boardName) {
             },
             body: JSON.stringify({
                 projectId: currentProjectId,
-                boardName
+                boardName,
+                actor: currentUser
             })
         });
 
@@ -702,21 +922,20 @@ async function deleteBoard(boardName) {
 
         if (response.ok) {
             loadProjectBoards();
-            alert('看板删除成功！');
+            uiToast('看板删除成功！','success');
         } else {
-            alert(result.message || '删除看板失败');
+            uiToast(result.message || '删除看板失败','error');
         }
     } catch (error) {
         console.error('Delete board error:', error);
-        alert('删除看板失败');
+        uiToast('删除看板失败','error');
     }
 }
 
 // 从首页删除看板
 async function deleteBoardFromHome(boardName, projectId) {
-    if (!confirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`)) {
-        return;
-    }
+    const ok = await uiConfirm(`确定要删除看板 "${boardName}" 吗？\n\n⚠️ 删除后看板内的所有任务都将永久丢失，此操作无法撤销！`, '删除看板');
+    if (!ok) return;
 
     try {
         const response = await fetch('/api/delete-board', {
@@ -726,21 +945,22 @@ async function deleteBoardFromHome(boardName, projectId) {
             },
             body: JSON.stringify({
                 projectId: projectId,
-                boardName
+                boardName,
+                actor: currentUser
             })
         });
 
         const result = await response.json();
 
         if (response.ok) {
-            loadUserProjects(); // 重新加载首页项目列表
-            alert('看板删除成功！');
+            loadUserProjects();
+            uiToast('看板删除成功！','success');
         } else {
-            alert(result.message || '删除看板失败');
+            uiToast(result.message || '删除看板失败','error');
         }
     } catch (error) {
         console.error('Delete board from home error:', error);
-        alert('删除看板失败');
+        uiToast('删除看板失败','error');
     }
 }
 
@@ -788,8 +1008,22 @@ function handleWebSocketMessage(data) {
         case 'board-update':
             if (data.projectId === currentProjectId && data.boardName === currentBoardName) {
                 boardData = data.board;
+                if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
+                    clientLists = boardData.lists;
+                    // ensure arrays exist for every list status
+                    clientLists.listIds.forEach(id => {
+                        const st = clientLists.lists[id] && clientLists.lists[id].status;
+                        if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                    });
+                    saveClientListsToStorage();
+                }
                 pendingBoardUpdate = true;
                 scheduleDeferredRender();
+                // 如果编辑模态打开，刷新评论列表
+                if (editingCardId && !editModal.classList.contains('hidden')) {
+                    const c = getCardById(editingCardId);
+                    if (c) { try { renderEditPostsList(c); } catch(e) {} }
+                }
             }
             break;
         case 'user-list':
@@ -803,10 +1037,10 @@ function handleWebSocketMessage(data) {
             }
             break;
         case 'import-success':
-            alert(data.message);
+            uiToast(data.message || '导入成功','success');
             break;
         case 'error':
-            alert(data.message);
+            uiToast(data.message || '发生错误','error');
             break;
         case 'board-renamed':
             if (data.projectId === currentProjectId && data.oldName === currentBoardName) {
@@ -841,9 +1075,49 @@ function handleWebSocketMessage(data) {
                 localStorage.removeItem('kanbanCurrentProjectId');
                 localStorage.removeItem('kanbanCurrentProjectName');
                 localStorage.removeItem('kanbanCurrentBoardName');
-                showProjectPage();
+                if (typeof projectPage !== 'undefined' && projectPage && projectPage.classList.contains('hidden')) { showProjectPage(); }
                 loadUserProjects();
-                alert('当前项目已被删除');
+                uiToast('当前项目已被删除','error');
+            }
+            break;
+        case 'member-removed':
+            if (data.projectId === currentProjectId && data.username === currentUser) {
+                // 自己被移除出项目：断开连接并返回首页
+                forceExitCurrentProject('已被移出项目');
+            }
+            break;
+        case 'join-request':
+            if (data.projectId === currentProjectId) {
+                renderPendingRequests(true);
+                // If on board-select or project page, also show a light indicator
+                try {
+                    const h = document.querySelector('#boardSelectPage .board-select-header h1');
+                    if (h) {
+                        let badge = document.getElementById('pendingBadge');
+                        if (!badge) {
+                            badge = document.createElement('span');
+                            badge.id = 'pendingBadge';
+                            badge.style.marginLeft = '8px';
+                            badge.style.fontSize = '12px';
+                            badge.style.color = '#2563eb';
+                            badge.textContent = '有待审批';
+                            h.appendChild(badge);
+                        }
+                    }
+                } catch (e) {}
+                const pname = currentProjectName || '项目';
+                uiToast(`${data.username} 申请加入「${pname}」`,'info');
+            }
+            break;
+        case 'member-added':
+            if (data.projectId === currentProjectId) {
+                // 若是我被加入，刷新成员列表
+                if (data.username === currentUser) {
+                    loadUserProjects();
+                }
+                // 刷新成员显示
+                renderPendingRequests(true);
+                loadProjectBoards();
             }
             break;
     }
@@ -864,79 +1138,338 @@ async function loadBoardData() {
 
 // 渲染看板
 function renderBoard() {
-    ['todo', 'doing', 'done'].forEach(status => {
-        const cardsContainer = document.getElementById(`${status}Cards`);
-        const countElement = document.getElementById(`${status}Count`);
+    ensureClientLists();
+    const container = document.getElementById('listsContainer');
+    if (!container) return;
 
-        // Add top add row if not present
-        ensureTopAddRow(status);
+    // capture current columns scroll positions to restore after render
+    const prevScrollTop = {};
+    try {
+        container.querySelectorAll('.column').forEach(col => {
+            const st = col.getAttribute('data-status');
+            if (st) prevScrollTop[st] = col.scrollTop;
+        });
+    } catch(e) {}
 
-        cardsContainer.innerHTML = '';
-        const cards = boardData[status] || [];
-        countElement.textContent = cards.length;
+    container.innerHTML = '';
 
-        // 保持当前顺序渲染
-        const sortedCards = cards.slice();
+    clientLists.listIds
+        .map(id => clientLists.lists[id])
+        .sort((a,b)=>a.pos-b.pos)
+        .forEach(list => {
+            const section = document.createElement('section');
+            section.className = 'list column';
+            section.setAttribute('data-status', list.status);
+            section.setAttribute('data-id', list.id);
 
-        sortedCards.forEach(card => {
-            const cardElement = createCardElement(card, status);
-            cardsContainer.appendChild(cardElement);
+            const header = document.createElement('header');
+            header.className = 'list-header';
+            header.innerHTML = `
+                <h3 class="list-title" tabindex="0">${escapeHtml(list.title)}</h3>
+                <div class="list-actions">
+                    <button class="list-archive" title="归档此卡组全部卡片" aria-label="归档卡组"></button>
+                <button class="list-menu" aria-label="删除"></button>
+                </div>
+            `;
+            section.appendChild(header);
+
+            const cardsEl = document.createElement('div');
+            cardsEl.className = 'cards';
+            cardsEl.setAttribute('role','list');
+            section.appendChild(cardsEl);
+
+            const cards = getCardsByStatus(list.status);
+            cards.forEach(c => cardsEl.appendChild(createCardElement(c, list.status)));
+
+            // composer
+            const composerWrap = document.createElement('div');
+            composerWrap.className = 'card-composer add-card';
+            composerWrap.innerHTML = `
+                <button class="composer-open add-card-link">添加卡片</button>
+                <form class="composer" hidden>
+                    <textarea rows="3" placeholder="输入标题或粘贴链接"></textarea>
+                    <div class="composer-actions">
+                        <button type="submit" class="btn-primary">添加卡片</button>
+                        <button type="button" class="composer-cancel" aria-label="取消">×</button>
+                    </div>
+                </form>
+            `;
+            section.appendChild(composerWrap);
+
+            container.appendChild(section);
+            // binders and drag set later below
         });
 
-        // enable drag for this column
-        enableColumnDrag(status);
+    // restore scroll positions per column
+    try {
+        Object.keys(prevScrollTop).forEach(st => {
+            const col = container.querySelector(`.column[data-status="${st}"]`);
+            if (col && typeof prevScrollTop[st] === 'number') col.scrollTop = prevScrollTop[st];
+        });
+    } catch (e) {}
+
+    // bind list title inline rename
+    container.querySelectorAll('.list').forEach(section => {
+        const id = section.getAttribute('data-id');
+        const list = clientLists.lists[id];
+        bindListTitleInlineRename(section, list);
+        bindListMenu(section, list);
+        const archBtn = section.querySelector('.list-archive');
+        if (archBtn) archBtn.onclick = async (e)=>{ e.stopPropagation(); await archiveList(list.status); };
+        bindComposer(section, list);
+        enableColumnDrag(list.status);
     });
+
+    // add-list entry (UI only, maps to new status placeholders if needed)
+    renderAddListEntry(container);
 
     if (!archivePage.classList.contains('hidden')) {
         renderArchive();
     }
+
+    // enable lists drag after render
+    enableListsDrag();
+
+    // Add after renderBoard
+    adjustBoardCentering();
 }
 
-function ensureTopAddRow(status) {
-    const columnEl = document.querySelector(`.column[data-status="${status}"]`);
-    if (!columnEl) return;
-    let topAdd = columnEl.querySelector('.add-card-top');
-    if (!topAdd) {
-        const assigneeId = `new${status.charAt(0).toUpperCase() + status.slice(1)}TopAssignee`;
-        const titleId = `new${status.charAt(0).toUpperCase() + status.slice(1)}TopTitle`;
-        const deadlineId = `new${status.charAt(0).toUpperCase() + status.slice(1)}TopDeadline`;
-        topAdd = document.createElement('div');
-        topAdd.className = 'add-card add-card-top';
-        topAdd.innerHTML = `
-            <div class="input-row-inline">
-                <div class="left-inputs">
-                    <input type="text" placeholder="在上方添加任务..." id="${titleId}" required class="task-title-input">
-                    <select id="${assigneeId}" class="assignee-select" title="分配给"><option value="">未分配</option></select>
+function renderAddListEntry(container){
+    let add = document.getElementById('addListEntry');
+    if (add) add.remove();
+    add = document.createElement('div');
+    add.id = 'addListEntry';
+    add.className = 'add-list column';
+    add.innerHTML = `
+        <button class="add-list-open">+</button>
+        <form class="add-list-form" hidden>
+            <input type="text" placeholder="输入卡组名称" />
+            <div class="actions">
+                <button type="submit" class="btn-primary">添加卡组</button>
+                <button type="button" class="add-list-cancel">取消</button>
                 </div>
-                <input type="date" id="${deadlineId}" title="截止日期" class="date-input">
-            </div>
-        `;
-        const cardsContainer = columnEl.querySelector('.cards');
-        columnEl.insertBefore(topAdd, cardsContainer);
+        </form>
+    `;
+    container.appendChild(add);
 
-        // 绑定回车添加（上方）
-        const topTitleInput = document.getElementById(titleId);
-        if (topTitleInput) {
-            topTitleInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter' && this.value.trim()) {
+    const openBtn = add.querySelector('.add-list-open');
+    const form = add.querySelector('.add-list-form');
+    const input = form.querySelector('input');
+    const cancel = form.querySelector('.add-list-cancel');
+
+    openBtn.onclick = ()=>{ openBtn.hidden = true; form.hidden = false; input.focus(); };
+    cancel.onclick = ()=>{ form.hidden = true; openBtn.hidden = false; input.value=''; };
+    form.addEventListener('submit', (e)=>{
                     e.preventDefault();
-                    addCard(status, 'top');
-                }
-            });
-        }
+        const name = (input.value||'').trim();
+        if(!name) return;
+        addClientList(name);
+        input.value='';
+        form.hidden = true; openBtn.hidden = false;
+    });
+}
+
+function addClientList(title){
+    ensureClientLists();
+    const id = 'list_' + Date.now().toString(36);
+    const pos = clientLists.listIds.length;
+    const status = id; // unique status per list
+    clientLists.lists[id] = { id, title, pos, status };
+    clientLists.listIds.push(id);
+    if (!Array.isArray(boardData[status])) boardData[status] = [];
+    saveClientListsToStorage();
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
     }
-    // sync members into top select
-    const topSelect = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}TopAssignee`);
-    if (topSelect) {
-        const prev = topSelect.value;
-        topSelect.innerHTML = '<option value="">未分配</option>';
-        (window.currentProjectMembers || []).forEach(u => {
-            const op = document.createElement('option');
-            op.value = u; op.textContent = u; topSelect.appendChild(op);
-        });
-        topSelect.value = prev;
+    renderBoard();
+}
+function pickAvailableStatusKey(){
+    return 'list_' + Math.random().toString(36).slice(2, 8);
+}
+
+function bindListTitleInlineRename(section, list){
+    const titleEl = section.querySelector('.list-title');
+    titleEl.addEventListener('click', ()=>startListRename(titleEl, list));
+    titleEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); startListRename(titleEl, list);} });
+}
+function startListRename(titleEl, list){
+    const old = list.title;
+    const input = document.createElement('input');
+    input.type='text'; input.value=old; input.className='list-title-input';
+    titleEl.replaceWith(input); input.focus(); input.select();
+    let canceled=false;
+    input.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+        if(e.key==='Escape'){ canceled=true; input.blur(); }
+    });
+    input.addEventListener('blur', ()=>{
+        const val = (input.value||'').trim();
+        const next = canceled? old : (val || old);
+        list.title = next;
+        const h = document.createElement('h3'); h.className='list-title'; h.tabIndex=0; h.textContent=next;
+        input.replaceWith(h);
+        bindListTitleInlineRename(h.closest('.list'), list);
+        saveClientListsToStorage();
+        // sync to server
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
+        }
+    });
+}
+function bindListMenu(section, list){
+    const btn = section.querySelector('.list-menu');
+    btn.onclick = async (e)=>{
+        e.stopPropagation();
+        const ok = await uiConfirm('删除该卡组？','删除卡组');
+        if(ok){ removeClientList(list.id); }
+    };
+}
+function removeClientList(listId){
+    ensureClientLists();
+    clientLists.listIds = clientLists.listIds.filter(id=>id!==listId);
+    delete clientLists.lists[listId];
+    saveClientListsToStorage();
+    // sync to server
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
+    }
+    renderBoard();
+}
+
+function bindComposer(section, list){
+    const opener = section.querySelector('.composer-open');
+    const form = section.querySelector('.composer');
+    const textarea = form.querySelector('textarea');
+    const cancel = section.querySelector('.composer-cancel');
+
+    let isCancelling = false;
+    let isSubmitting = false;
+    let isComposingIme = false;
+
+    function open(){
+        const wrap = section.querySelector('.card-composer');
+        wrap.classList.add('is-open');
+        form.hidden = false;
+        textarea.focus();
+    }
+    function close(){
+        const wrap = section.querySelector('.card-composer');
+        wrap.classList.remove('is-open');
+        form.hidden = true;
+        textarea.value='';
+    }
+
+    opener.onclick = (e)=>{ e.preventDefault(); open(); };
+    cancel.onmousedown = ()=>{ isCancelling = true; };
+    cancel.onclick = (e)=>{ e.preventDefault(); isCancelling = true; close(); setTimeout(()=>{ isCancelling = false; },0); };
+
+    textarea.addEventListener('compositionstart', ()=>{ isComposingIme = true; });
+    textarea.addEventListener('compositionend', ()=>{ isComposingIme = false; });
+
+    form.addEventListener('keydown',(e)=>{
+        if (e.isComposing || e.keyCode === 229 || isComposingIme) return; // ignore IME confirm
+        if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); submit(); }
+        if(e.key==='Escape'){ e.preventDefault(); close(); }
+    });
+    textarea.addEventListener('blur', ()=>{
+        if (isSubmitting) return;
+        if(isCancelling){ isCancelling=false; return; }
+        const active = document.activeElement;
+        const isSubmitBtn = active && active.closest && active.closest('.composer-actions') && active.type === 'submit';
+        if (isSubmitBtn) return;
+        if(textarea.value.trim()) submit(); else close();
+    });
+    form.addEventListener('submit',(e)=>{ e.preventDefault(); if (!isSubmitting) submit(); });
+
+    // click outside to close when empty
+    document.addEventListener('mousedown', (ev)=>{
+        const wrap = section.querySelector('.card-composer');
+        if (!wrap) return;
+        if (!wrap.contains(ev.target) && wrap.classList.contains('is-open')) {
+            if (!textarea.value.trim()) close();
+        }
+    });
+
+    function submit(){
+        if (isSubmitting) return;
+        isSubmitting = true;
+        const title = textarea.value.trim();
+        if(!title){ isSubmitting = false; return; }
+        const status = list.status;
+        const card = {
+            id: Date.now().toString(),
+            title: title,
+            description: '',
+            author: currentUser,
+            assignee: null,
+            created: new Date().toISOString(),
+            deadline: null,
+            posts: [],
+            commentsCount: 0
+        };
+        if (!Array.isArray(boardData[status])) boardData[status]=[];
+        boardData[status] = [...boardData[status], card];
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type:'add-card', projectId: currentProjectId, boardName: currentBoardName, status, card, position:'bottom' }));
+        }
+        // collapse composer before drawing
+        const wrapBefore = section.querySelector('.card-composer');
+        if (wrapBefore) { wrapBefore.classList.remove('is-open'); }
+        // append card DOM directly to avoid full re-render jitter
+        let cardsContainer = section.querySelector('.cards');
+        if (!cardsContainer) {
+            const col = document.querySelector(`.column[data-status="${status}"]`);
+            cardsContainer = col ? col.querySelector('.cards') : null;
+        }
+        if (cardsContainer) {
+            const el = createCardElement(card, status);
+            cardsContainer.appendChild(el);
+            makeDraggable(el);
+        } else {
+            renderBoard();
+        }
+        setTimeout(()=>{ isSubmitting = false; }, 300);
     }
 }
+
+// Inline edit card title by clicking title area only (not whole card)
+(function bindInlineCardTitle(){
+    document.addEventListener('click',(e)=>{
+        const title = e.target.closest('.card .card-title');
+        if(!title) return;
+        const cardEl = title.closest('.card');
+        inlineEditCardTitle(cardEl);
+        e.stopPropagation();
+    });
+})();
+
+function inlineEditCardTitle(cardEl){
+    const view = cardEl.querySelector('.card-title');
+    const old = view ? (view.textContent || '') : '';
+    const input = document.createElement('textarea');
+    input.className = 'card-title-input';
+    input.value = old;
+    input.rows = 1;
+    if (view) view.replaceWith(input);
+    try { autoResizeTextarea(input); } catch(e) {}
+    input.focus();
+    try { input.setSelectionRange(old.length, old.length); } catch(e) {}
+    let canceled = false;
+    input.addEventListener('keydown',(e)=>{
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { e.preventDefault(); canceled = true; input.blur(); }
+    });
+    input.addEventListener('blur', ()=>{
+        const val = input.value.trim();
+        const next = (canceled ? old : (val || old));
+        const t = document.createElement('div'); t.className='card-title'; t.textContent = next; t.tabIndex = 0;
+        input.replaceWith(t);
+        if (!canceled && val && val !== old) { saveCardTitle(cardEl.dataset.cardId, val); }
+    });
+}
+
+function saveCardTitle(cardId, title){ updateCardField(cardId, 'title', title); }
+// ===== End Lists Adapter =====
 
 // 渲染归档页面
 function renderArchive() {
@@ -962,57 +1495,332 @@ function createCardElement(card, status) {
     cardElement.className = 'card';
     cardElement.dataset.cardId = card.id;
 
-    const isOverdue = card.deadline && new Date(card.deadline) < new Date();
-    const isEditing = editingCardId === card.id;
+    const labels = Array.isArray(card.labels) ? card.labels.slice(0, 5) : [];
+    const labelDots = labels.map(color => `<span class="label label-${color}"></span>`).join('');
 
-    if (isOverdue) cardElement.classList.add('overdue');
-    if (isEditing) cardElement.classList.add('editing');
+    const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
+    const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
+    const commentsBadge = card.commentsCount > 0 ? `<span class="badge comments" title="${card.commentsCount} 条评论">💬 ${card.commentsCount}</span>` : '';
 
-    let leftActions = '';
-    let rightActions = '';
-    if (status !== 'archived') {
-        if (status !== 'todo') {
-            leftActions = `<button class="action-btn move-left" onclick="moveCard('${card.id}', 'left')" title="向左移动">←</button>`;
-        }
-        if (status !== 'done') {
-            rightActions = `<button class="action-btn move-right" onclick="moveCard('${card.id}', 'right')" title="向右移动">→</button>`;
-        }
-        if (status === 'done') {
-            rightActions = `<button class="archive-btn" onclick="archiveCard('${card.id}')" title="归档">📁</button>`;
-        }
-    } else {
-        rightActions = `<button class="restore-btn" onclick="restoreCard('${card.id}')" title="还原到待办">↶</button>`;
-    }
+    const assigneeHtml = card.assignee
+        ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>`
+        : '';
+    const deadlineHtml = card.deadline
+        ? `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">${card.deadline}</span>`
+        : '';
 
-    const assigneeHtml = card.assignee ?
-        `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>` :
-        `<span class="card-assignee unassigned clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击分配用户">未分配</span>`;
-    const deadlineHtml = card.deadline ?
-        `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">📅 ${card.deadline}</span>` :
-        `<span class="card-deadline clickable unset" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击设置截止日期">📅 设置</span>`;
+    const moreBtn = `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
+
+    const archiveBtn = (status !== 'archived')
+        ? ``
+        : '';
+
+    const deleteBtn = (status === 'archived')
+        ? `<button class="card-quick-delete" onclick="event.stopPropagation(); deleteArchivedCard('${card.id}')" aria-label="删除"></button>`
+        : '';
+
+    const restoreChip = (status === 'archived')
+        ? `<div class="card-actions-row"><div class="actions-inline"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button></div></div>`
+        : '';
+
+    const badges = `${descIcon}${commentsBadge}${deadlineHtml}${assigneeHtml}`;
 
     cardElement.innerHTML = `
-        <h4 class="card-title"><span class="title-text clickable" onmousedown="editCardTitle('${card.id}', event)" title="点击编辑标题"><span class="title-span">${escapeHtml(card.title)}</span></span></h4>
-        <p class="card-description"><span class="description-text clickable" onmousedown="editCardDescription('${card.id}', event)" title="点击编辑描述"><span class="description-span">${escapeHtml(card.description || '点击添加描述...')}</span></span></p>
-        <div class="card-footer">
-            <div class="card-footer-top">
-                <div class="card-left-info">
-                    ${assigneeHtml}
-                </div>
-                <div class="card-center-actions">
-                    ${leftActions}
-                    <button class="detail-btn" onclick="openEditModal('${card.id}')" title="查看详情">📋</button>
-                    ${rightActions}
-                </div>
-                <div class="card-right-info">
-                    ${deadlineHtml}
-                </div>
-            </div>
-        </div>
+        <div class="card-labels">${labelDots}</div>
+        <div class="card-title">${escapeHtml(card.title || '未命名')}</div>
+        ${badges ? `<div class="card-badges">${badges}</div>` : ''}
+        ${restoreChip}
+        ${archiveBtn}
+        ${deleteBtn}
+        ${moreBtn}
     `;
+
+    cardElement.addEventListener('click', (e) => {
+        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.restore-chip')) return;
+        if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
+        // If inline editors are open within this card, keep editing instead of opening details
+        const inlineEditor = cardElement.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
+        if (inlineEditor) { try { inlineEditor.focus(); } catch(e) {} return; }
+        if (e.target.closest('.card-title')) { inlineEditCardTitle(cardElement); return; }
+        openEditModal(card.id);
+    });
 
     return cardElement;
 }
+
+function formatDue(dateStr) {
+    try {
+        const d = new Date(dateStr);
+        const now = new Date();
+        const sameYear = d.getFullYear() === now.getFullYear();
+        return sameYear ? `${d.getMonth()+1}-${String(d.getDate()).padStart(2,'0')}` : `${d.getFullYear()}-${d.getMonth()+1}-${String(d.getDate()).padStart(2,'0')}`;
+    } catch { return dateStr; }
+}
+function daysUntil(dateStr) {
+    try { return Math.floor((new Date(dateStr).getTime() - Date.now()) / 86400000); } catch { return 9999; }
+}
+function initials(name){
+    if(!name) return '';
+    const parts = String(name).trim().split(/\s+/);
+    if(parts.length===1) return parts[0].slice(0,2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+// Drawer state
+let drawerCardId = null;
+const drawerEl = typeof document !== 'undefined' ? document.getElementById('cardModal') : null;
+
+function openCardModal(cardId){
+    // Locate card data
+    let card = null;
+    let status = null;
+    for (const s of getAllStatusKeys()){
+        const found = (boardData[s]||[]).find(c=>c.id===cardId);
+        if(found){ card = found; status = s; break; }
+    }
+    if(!card) return;
+
+    drawerCardId = cardId;
+    // Fill fields
+    const title = document.getElementById('drawerTitle');
+    const desc = document.getElementById('drawerDescription');
+    const assignee = document.getElementById('drawerAssignee');
+    const deadline = document.getElementById('drawerDeadline');
+    const priority = document.getElementById('drawerPriority');
+    const commentsBadge = document.getElementById('drawerCommentsBadge');
+    const attachBadge = document.getElementById('drawerAttachBadge');
+
+    title.value = card.title || '';
+    desc.value = card.description || '';
+
+    // members list
+    assignee.innerHTML = '<option value="">未分配</option>';
+    (window.currentProjectMembers || []).forEach(u=>{
+        const op = document.createElement('option'); op.value=u; op.textContent=u; assignee.appendChild(op);
+    });
+    assignee.value = card.assignee || '';
+
+    deadline.value = card.deadline || '';
+    priority.value = card.priority || '';
+    commentsBadge.textContent = `💬 ${card.commentsCount||0}`;
+    attachBadge.textContent = `📎 ${card.attachmentsCount||0}`;
+
+    // labels
+    const labelsWrap = document.getElementById('drawerLabels');
+    const current = new Set(card.labels || []);
+    labelsWrap.querySelectorAll('input[type="checkbox"]').forEach(chk=>{
+        chk.checked = current.has(chk.value);
+    });
+
+    // checklist render
+    renderDrawerChecklist(card);
+
+    // open
+    drawerEl.hidden = false;
+    drawerEl.classList.add('open');
+    setTimeout(()=>drawerEl.classList.add('open'),0);
+
+    // announce editing
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'card-editing',
+            projectId: currentProjectId,
+            boardName: currentBoardName,
+            cardId: cardId,
+            user: currentUser,
+            editing: true
+        }));
+    }
+
+    // a11y focus
+    try { document.getElementById('drawerTitle').focus(); } catch {}
+}
+
+function closeCardModal(){
+    if(!drawerEl) return;
+    if (drawerCardId && socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'card-editing', projectId: currentProjectId, boardName: currentBoardName,
+            cardId: drawerCardId, user: currentUser, editing: false
+        }));
+    }
+    drawerCardId = null;
+    drawerEl.classList.remove('open');
+    drawerEl.hidden = true;
+}
+
+function gatherDrawerUpdates(){
+    if(!drawerCardId) return null;
+    const title = document.getElementById('drawerTitle').value.trim();
+    const description = document.getElementById('drawerDescription').value;
+    const assignee = document.getElementById('drawerAssignee').value || null;
+    const deadline = document.getElementById('drawerDeadline').value || null;
+    const priority = document.getElementById('drawerPriority').value || null;
+
+    // labels
+    const labels = Array.from(document.querySelectorAll('#drawerLabels input[type="checkbox"]:checked')).map(i=>i.value);
+
+    // checklist
+    const checklist = getDrawerChecklist();
+
+    // counters from local badges (comments/attachments are optional, updated via quick inputs)
+    const commentsCount = parseInt((document.getElementById('drawerCommentsBadge').textContent||'0').replace(/[^0-9]/g,''),10) || 0;
+    const attachmentsCount = parseInt((document.getElementById('drawerAttachBadge').textContent||'0').replace(/[^0-9]/g,''),10) || 0;
+
+    return { title, description, assignee, deadline, priority, labels, checklist, commentsCount, attachmentsCount };
+}
+
+function saveCardFromDrawer(){
+    if(!drawerCardId) return;
+    const updates = gatherDrawerUpdates();
+    if (!updates.title) { uiToast('任务标题不能为空','error'); return; }
+
+    // local update to avoid flicker
+    for (const s of getAllStatusKeys()){
+        const i = (boardData[s]||[]).findIndex(c=>c.id===drawerCardId);
+        if(i!==-1){ boardData[s][i] = Object.assign({}, boardData[s][i], updates); break; }
+    }
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'update-card',
+            projectId: currentProjectId,
+            boardName: currentBoardName,
+            cardId: drawerCardId,
+            updates
+        }));
+    }
+
+    closeCardModal();
+    renderBoard();
+}
+
+async function deleteCardFromDrawer(){
+    if(!drawerCardId) return;
+    { const ok = await uiConfirm('确定要删除这个任务吗？','删除任务'); if (!ok) return; }
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId: drawerCardId
+        }));
+    }
+    closeCardModal();
+}
+
+// Checklist logic (lightweight, local aggregation)
+function renderDrawerChecklist(card){
+    const wrap = document.getElementById('drawerChecklistList');
+    wrap.innerHTML = '';
+    const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items : [];
+
+    items.forEach((it, idx)=>{
+        const row = document.createElement('div');
+        row.className = 'drawer-row';
+        row.innerHTML = `<input type="checkbox" ${it.done?'checked':''} data-idx="${idx}"> <input type="text" value="${escapeHtml(it.text||'')}" data-idx="${idx}">`;
+        wrap.appendChild(row);
+    });
+
+    const input = document.getElementById('drawerChecklistInput');
+    input.onkeydown = (e)=>{
+        if(e.key==='Enter' && input.value.trim()){
+            const text = input.value.trim();
+            const card = getCardById(drawerCardId);
+            const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items.slice() : [];
+            items.push({ text, done:false });
+            const total = items.length; const done = items.filter(i=>i.done).length;
+            const updates = { checklist: { items, total, done } };
+            updateCardImmediately(drawerCardId, updates);
+            input.value='';
+            renderDrawerChecklist(getCardById(drawerCardId));
+        }
+    };
+
+    // bind existing rows
+    wrap.querySelectorAll('input[type="checkbox"]').forEach(chk=>{
+        chk.onchange = ()=>{
+            const idx = parseInt(chk.getAttribute('data-idx'),10);
+            const card = getCardById(drawerCardId);
+            const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items.slice() : [];
+            if(items[idx]) items[idx] = Object.assign({}, items[idx], { done: chk.checked });
+            const total = items.length; const done = items.filter(i=>i.done).length;
+            updateCardImmediately(drawerCardId, { checklist: { items, total, done } });
+            renderDrawerChecklist(getCardById(drawerCardId));
+        };
+    });
+    wrap.querySelectorAll('input[type="text"]').forEach(inp=>{
+        inp.onblur = ()=>{
+            const idx = parseInt(inp.getAttribute('data-idx'),10);
+            const card = getCardById(drawerCardId);
+            const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items.slice() : [];
+            if(items[idx]) items[idx] = Object.assign({}, items[idx], { text: inp.value });
+            const total = items.length; const done = items.filter(i=>i.done).length;
+            updateCardImmediately(drawerCardId, { checklist: { items, total, done } });
+        };
+    });
+}
+
+function getDrawerChecklist(){
+    const card = getCardById(drawerCardId) || {};
+    return card.checklist || undefined;
+}
+
+function getCardById(id){
+    for (const s of getAllStatusKeys()){
+        const found = (boardData[s]||[]).find(c=>c.id===id);
+        if(found) return found;
+    }
+    return null;
+}
+
+function updateCardImmediately(cardId, updates){
+    // local
+    for (const s of getAllStatusKeys()){
+        const i = (boardData[s]||[]).findIndex(c=>c.id===cardId);
+        if(i!==-1){ boardData[s][i] = Object.assign({}, boardData[s][i], updates); break; }
+    }
+    // ws
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type:'update-card', projectId: currentProjectId, boardName: currentBoardName, cardId, updates }));
+    }
+}
+
+// quick counters in drawer
+(function initDrawerQuickInputs(){
+    if (typeof document === 'undefined') return;
+    const cmt = document.getElementById('drawerCommentInput');
+    const attach = document.getElementById('drawerAttachmentInput');
+    if (cmt) cmt.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter' && drawerCardId){
+            const card = getCardById(drawerCardId) || {};
+            const commentsCount = (card.commentsCount||0) + 1;
+            updateCardImmediately(drawerCardId, { commentsCount });
+            const badge = document.getElementById('drawerCommentsBadge');
+            if (badge) badge.textContent = `💬 ${commentsCount}`;
+            cmt.value='';
+        }
+    });
+    if (attach) attach.addEventListener('change', ()=>{
+        if(drawerCardId){
+            const card = getCardById(drawerCardId) || {};
+            const attachmentsCount = (card.attachmentsCount||0) + (attach.files ? attach.files.length : 1);
+            updateCardImmediately(drawerCardId, { attachmentsCount });
+            const badge = document.getElementById('drawerAttachBadge');
+            if (badge) badge.textContent = `📎 ${attachmentsCount}`;
+            attach.value='';
+        }
+    });
+})();
+
+// keyboard: save with Cmd/Ctrl+Enter on description
+(function initDrawerKeys(){
+    if (typeof document === 'undefined') return;
+    const desc = document.getElementById('drawerDescription');
+    if (desc) desc.addEventListener('keydown', (e)=>{
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { saveCardFromDrawer(); }
+    });
+    document.addEventListener('keydown', (e)=>{
+        if (drawerCardId && e.key === 'Escape') closeCardModal();
+    });
+})();
 
 // 添加卡片
 function addCard(status, position = 'bottom') {
@@ -1024,7 +1832,7 @@ function addCard(status, position = 'bottom') {
 
     const title = titleInput.value.trim();
     if (!title) {
-        alert('请输入任务标题');
+        uiToast('请输入任务标题','error');
         return;
     }
 
@@ -1035,7 +1843,9 @@ function addCard(status, position = 'bottom') {
         author: currentUser,
         assignee: assigneeInput.value || null,
         created: new Date().toISOString(),
-        deadline: deadlineInput.value || null
+        deadline: deadlineInput.value || null,
+        posts: [],
+        commentsCount: 0
     };
 
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -1056,21 +1866,40 @@ function addCard(status, position = 'bottom') {
     } else {
         boardData[status] = [...boardData[status], card];
     }
-    renderBoard();
+    // append new card DOM directly to reduce jitter
+    const columnEl = document.querySelector(`.column[data-status="${status}"]`);
+    const cardsEl = columnEl ? columnEl.querySelector('.cards') : null;
+    if (cardsEl) {
+        const el = createCardElement(card, status);
+        if (isTop) {
+            cardsEl.insertBefore(el, cardsEl.firstChild);
+        } else {
+            cardsEl.appendChild(el);
+        }
+        makeDraggable(el);
+    } else {
+        renderBoard();
+    }
 
     titleInput.value = '';
     assigneeInput.value = '';
     deadlineInput.value = '';
+
+    // collapse the add form back
+    const addContainer = columnEl ? columnEl.querySelector(isTop ? '.add-card-top' : '.add-card:not(.add-card-top)') : null;
+    if (addContainer && addContainer.__collapseAdd) addContainer.__collapseAdd();
 }
 
 // 移动卡片
 function moveCard(cardId, direction) {
-    const statuses = ['todo', 'doing', 'done'];
+    const statuses = (clientLists && clientLists.listIds || []).map(id => clientLists.lists[id].status);
+    if (!statuses.length) { return; }
     let fromStatus = null;
     let cardIndex = -1;
 
     for (const status of statuses) {
-        const index = boardData[status].findIndex(card => card.id === cardId);
+        const arr = Array.isArray(boardData[status]) ? boardData[status] : [];
+        const index = arr.findIndex(card => card.id === cardId);
         if (index !== -1) {
             fromStatus = status;
             cardIndex = index;
@@ -1103,11 +1932,16 @@ function moveCard(cardId, direction) {
 
 // 归档卡片
 function archiveCard(cardId) {
-    const cardIndex = boardData.done.findIndex(card => card.id === cardId);
-    if (cardIndex === -1) {
-        alert('只能归档已完成的任务');
-        return;
+    // find card from any non-archived column
+    let fromStatus = null;
+    let cardObj = null;
+    for (const s of ['todo','doing','done']) {
+        const idx = (boardData[s] || []).findIndex(c => c.id === cardId);
+        if (idx !== -1) { fromStatus = s; cardObj = boardData[s][idx]; boardData[s].splice(idx,1); break; }
     }
+    if (!fromStatus) { return; }
+    boardData.archived = boardData.archived || [];
+    boardData.archived.push(cardObj);
 
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
@@ -1115,9 +1949,10 @@ function archiveCard(cardId) {
             projectId: currentProjectId,
             boardName: currentBoardName,
             cardId: cardId,
-            fromStatus: 'done'
+            fromStatus
         }));
     }
+    renderBoard();
 }
 
 // 还原卡片
@@ -1133,15 +1968,11 @@ function restoreCard(cardId) {
 }
 
 // 清空归档
-function clearArchive() {
-    if (confirm('确定要清空所有归档任务吗？此操作不可恢复。')) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'clear-archive',
-                projectId: currentProjectId,
-                boardName: currentBoardName
-            }));
-        }
+async function clearArchive() {
+    const ok = await uiConfirm('确定要清空所有归档任务吗？此操作不可恢复。','清空归档');
+    if (!ok) return;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'clear-archive', projectId: currentProjectId, boardName: currentBoardName }));
     }
 }
 
@@ -1149,7 +1980,7 @@ function clearArchive() {
 function openEditModal(cardId) {
     let card = null;
 
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
             card = found;
@@ -1163,6 +1994,11 @@ function openEditModal(cardId) {
     document.getElementById('editCardTitle').value = card.title;
     document.getElementById('editCardDescription').value = card.description || '';
     document.getElementById('editCardDeadline').value = card.deadline || '';
+    // ensure initial sizing reflects current content right away
+    try {
+        autoResizeTextarea(document.getElementById('editCardTitle'));
+        autoResizeTextarea(document.getElementById('editCardDescription'));
+    } catch (e) {}
     document.getElementById('editCardCreated').textContent = `创建于: ${new Date(card.created).toLocaleString()}`;
     document.getElementById('editCardAuthor').textContent = `创建者: ${card.author}`;
 
@@ -1170,7 +2006,39 @@ function openEditModal(cardId) {
     updateAssigneeOptions();
     document.getElementById('editCardAssignee').value = card.assignee || '';
 
+    // Auto-resize textareas in modal
+    try {
+        autoResizeTextarea(document.getElementById('editCardTitle'));
+        autoResizeTextarea(document.getElementById('editCardDescription'));
+        autoResizeTextarea(document.getElementById('editPostsInput'));
+    } catch (e) {}
+
+    // 渲染讨论/评论
+    try { renderEditPostsList(card); } catch(e) {}
+    const postsInput = document.getElementById('editPostsInput');
+    const postsSubmit = document.getElementById('editPostsSubmit');
+    if (postsSubmit) {
+        postsSubmit.onclick = function(e){ e.preventDefault(); submitNewPost(); };
+    }
+    if (postsInput) {
+        postsInput.onkeydown = function(e){ if ((e.metaKey||e.ctrlKey) && e.key==='Enter') { e.preventDefault(); submitNewPost(); } };
+    }
+
     editModal.classList.remove('hidden');
+    // After showing, size textareas based on actual rendered content (run multiple ticks)
+    (function(){
+        const run = () => {
+            try {
+                autoResizeTextarea(document.getElementById('editCardTitle'));
+                autoResizeTextarea(document.getElementById('editCardDescription'));
+                autoResizeTextarea(document.getElementById('editPostsInput'));
+            } catch (e) {}
+        };
+        run();
+        try { requestAnimationFrame(run); } catch (e) {}
+        setTimeout(run, 0);
+        setTimeout(run, 50);
+    })();
 
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
@@ -1194,7 +2062,7 @@ function saveCard() {
     const deadline = document.getElementById('editCardDeadline').value || null;
 
     if (!title) {
-        alert('任务标题不能为空');
+        uiToast('任务标题不能为空','error');
         return;
     }
 
@@ -1214,20 +2082,16 @@ function saveCard() {
 }
 
 // 删除卡片
-function deleteCard() {
+async function deleteCard() {
     if (!editingCardId) return;
-
-    if (confirm('确定要删除这个任务吗？')) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'delete-card',
-                projectId: currentProjectId,
-                boardName: currentBoardName,
-                cardId: editingCardId
-            }));
-        }
-        closeEditModal();
+    const ok = await uiConfirm('确定要删除这个任务吗？','删除任务');
+    if (!ok) return;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId: editingCardId
+        }));
     }
+    closeEditModal();
 }
 
 // 关闭编辑模态框
@@ -1320,10 +2184,14 @@ async function exportMarkdown() {
             a.click();
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
+        } else {
+            const text = await response.text().catch(()=> '');
+            console.error('Export error:', response.status, text);
+            uiToast('导出失败','error');
         }
     } catch (error) {
         console.error('Export error:', error);
-        alert('导出失败');
+        uiToast('导出失败','error');
     }
 }
 
@@ -1347,7 +2215,7 @@ document.getElementById('importFile').addEventListener('change', function(e) {
             } else if (file.name.endsWith('.md')) {
                 data = parseMarkdownToBoard(event.target.result);
             } else {
-                alert('不支持的文件格式，请选择 .json 或 .md 文件');
+                uiToast('不支持的文件格式，请选择 .json 或 .md 文件','error');
                 return;
             }
 
@@ -1356,7 +2224,7 @@ document.getElementById('importFile').addEventListener('change', function(e) {
 
         } catch (error) {
             console.error('Import error:', error);
-            alert('文件格式错误，无法解析');
+            uiToast('文件格式错误，无法解析','error');
         }
     };
     reader.readAsText(file);
@@ -1365,21 +2233,58 @@ document.getElementById('importFile').addEventListener('change', function(e) {
 // 解析 Markdown 为看板数据
 function parseMarkdownToBoard(markdown) {
     const lines = markdown.split('\n');
-    const board = { todo: [], doing: [], done: [], archived: [] };
-    let currentSection = null;
+    const board = { archived: [] };
+    const listsMeta = { listIds: [], lists: {} };
+    let currentSectionKey = null;
     let currentCard = null;
+    let listCounter = 0;
 
-    for (const line of lines) {
-        if (line.startsWith('## 📋 待办') || line.startsWith('## TODO')) {
-            currentSection = 'todo';
-        } else if (line.startsWith('## 🔄 进行中') || line.startsWith('## DOING')) {
-            currentSection = 'doing';
-        } else if (line.startsWith('## ✅ 已完成') || line.startsWith('## DONE')) {
-            currentSection = 'done';
-        } else if (line.startsWith('## 📁 归档') || line.startsWith('## ARCHIVED')) {
-            currentSection = 'archived';
-        } else if (line.startsWith('### ') && currentSection) {
-            const title = line.replace(/^### \d+\. /, '').trim();
+    function ensureSection(key){
+        if (!Array.isArray(board[key])) board[key] = [];
+    }
+
+    function normalizeHeadingToKey(h){
+        const t = h.trim().replace(/^##\s+/, '');
+        // legacy quick mapping
+        if (t.startsWith('📋') || /\bTODO\b/i.test(t)) return 'todo';
+        if (t.startsWith('🔄') || /\bDOING\b/i.test(t)) return 'doing';
+        if (t.startsWith('✅') || /\bDONE\b/i.test(t)) return 'done';
+        if (t.startsWith('📁') || /\bARCHIVED\b/i.test(t)) return 'archived';
+        // dynamic: generate a stable status key from title text
+        const base = 'list_' + (++listCounter).toString(36);
+        return base;
+    }
+
+    function addListMetaIfNeeded(title, statusKey){
+        // skip archived in lists meta
+        if (statusKey === 'archived') return;
+        // create a unique stable id for this list title
+        // we cannot derive back original id; generate one
+        const id = 'list_' + (listsMeta.listIds.length + 1).toString(36) + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+        listsMeta.listIds.push(id);
+        listsMeta.lists[id] = { id, title: title, pos: listsMeta.listIds.length - 1, status: statusKey };
+    }
+
+    for (const rawLine of lines) {
+        const line = rawLine.replace(/\r$/, '');
+        if (/^##\s+/.test(line)) {
+            // New section
+            const heading = line;
+            const key = normalizeHeadingToKey(heading);
+            const title = heading.replace(/^##\s+/, '').trim();
+            currentSectionKey = key;
+            ensureSection(key);
+            if (key !== 'todo' && key !== 'doing' && key !== 'done' && key !== 'archived') {
+                addListMetaIfNeeded(title, key);
+            } else if (key !== 'archived') {
+                // legacy named list, also add meta with localized title
+                addListMetaIfNeeded(title, key);
+            }
+            currentCard = null;
+            continue;
+        }
+        if (line.startsWith('### ') && currentSectionKey) {
+            const title = line.replace(/^###\s*\d+\.\s*/, '').trim();
             currentCard = {
                 id: Date.now() + Math.random().toString(),
                 title: title,
@@ -1389,13 +2294,34 @@ function parseMarkdownToBoard(markdown) {
                 created: new Date().toISOString(),
                 deadline: null
             };
-            board[currentSection].push(currentCard);
-        } else if (line.startsWith('**描述:**') && currentCard) {
+            ensureSection(currentSectionKey);
+            board[currentSectionKey].push(currentCard);
+            continue;
+        }
+        if (line.startsWith('**描述:**') && currentCard) {
             currentCard.description = line.replace('**描述:**', '').trim();
-        } else if (line.startsWith('**分配给:**') && currentCard) {
+            continue;
+        }
+        if (line.startsWith('**分配给:**') && currentCard) {
             currentCard.assignee = line.replace('**分配给:**', '').trim();
+            continue;
+        }
+        if (line.startsWith('**截止日期:**') && currentCard) {
+            currentCard.deadline = line.replace('**截止日期:**', '').trim();
+            continue;
         }
     }
+
+    // Attach lists meta if any lists were added
+    if (listsMeta.listIds.length > 0) {
+        board.lists = listsMeta;
+    }
+
+    // Ensure legacy buckets exist if no lists meta (optional)
+    board.todo = board.todo || [];
+    board.doing = board.doing || [];
+    board.done = board.done || [];
+    board.archived = board.archived || [];
 
     return board;
 }
@@ -1467,7 +2393,7 @@ function editCardTitle(cardId, clickEvent) {
     let card = null;
     let cardStatus = null;
 
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
             card = found;
@@ -1675,7 +2601,7 @@ function editCardDescription(cardId, clickEvent) {
     let card = null;
     let cardStatus = null;
 
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
             card = found;
@@ -1880,7 +2806,7 @@ function editCardDescription(cardId, clickEvent) {
 // 内联编辑分配用户
 function editCardAssignee(cardId) {
     let card = null;
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) { card = found; break; }
     }
@@ -1946,7 +2872,7 @@ function editCardDeadline(cardId) {
     let card = null;
     let cardStatus = null;
 
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
             card = found;
@@ -2160,7 +3086,7 @@ function updateCardField(cardId, field, value) {
     updates[field] = value;
 
     // 先更新本地数据，避免界面闪烁或数据短暂丢失
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const idx = (boardData[status] || []).findIndex(c => c.id === cardId);
         if (idx !== -1) {
             const current = boardData[status][idx];
@@ -2185,6 +3111,11 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// JS字符串转义（用于onclick等）
+function escapeJs(text) {
+    return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 // SVG 图标：看板
@@ -2281,6 +3212,24 @@ function focusWithCaret(element, caretIndex) {
     setTimeout(tryFocus, 0);
 }
 
+// NEW: Auto-resize helper for textareas
+function autoResizeTextarea(el) {
+    if (!el) return;
+    const resize = () => {
+        el.style.height = 'auto';
+        const min = parseInt((window.getComputedStyle(el).minHeight || '0'), 10) || 0;
+        const next = Math.max(min, el.scrollHeight);
+        el.style.height = next + 'px';
+    };
+    el.style.overflow = 'hidden';
+    el.style.resize = 'none';
+    if (!el.__autoResizeBound) {
+        el.addEventListener('input', resize);
+        el.__autoResizeBound = true;
+    }
+    resize();
+}
+
 // 根据原span内容与点击坐标，获取字符索引
 function getCaretIndexFromSpan(spanEl, clientX, clientY) {
     if (!spanEl) return 0;
@@ -2329,12 +3278,19 @@ function getCaretIndexFromSpan(spanEl, clientX, clientY) {
 
 // 列内拖拽排序
 function enableColumnDrag(status) {
-    const container = document.getElementById(`${status}Cards`);
+    // Support legacy ids and new dynamic containers
+    let container = document.getElementById(`${status}Cards`);
+    if (!container) {
+        const col = document.querySelector(`.column[data-status="${status}"]`);
+        container = col ? col.querySelector('.cards') : null;
+    }
     if (!container) return;
+
     container.querySelectorAll('.card').forEach(makeDraggable);
 
-    container.ondragover = (e) => {
+    const handleDragOver = (e) => {
         e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
         const afterEl = getDragAfterElement(container, e.clientY);
         const dragging = document.querySelector('.card.dragging');
         if (!dragging) return;
@@ -2345,49 +3301,37 @@ function enableColumnDrag(status) {
         }
     };
 
-    container.ondrop = () => {
-        // 发送新顺序（以及必要时的跨列移动）
-        const orderedIds = Array.from(container.querySelectorAll('.card')).map(el => el.dataset.cardId);
+    const handleDrop = () => {
         const toStatus = status;
         const fromStatus = draggingFromStatus;
         const movedCardId = draggingCardId;
-
+        const orderedIds = Array.from(container.querySelectorAll('.card')).map(el => el.dataset.cardId);
         if (socket && socket.readyState === WebSocket.OPEN) {
             if (movedCardId && fromStatus && fromStatus !== toStatus) {
-                socket.send(JSON.stringify({
-                    type: 'move-card',
-                    projectId: currentProjectId,
-                    boardName: currentBoardName,
-                    cardId: movedCardId,
-                    fromStatus: fromStatus,
-                    toStatus: toStatus
-                }));
+                socket.send(JSON.stringify({ type:'move-card', projectId: currentProjectId, boardName: currentBoardName, cardId:movedCardId, fromStatus, toStatus }));
             }
-            socket.send(JSON.stringify({
-                type: 'reorder-cards',
-                projectId: currentProjectId,
-                boardName: currentBoardName,
-                status: toStatus,
-                orderedIds
-            }));
+            socket.send(JSON.stringify({ type:'reorder-cards', projectId: currentProjectId, boardName: currentBoardName, status: toStatus, orderedIds }));
         }
-
-        // 清理拖拽状态
         draggingCardId = null;
         draggingFromStatus = null;
         document.body.classList.remove('dragging-cards');
     };
+
+    container.ondragover = handleDragOver;
+    container.ondrop = handleDrop;
+    const listWrapper = container.closest('.list, .column');
+    if (listWrapper) { listWrapper.ondragover = handleDragOver; listWrapper.ondrop = handleDrop; }
 }
 
 function makeDraggable(cardEl) {
     cardEl.setAttribute('draggable', 'true');
     cardEl.ondragstart = (e) => {
         cardEl.classList.add('dragging');
-        const col = cardEl.closest('.column');
+        const col = cardEl.closest('.column, .list');
         draggingFromStatus = col ? col.getAttribute('data-status') : null;
         draggingCardId = cardEl.dataset.cardId;
         document.body.classList.add('dragging-cards');
-        try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); } catch (e) {}
+        try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); e.dataTransfer.effectAllowed = 'move'; } catch (e) {}
     };
     cardEl.ondragend = () => {
         cardEl.classList.remove('dragging');
@@ -2410,42 +3354,123 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
+// ===== Lists drag (simple) =====
+let draggingListId = null;
+let listDragImageEl = null; // not used in simple mode
+let listPlaceholderEl = null; // not used in simple mode
+
+function enableListsDrag() {
+    const container = document.getElementById('listsContainer');
+    if (!container) return;
+
+    // Shared reposition handler (no placeholder; directly reorders DOM)
+    const reposition = (e) => {
+        if (!draggingListId) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        const after = getListAfterElement(container, e.clientX);
+        const draggingEl = container.querySelector('.list.dragging');
+        if (!draggingEl) return;
+        if (after == null) {
+            container.insertBefore(draggingEl, container.querySelector('#addListEntry'));
+        } else {
+            container.insertBefore(draggingEl, after);
+        }
+    };
+
+    // Shared finalize handler
+    const finalizeDrop = () => {
+        if (!draggingListId || !clientLists) return;
+        // clear dragging class if any remains
+        const draggingEl = container.querySelector('.list.dragging');
+        if (draggingEl) draggingEl.classList.remove('dragging');
+        const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
+            .filter(el => el.classList.contains('list'))
+            .map(el => el.getAttribute('data-id'));
+        clientLists.listIds = ids;
+        clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
+        draggingListId = null;
+        saveClientListsToStorage();
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
+        }
+        renderBoard();
+    };
+
+    // Make entire list and header/title draggable; filter bad start targets
+    container.querySelectorAll('.list:not(.add-list)').forEach(listEl => {
+        const header = listEl.querySelector('.list-header');
+        const title = header ? header.querySelector('.list-title') : null;
+
+        function startDrag(e){
+            const isInsideCard = !!(e.target && e.target.closest && e.target.closest('.card'));
+            const isComposer = !!(e.target && e.target.closest && e.target.closest('.card-composer, .add-list-form'));
+            const isFormControl = !!(e.target && e.target.closest && e.target.closest('input, textarea, button, select'));
+            if (isInsideCard || isComposer || isFormControl) { if (e.stopPropagation) e.stopPropagation(); return; }
+            const el = (e.currentTarget && e.currentTarget.closest) ? e.currentTarget.closest('.list') : listEl;
+            if (!el) return;
+            draggingListId = el.getAttribute('data-id');
+            el.classList.add('dragging');
+            try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {}
+        }
+        function endDrag(){
+            const el = container.querySelector('.list.dragging');
+            if (el) el.classList.remove('dragging');
+            draggingListId = null;
+        }
+
+        // set draggable attributes and bind events
+        listEl.setAttribute('draggable', 'true');
+        listEl.addEventListener('dragstart', startDrag);
+        listEl.addEventListener('dragend', endDrag);
+        if (header) {
+            header.setAttribute('draggable', 'true');
+            header.addEventListener('dragstart', startDrag);
+            header.addEventListener('dragend', endDrag);
+        }
+        if (title) {
+            title.setAttribute('draggable', 'true');
+            title.addEventListener('dragstart', startDrag);
+            title.addEventListener('dragend', endDrag);
+        }
+
+        // list-level dragover/drop to improve reliability
+        listEl.ondragover = reposition;
+        listEl.ondrop = (e) => { if (e && e.preventDefault) e.preventDefault(); finalizeDrop(); };
+    });
+
+    // container-level handlers
+    container.ondragover = reposition;
+    container.ondrop = (e) => { if (e && e.preventDefault) e.preventDefault(); finalizeDrop(); };
+}
+// ===== End Lists drag =====
+
 // 新增：重命名看板（项目看板页）
 function promptRenameBoard(oldName) {
-    renameBoardRequest(currentProjectId, oldName, false);
+    return renameBoardRequest(currentProjectId, oldName, false);
 }
 
 // 新增：重命名看板（首页快捷看板）
 function promptRenameBoardFromHome(oldName, projectId) {
-    renameBoardRequest(projectId, oldName, true);
+    return renameBoardRequest(projectId, oldName, true);
 }
 
 async function renameBoardRequest(projectId, oldName, isHome) {
-    const input = prompt('输入新的看板名称', oldName);
-    if (input === null) return; // 取消
+    const input = await uiPrompt('输入新的看板名称', oldName, '重命名看板');
+    if (input === null) return { success: false };
     const newName = input.trim();
-    if (!newName) {
-        alert('新名称不能为空');
-        return;
-    }
-    if (newName === oldName) return;
+    if (!newName) { uiToast('新名称不能为空','error'); return { success: false }; }
+    if (newName === oldName) return { success: false };
 
     try {
         const response = await fetch('/api/rename-board', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId, oldName, newName })
+            body: JSON.stringify({ projectId, oldName, newName, actor: currentUser })
         });
         const result = await response.json();
         if (response.ok) {
-            // 刷新列表
-            if (isHome) {
-                loadUserProjects();
-            } else {
-                loadProjectBoards();
-            }
-
-            // 如果当前看板被重命名，更新本地状态并重连WS
+            if (isHome) { loadUserProjects(); } else { loadProjectBoards(); }
             if (projectId === currentProjectId && currentBoardName === oldName) {
                 currentBoardName = newName;
                 localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
@@ -2454,99 +3479,67 @@ async function renameBoardRequest(projectId, oldName, isHome) {
                 connectWebSocket();
                 loadBoardData();
             }
-            alert('重命名成功');
+            uiToast('重命名成功','success');
+            return { success: true, newName };
         } else {
-            alert(result.message || '重命名失败');
+            uiToast(result.message || '重命名失败','error');
+            return { success: false };
         }
     } catch (error) {
         console.error('Rename board error:', error);
-        alert('重命名失败');
+        uiToast('重命名失败','error');
+        return { success: false };
     }
 }
 
-// 从首页重命名项目
 function renameProjectFromHome(projectId, currentName) {
-    const input = prompt('输入新的项目名称', currentName || '');
-    if (input === null) return;
-    const newName = input.trim();
-    if (!newName) { alert('新名称不能为空'); return; }
-    if (newName === currentName) return;
+    (async () => {
+        const input = await uiPrompt('输入新的项目名称', currentName || '', '重命名项目');
+        if (input === null) return;
+        const newName = input.trim();
+        if (!newName) { uiToast('新名称不能为空','error'); return; }
+        if (newName === currentName) return;
 
-    fetch('/api/rename-project', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, newName })
-    }).then(async (response) => {
-        const result = await response.json().catch(() => ({}));
-        if (response.ok) {
-            // 如果当前全局项目是这个，更新全局名称与存储
-            if (currentProjectId === projectId) {
-                currentProjectName = newName;
-                localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
-                const projectTitle = document.getElementById('projectTitle');
-                if (projectTitle) projectTitle.textContent = newName;
-                updateBoardHeader();
-                if (!boardSelectPage.classList.contains('hidden')) {
-                    loadProjectBoards();
+        fetch('/api/rename-project', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, newName })
+        }).then(async (response) => {
+            const result = await response.json().catch(() => ({}));
+            if (response.ok) {
+                if (currentProjectId === projectId) {
+                    currentProjectName = newName;
+                    localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
+                    const projectTitle = document.getElementById('projectTitle');
+                    if (projectTitle) projectTitle.textContent = newName;
+                    updateBoardHeader();
+                    if (!boardSelectPage.classList.contains('hidden')) { loadProjectBoards(); }
                 }
+                loadUserProjects();
+                uiToast('项目重命名成功','success');
+            } else {
+                uiToast(result.message || '项目重命名失败','error');
             }
-            // 刷新首页项目与看板展示
-            loadUserProjects();
-            alert('项目重命名成功');
-        } else {
-            alert(result.message || '项目重命名失败');
-        }
-    }).catch((error) => {
-        console.error('Rename project (home) error:', error);
-        alert('项目重命名失败');
-    });
+        }).catch((error) => {
+            console.error('Rename project (home) error:', error);
+            uiToast('项目重命名失败','error');
+        });
+    })();
 }
 
 // 删除项目（项目选择页头部按钮）
 function deleteProject() {
     if (!currentProjectId) return;
-    if (!confirm(`确定删除项目 "${currentProjectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`)) return;
-
-    fetch('/api/delete-project', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: currentProjectId })
-    }).then(async (response) => {
-        const result = await response.json().catch(() => ({}));
-        if (response.ok) {
-            // 若正在此项目内，清理并返回首页
-            if (socket) { try { socket.close(); } catch (e) {} }
-            currentProjectId = null;
-            currentProjectName = null;
-            currentBoardName = null;
-            localStorage.removeItem('kanbanCurrentProjectId');
-            localStorage.removeItem('kanbanCurrentProjectName');
-            localStorage.removeItem('kanbanCurrentBoardName');
-            showProjectPage();
-            loadUserProjects();
-            alert('项目删除成功');
-        } else {
-            alert(result.message || '项目删除失败');
-        }
-    }).catch((error) => {
-        console.error('Delete project error:', error);
-        alert('项目删除失败');
-    });
-}
-
-// 从首页删除项目
-function deleteProjectFromHome(projectId, projectName) {
-    if (!confirm(`确定删除项目 "${projectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`)) return;
-
-    fetch('/api/delete-project', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId })
-    }).then(async (response) => {
-        const result = await response.json().catch(() => ({}));
-        if (response.ok) {
-            // 若当前上下文在此项目，退出该项目视图
-            if (currentProjectId === projectId) {
+    (async () => {
+        const ok = await uiConfirm(`确定删除项目 "${currentProjectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`, '删除项目');
+        if (!ok) return;
+        fetch('/api/delete-project', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: currentProjectId, actor: currentUser })
+        }).then(async (response) => {
+            const result = await response.json().catch(() => ({}));
+            if (response.ok) {
                 if (socket) { try { socket.close(); } catch (e) {} }
                 currentProjectId = null;
                 currentProjectName = null;
@@ -2554,15 +3547,1102 @@ function deleteProjectFromHome(projectId, projectName) {
                 localStorage.removeItem('kanbanCurrentProjectId');
                 localStorage.removeItem('kanbanCurrentProjectName');
                 localStorage.removeItem('kanbanCurrentBoardName');
-                showProjectPage();
+                if (typeof projectPage !== 'undefined' && projectPage && projectPage.classList.contains('hidden')) {
+                    showProjectPage();
+                }
+                loadUserProjects();
+                uiToast('项目删除成功','success');
+            } else {
+                uiToast(result.message || '项目删除失败','error');
             }
-            loadUserProjects();
-            alert('项目删除成功');
-        } else {
-            alert(result.message || '项目删除失败');
+        }).catch((error) => {
+            console.error('Delete project error:', error);
+            uiToast('项目删除失败','error');
+        });
+    })();
+}
+
+// 从首页删除项目
+function deleteProjectFromHome(projectId, projectName) {
+    (async () => {
+        const ok = await uiConfirm(`确定删除项目 "${projectName}" 吗？\n\n此操作不可撤销，将删除项目的所有看板与任务数据。`, '删除项目');
+        if (!ok) return;
+        fetch('/api/delete-project', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, actor: currentUser })
+        }).then(async (response) => {
+            const result = await response.json().catch(() => ({}));
+            if (response.ok) {
+                if (currentProjectId === projectId) {
+                    if (socket) { try { socket.close(); } catch (e) {} }
+                    currentProjectId = null;
+                    currentProjectName = null;
+                    currentBoardName = null;
+                    localStorage.removeItem('kanbanCurrentProjectId');
+                    localStorage.removeItem('kanbanCurrentProjectName');
+                    localStorage.removeItem('kanbanCurrentBoardName');
+                    showProjectPage();
+                }
+                loadUserProjects();
+                uiToast('项目删除成功','success');
+            } else {
+                uiToast(result.message || '项目删除失败','error');
+            }
+        }).catch((error) => {
+            console.error('Delete project (home) error:', error);
+            uiToast('项目删除失败','error');
+        });
+    })();
+}
+
+// Collapsed add-card behavior
+function setupAddCardCollapsed(container, status, position) {
+    if (!container) return;
+    container.classList.add('collapsed');
+
+    // Ensure link exists
+    let link = container.querySelector('.add-card-link');
+    if (!link) {
+        link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'add-card-link';
+        link.textContent = '+ 添加卡片';
+        container.insertBefore(link, container.firstChild);
+    }
+
+    const input = container.querySelector('.task-title-input');
+
+    function expand() {
+        container.classList.remove('collapsed');
+        link.style.display = 'none';
+        if (input) setTimeout(() => input.focus(), 0);
+    }
+    function collapse() {
+        container.classList.add('collapsed');
+        link.style.display = '';
+    }
+
+    link.onclick = (e) => { e.preventDefault(); expand(); };
+
+    // Collapse when focus leaves the add area
+    container.addEventListener('focusout', () => {
+        setTimeout(() => {
+            if (!container.contains(document.activeElement)) {
+                collapse();
+            }
+        }, 0);
+    }, true);
+
+    // After Enter add, addCard will call collapse too
+    container.__collapseAdd = collapse;
+}
+
+// 打开看板切换下拉
+async function openBoardSwitcher(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (boardSwitcherOpen) {
+        hideBoardSwitcher();
+        return;
+    }
+    const anchor = e.currentTarget;
+    const rect = anchor.getBoundingClientRect();
+
+    let boards = projectBoardsCache[currentProjectId];
+    if (!boards) {
+        try {
+            const resp = await fetch(`/api/project-boards/${currentProjectId}`);
+            const data = await resp.json();
+            boards = Array.isArray(data.boards) ? data.boards : [];
+            projectBoardsCache[currentProjectId] = boards;
+        } catch (err) {
+            boards = [];
         }
-    }).catch((error) => {
-        console.error('Delete project (home) error:', error);
-        alert('项目删除失败');
+    }
+    showBoardSwitcherAt(rect, boards);
+    const titleEl = document.getElementById('currentBoardName');
+    if (titleEl) titleEl.classList.add('open');
+}
+
+function showBoardSwitcherAt(rect, boards) {
+    hideBoardSwitcher();
+    const menu = document.createElement('div');
+    menu.className = 'board-switcher-menu';
+    menu.style.left = Math.round(rect.left) + 'px';
+    menu.style.top = Math.round(rect.bottom + 6) + 'px';
+
+    // Header with search and create
+    const header = document.createElement('div');
+    header.className = 'board-switcher-header';
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'board-switcher-search';
+    search.placeholder = '搜索看板...';
+    const createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.className = 'board-switcher-create';
+    createBtn.textContent = '创建新看板';
+    createBtn.onclick = async (ev) => {
+        ev.stopPropagation();
+        const name = search.value.trim();
+        if (!name) return;
+        try {
+            const response = await fetch('/api/create-board', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: currentProjectId, boardName: name })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                projectBoardsCache[currentProjectId] = null; // invalidate cache
+                currentBoardName = name;
+                localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
+                hideBoardSwitcher();
+                loadProjectBoards();
+                showBoard();
+            } else {
+                uiToast(result.message || '创建失败','error');
+            }
+        } catch (e) {
+            uiToast('创建失败','error');
+        }
+    };
+    header.appendChild(search);
+    header.appendChild(createBtn);
+    menu.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'board-switcher-list';
+
+    function renderList(filterText) {
+        list.innerHTML = '';
+        const ft = (filterText || '').toLowerCase();
+        const filtered = boards.filter(n => n.toLowerCase().includes(ft));
+        filtered.forEach((name) => {
+            const item = document.createElement('div');
+            item.className = 'board-switcher-item' + (name === currentBoardName ? ' active' : '');
+            const label = document.createElement('span');
+            label.className = 'board-switcher-label';
+            label.textContent = name;
+            const actions = document.createElement('div');
+            actions.className = 'board-switcher-actions';
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'board-switcher-rename';
+            editBtn.title = '重命名';
+            editBtn.textContent = '✎';
+            editBtn.onclick = async (ev) => {
+                ev.stopPropagation();
+                const result = await promptRenameBoard(name);
+                if (!result || !result.success) return;
+                try {
+                    const resp = await fetch(`/api/project-boards/${currentProjectId}`);
+                    const data = await resp.json();
+                    boards = Array.isArray(data.boards) ? data.boards : [];
+                    projectBoardsCache[currentProjectId] = boards;
+                    renderList(search.value);
+                } catch {}
+            };
+            item.onclick = (ev) => {
+                ev.stopPropagation();
+                hideBoardSwitcher();
+                if (name !== currentBoardName) {
+                    selectBoard(name);
+                }
+            };
+            actions.appendChild(editBtn);
+            item.appendChild(label);
+            item.appendChild(actions);
+            list.appendChild(item);
+        });
+        if (filtered.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'board-switcher-empty';
+            empty.textContent = '没有匹配的看板';
+            list.appendChild(empty);
+        }
+    }
+
+    renderList('');
+
+    search.addEventListener('input', (ev) => {
+        renderList(search.value);
     });
+
+    menu.appendChild(list);
+    document.body.appendChild(menu);
+    boardSwitcherMenu = menu;
+    boardSwitcherOpen = true;
+
+    const onBodyClick = (ev) => {
+        if (!boardSwitcherMenu) return;
+        if (!boardSwitcherMenu.contains(ev.target)) {
+            hideBoardSwitcher();
+        }
+    };
+    const onKey = (ev) => { if (ev.key === 'Escape') hideBoardSwitcher(); };
+
+    setTimeout(() => {
+        document.addEventListener('click', onBodyClick, { once: true });
+        document.addEventListener('keydown', onKey, { once: true });
+        search.focus();
+    }, 0);
+}
+
+function hideBoardSwitcher() {
+    if (boardSwitcherMenu && boardSwitcherMenu.parentNode) {
+        boardSwitcherMenu.parentNode.removeChild(boardSwitcherMenu);
+    }
+    boardSwitcherMenu = null;
+    boardSwitcherOpen = false;
+    const titleEl = document.getElementById('currentBoardName');
+    if (titleEl) titleEl.classList.remove('open');
+}
+
+// === In-app dialog & toast helpers ===
+function createBaseModal(titleText) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal';
+    const content = document.createElement('div');
+    content.className = 'modal-content edit-modal';
+
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    const h = document.createElement('h3');
+    h.textContent = titleText || '';
+    const close = document.createElement('button');
+    close.className = 'close-btn';
+    close.textContent = '×';
+    header.appendChild(h);
+    header.appendChild(close);
+
+    const body = document.createElement('div');
+    body.className = 'modal-body';
+
+    const footer = document.createElement('div');
+    footer.className = 'modal-footer';
+
+    content.appendChild(header);
+    content.appendChild(body);
+    content.appendChild(footer);
+    overlay.appendChild(content);
+
+    return { overlay, content, header, body, footer, close };
+}
+
+function uiAlert(message, title) {
+    return new Promise((resolve) => {
+        const { overlay, body, footer, close } = createBaseModal(title || '提示');
+        const p = document.createElement('div');
+        p.textContent = message;
+        body.appendChild(p);
+        const ok = document.createElement('button');
+        ok.className = 'btn-primary';
+        ok.textContent = '确定';
+        ok.onclick = () => { document.body.removeChild(overlay); resolve(); };
+        close.onclick = ok.onclick;
+        footer.appendChild(ok);
+        document.body.appendChild(overlay);
+        setTimeout(() => ok.focus(), 0);
+    });
+}
+
+function uiConfirm(message, title) {
+    return new Promise((resolve) => {
+        const { overlay, body, footer, close } = createBaseModal(title || '确认操作');
+        const p = document.createElement('div');
+        p.textContent = message;
+        body.appendChild(p);
+        const cancel = document.createElement('button');
+        cancel.className = 'btn-secondary';
+        cancel.textContent = '取消';
+        cancel.onclick = () => { document.body.removeChild(overlay); resolve(false); };
+        const ok = document.createElement('button');
+        ok.className = 'btn-danger';
+        ok.textContent = '确认';
+        ok.onclick = () => { document.body.removeChild(overlay); resolve(true); };
+        close.onclick = cancel.onclick;
+        footer.appendChild(cancel);
+        footer.appendChild(ok);
+        document.body.appendChild(overlay);
+        setTimeout(() => ok.focus(), 0);
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') cancel.click();
+            if (e.key === 'Enter') ok.click();
+        });
+    });
+}
+
+function uiPrompt(message, defaultValue, title) {
+    return new Promise((resolve) => {
+        const { overlay, body, footer, close } = createBaseModal(title || '输入名称');
+        const label = document.createElement('div');
+        label.textContent = message;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = defaultValue || '';
+        input.style.width = '100%';
+        input.style.height = '36px';
+        input.style.border = '1px solid #e5e7eb';
+        input.style.borderRadius = '6px';
+        input.style.padding = '0 10px';
+        input.style.marginTop = '10px';
+        body.appendChild(label);
+        body.appendChild(input);
+        const cancel = document.createElement('button');
+        cancel.className = 'btn-secondary';
+        cancel.textContent = '取消';
+        cancel.onclick = () => { document.body.removeChild(overlay); resolve(null); };
+        const ok = document.createElement('button');
+        ok.className = 'btn-primary';
+        ok.textContent = '确定';
+        ok.onclick = () => { const v = (input.value || '').trim(); if (!v) return; document.body.removeChild(overlay); resolve(v); };
+        close.onclick = cancel.onclick;
+        footer.appendChild(cancel);
+        footer.appendChild(ok);
+        document.body.appendChild(overlay);
+        setTimeout(() => { input.focus(); input.select(); }, 0);
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') cancel.click();
+            if (e.key === 'Enter') ok.click();
+        });
+    });
+}
+
+function ensureToastContainer() {
+    let c = document.getElementById('toastContainer');
+    if (!c) {
+        c = document.createElement('div');
+        c.id = 'toastContainer';
+        c.className = 'toast-container';
+        document.body.appendChild(c);
+    }
+    return c;
+}
+
+function uiToast(message, type) {
+    const container = ensureToastContainer();
+    const t = document.createElement('div');
+    t.className = 'toast ' + (type ? 'toast-' + type : '');
+    t.textContent = message;
+    container.appendChild(t);
+    setTimeout(() => { t.classList.add('show'); }, 10);
+    setTimeout(() => { t.classList.remove('show'); t.addEventListener('transitionend', () => t.remove(), { once: true }); }, 2500);
+}
+
+// 删除归档卡片
+async function deleteArchivedCard(cardId){
+    const ok = await uiConfirm('确定要删除该归档任务吗？此操作不可恢复。','删除任务');
+    if (!ok) return;
+    const idx = (boardData.archived||[]).findIndex(c=>c.id===cardId);
+    if (idx !== -1) { boardData.archived.splice(idx,1); }
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type:'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId }));
+    }
+    renderArchive();
+}
+
+// 归档整列（卡组）
+async function archiveList(status){
+    const cards = (boardData[status]||[]);
+    if (!cards.length) { uiToast('此卡组没有可归档的卡片','info'); return; }
+    const ok = await uiConfirm('将该卡组的所有卡片归档？','归档卡组');
+    if (!ok) return;
+    boardData.archived = boardData.archived || [];
+    // copy array to avoid mutation during iteration
+    const moving = cards.slice();
+    boardData.archived.push(...moving);
+    boardData[status] = [];
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        moving.forEach(c => {
+            socket.send(JSON.stringify({ type:'archive-card', projectId: currentProjectId, boardName: currentBoardName, cardId: c.id, fromStatus: status }));
+        });
+    }
+    renderBoard();
+    uiToast('已归档该卡组全部卡片','success');
+}
+
+// === Posts (讨论/评论) helpers ===
+
+function renderEditPostsList(card){
+    const listEl = document.getElementById('editPostsList');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    const posts = Array.isArray(card.posts) ? card.posts : [];
+    posts.forEach((p)=>{
+        const item = document.createElement('div');
+        item.className = 'post-item';
+        item.dataset.postId = String(p.id||'');
+        const content = document.createElement('div');
+        content.className = 'post-content';
+        content.innerHTML = `<div class="post-text">${escapeHtml(p.text||'')}</div>`;
+        const actions = document.createElement('div');
+        actions.className = 'post-actions has-meta';
+        const meta = document.createElement('div');
+        meta.className = 'post-meta';
+        meta.textContent = `${p.author || ''} · ${new Date(p.created||Date.now()).toLocaleString()}`;
+        actions.appendChild(meta);
+        const btns = document.createElement('div');
+        btns.className = 'post-actions-buttons';
+        if ((p.author||'') === (currentUser||'')){
+            const editBtn = document.createElement('button'); editBtn.className='btn-link'; editBtn.textContent='编辑'; editBtn.onclick = ()=> startEditPost(p.id);
+            const delBtn = document.createElement('button'); delBtn.className='btn-link'; delBtn.textContent='删除'; delBtn.onclick = ()=> deletePost(p.id);
+            btns.appendChild(editBtn); btns.appendChild(delBtn);
+        }
+        actions.appendChild(btns);
+        item.appendChild(content);
+        item.appendChild(actions);
+        listEl.appendChild(item);
+    });
+}
+
+function submitNewPost(){
+    if (!editingCardId) return;
+    const input = document.getElementById('editPostsInput');
+    if (!input) return;
+    const text = (input.value||'').trim();
+    if (!text) return;
+    const card = getCardById(editingCardId);
+    if (!card) return;
+    const newPost = { id: Date.now().toString(), author: currentUser, text, created: new Date().toISOString() };
+    const posts = Array.isArray(card.posts) ? card.posts.slice() : [];
+    posts.push(newPost);
+    const commentsCount = (card.commentsCount||0) + 1;
+    updateCardImmediately(editingCardId, { posts, commentsCount });
+    input.value = '';
+    renderEditPostsList(getCardById(editingCardId));
+}
+
+function startEditPost(postId){
+    const card = getCardById(editingCardId);
+    if (!card) return;
+    const listEl = document.getElementById('editPostsList');
+    const item = listEl && listEl.querySelector(`[data-post-id="${postId}"]`);
+    if (!item) return;
+    const p = (card.posts||[]).find(pp=>String(pp.id)===String(postId));
+    if (!p) return;
+    item.innerHTML = '';
+    const ta = document.createElement('textarea');
+    ta.className = 'post-edit-textarea';
+    ta.value = p.text || '';
+    const saveBtn = document.createElement('button'); saveBtn.className='btn-primary'; saveBtn.textContent='保存'; saveBtn.onclick = ()=> saveEditPost(postId, ta.value.trim());
+    const cancelBtn = document.createElement('button'); cancelBtn.className='btn-secondary'; cancelBtn.textContent='取消'; cancelBtn.onclick = ()=> renderEditPostsList(card);
+    item.appendChild(ta);
+    const actions = document.createElement('div'); actions.className='post-actions'; actions.appendChild(saveBtn); actions.appendChild(cancelBtn); item.appendChild(actions);
+    // After insertion, run multi-tick autosize to avoid initial 1-line flash
+    (function(){
+        const run = () => { try { autoResizeTextarea(ta); } catch (e) {} };
+        run();
+        try { requestAnimationFrame(run); } catch (e) {}
+        setTimeout(run, 0);
+        setTimeout(run, 50);
+    })();
+}
+
+function saveEditPost(postId, newText){
+    const card = getCardById(editingCardId);
+    if (!card) return;
+    const posts = Array.isArray(card.posts) ? card.posts.slice() : [];
+    const idx = posts.findIndex(p=>String(p.id)===String(postId));
+    if (idx===-1) return;
+    if (!newText) { uiToast('内容不能为空','error'); return; }
+    posts[idx] = Object.assign({}, posts[idx], { text: newText, edited: new Date().toISOString() });
+    updateCardImmediately(editingCardId, { posts });
+    renderEditPostsList(getCardById(editingCardId));
+}
+
+async function deletePost(postId){
+    const ok = await uiConfirm('删除这条评论？','删除评论');
+    if (!ok) return;
+    const card = getCardById(editingCardId);
+    if (!card) return;
+    const posts = Array.isArray(card.posts) ? card.posts.slice() : [];
+    const idx = posts.findIndex(p=>String(p.id)===String(postId));
+    if (idx===-1) return;
+    posts.splice(idx,1);
+    const commentsCount = Math.max(0, (card.commentsCount||0) - 1);
+    updateCardImmediately(editingCardId, { posts, commentsCount });
+    renderEditPostsList(getCardById(editingCardId));
+}
+
+function getListAfterElement(container, x) {
+    const lists = [...container.querySelectorAll('.list:not(.dragging):not(#addListEntry):not(.add-list):not(.list-placeholder)')];
+    return lists.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offset = x - (box.left + box.width / 2);
+        if (offset < 0 && offset > closest.offset) {
+            return { offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+// Add after renderBoard
+function adjustBoardCentering() {
+    const container = document.getElementById('listsContainer');
+    if (!container) return;
+
+    const lists = container.querySelectorAll('.list:not(#addListEntry)');
+    const n = lists.length;
+    if (n === 0) {
+        container.style.paddingLeft = '0px';
+        return;
+    }
+
+    const listWidth = 272; // var(--list-width)
+    const gap = 12; // var(--list-gap)
+    const totalWidth = n * listWidth + (n - 1) * gap;
+
+    const viewportWidth = container.clientWidth;
+    if (totalWidth < viewportWidth) {
+        const padding = (viewportWidth - totalWidth) / 2;
+        container.style.paddingLeft = `${padding}px`;
+    } else {
+        container.style.paddingLeft = '0px';
+    }
+}
+
+// Call after render and on resize
+window.addEventListener('resize', adjustBoardCentering);
+
+// 成员管理：打开/关闭
+function openMembersModal() {
+    const modal = document.getElementById('membersModal');
+    if (!modal) return;
+    // 填充邀请码与成员列表
+    document.getElementById('inviteCodeText').textContent = document.getElementById('projectInviteCode').textContent || '------';
+    const isOwner = window.currentProjectOwner && currentUser === window.currentProjectOwner;
+    const addRow = document.getElementById('addMemberRow');
+    if (addRow) addRow.style.display = isOwner ? '' : '';
+    const regenBtn = document.getElementById('regenerateInviteBtn');
+    if (regenBtn) regenBtn.style.display = isOwner ? '' : 'none';
+    renderMembersList();
+    renderPendingRequests();
+    modal.classList.remove('hidden');
+}
+
+function closeMembersModal() {
+    const modal = document.getElementById('membersModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function renderMembersList() {
+    const wrap = document.getElementById('membersList');
+    if (!wrap) return;
+    const members = (window.currentProjectMembers || []).slice();
+    const owner = window.currentProjectOwner;
+    const isOwner = owner && currentUser === owner;
+    if (!members.length) {
+        wrap.innerHTML = '<div class="empty-state">暂无成员</div>';
+        return;
+    }
+    wrap.innerHTML = members.map(u => {
+        const isOwnerUser = owner && u === owner;
+        // 只有所有者能移除他人；非所有者只能移除自己
+        let right = '';
+        if (isOwnerUser) {
+            right = '<span style="font-size:12px;color:#6b7280">所有者</span>';
+        } else if (isOwner || u === currentUser) {
+            right = `<button class="btn-secondary" data-remove="${escapeHtml(u)}">移除</button>`;
+        } else {
+            right = '';
+        }
+        return `<div class=\"card-info\" style=\"margin-bottom:8px; display:flex; align-items:center; justify-content:space-between\"><span>${escapeHtml(u)}</span><span>${right}</span></div>`;
+    }).join('');
+    wrap.querySelectorAll('button[data-remove]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            const username = e.currentTarget.getAttribute('data-remove');
+            if (!username) return;
+            const ok = await uiConfirm(`确定移除成员 “${username}” 吗？`, '移除成员');
+            if (!ok) return;
+            try {
+                const resp = await fetch('/api/remove-project-member', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ projectId: currentProjectId, username, actor: currentUser })
+                });
+                const result = await resp.json();
+                if (resp.ok) {
+                    // 若是自我移除，立即退出项目
+                    if (username === currentUser) {
+                        try { if (socket) socket.close(); } catch (e2) {}
+                        currentProjectId = null;
+                        currentProjectName = null;
+                        currentBoardName = null;
+                        localStorage.removeItem('kanbanCurrentProjectId');
+                        localStorage.removeItem('kanbanCurrentProjectName');
+                        localStorage.removeItem('kanbanCurrentBoardName');
+                        showProjectPage();
+                        loadUserProjects();
+                        uiToast('已退出项目','success');
+                        return;
+                    }
+                    window.currentProjectMembers = result.members || [];
+                    renderMembersList();
+                    document.getElementById('projectMembers').textContent = (window.currentProjectMembers || []).join(', ');
+                    updateAssigneeOptions();
+                    uiToast('已移除成员','success');
+                } else {
+                    uiToast(result.message || '移除成员失败','error');
+                }
+            } catch (err) {
+                console.error('remove member error', err);
+                uiToast('移除成员失败','error');
+            }
+        });
+    });
+}
+
+async function addProjectMember() {
+    const input = document.getElementById('addMemberInput');
+    if (!input) return;
+    const username = (input.value || '').trim();
+    if (!username) { uiToast('请输入用户名','error'); return; }
+    try {
+        const resp = await fetch('/api/request-add-member', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: currentProjectId, username, actor: currentUser })
+        });
+        const result = await resp.json();
+        if (resp.ok) {
+            input.value = '';
+            renderPendingRequests(true);
+            uiToast(result.message || '已提交添加请求，待审批','success');
+        } else {
+            uiToast(result.message || '添加成员失败','error');
+        }
+    } catch (err) {
+        console.error('add member error', err);
+        uiToast('添加成员失败','error');
+    }
+}
+
+function copyInviteCode() {
+    const code = document.getElementById('inviteCodeText').textContent || '';
+    if (!code) { uiToast('暂无邀请码','error'); return; }
+    try {
+        navigator.clipboard.writeText(code).then(() => uiToast('邀请码已复制','success'));
+    } catch (e) {
+        uiToast('复制失败','error');
+    }
+}
+
+// Add: copy project invite code from project page (boardSelectPage)
+function copyProjectInviteCode() {
+    try {
+        const el = document.getElementById('projectInviteCode');
+        const code = (el && el.textContent) ? el.textContent.trim() : '';
+        if (!code || code === '------') { uiToast('暂无邀请码','error'); return; }
+        navigator.clipboard.writeText(code).then(() => uiToast('邀请码已复制','success'));
+    } catch (e) {
+        uiToast('复制失败','error');
+    }
+}
+
+// Add: generic copy helper for cards
+function copyCode(code) {
+    const text = (code || '').trim();
+    if (!text) { uiToast('暂无邀请码','error'); return; }
+    try {
+        navigator.clipboard.writeText(text).then(() => uiToast('邀请码已复制','success'));
+    } catch (e) {
+        uiToast('复制失败','error');
+    }
+}
+
+async function regenerateInviteCode() {
+    try {
+        const ok = await uiConfirm('确定要重置当前项目的邀请码吗？已有旧码将失效。', '重置邀请码');
+        if (!ok) return;
+        const resp = await fetch('/api/regenerate-invite-code', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: currentProjectId, actor: currentUser })
+        });
+        const result = await resp.json();
+        if (resp.ok) {
+            document.getElementById('projectInviteCode').textContent = result.inviteCode;
+            document.getElementById('inviteCodeText').textContent = result.inviteCode;
+            uiToast('邀请码已重置','success');
+        } else {
+            uiToast(result.message || '重置失败','error');
+        }
+    } catch (err) {
+        console.error('regen invite error', err);
+        uiToast('重置失败','error');
+    }
+}
+
+function renderPendingRequests(forceReload) {
+    const list = document.getElementById('pendingRequestsList');
+    if (!list) return;
+    const owner = window.currentProjectOwner;
+    const isOwner = owner && currentUser === owner;
+    const isMember = (window.currentProjectMembers || []).includes(currentUser);
+    if (!isMember) { list.innerHTML = ''; return; }
+    const fetchAndRender = async () => {
+        try {
+            const resp = await fetch(`/api/join-requests/${currentProjectId}`);
+            const data = await resp.json();
+            const requests = (data && data.requests) || [];
+            if (!requests.length) { list.innerHTML = '<div class="empty-state">暂无申请</div>'; return; }
+            list.innerHTML = requests.map(r => {
+                const canAct = isOwner; // 仅所有者可审批
+                const actions = canAct ? `<button class=\"btn-primary\" data-approve=\"${escapeHtml(r.username)}\">同意</button> <button class=\"btn-secondary\" data-deny=\"${escapeHtml(r.username)}\">拒绝</button>` : '<span style=\"font-size:12px;color:#6b7280\">等待项目所有者审批</span>';
+                return `<div class=\"card-info\" style=\"margin:6px 0; display:flex; align-items:center; justify-content:space-between\"><span>${escapeHtml(r.username)} <small style=\"color:#6b7280\">申请加入</small></span><span>${actions}</span></div>`;
+            }).join('');
+            // bind actions
+            list.querySelectorAll('button[data-approve]').forEach(btn => {
+                btn.addEventListener('click', () => approveJoin(btn.getAttribute('data-approve')));
+            });
+            list.querySelectorAll('button[data-deny]').forEach(btn => {
+                btn.addEventListener('click', () => denyJoin(btn.getAttribute('data-deny')));
+            });
+        } catch (e) {
+            console.error('load requests error', e);
+        }
+    };
+    if (forceReload) fetchAndRender(); else fetchAndRender();
+}
+
+async function approveJoin(username) {
+    try {
+        const resp = await fetch('/api/approve-join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectId: currentProjectId, username, actor: currentUser }) });
+        const result = await resp.json();
+        if (resp.ok) {
+            window.currentProjectMembers = result.members || window.currentProjectMembers;
+            document.getElementById('projectMembers').textContent = (window.currentProjectMembers || []).join(', ');
+            updateAssigneeOptions();
+            renderMembersList();
+            renderPendingRequests(true);
+            uiToast('已同意加入','success');
+        } else uiToast(result.message || '操作失败','error');
+    } catch (e) { console.error('approve join error', e); uiToast('操作失败','error'); }
+}
+
+async function denyJoin(username) {
+    try {
+        const resp = await fetch('/api/deny-join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectId: currentProjectId, username, actor: currentUser }) });
+        const result = await resp.json();
+        if (resp.ok) {
+            renderPendingRequests(true);
+            uiToast('已拒绝申请','success');
+        } else uiToast(result.message || '操作失败','error');
+    } catch (e) { console.error('deny join error', e); uiToast('操作失败','error'); }
+}
+
+// 我的邀请：加载并渲染在首页
+async function loadUserInvites() {
+    try {
+        const badge = document.getElementById('invitesBadge');
+        const resp = await fetch(`/api/user-invites/${currentUser}`);
+        const data = await resp.json();
+        const invites = (data && data.invites) || [];
+        // 更新导航栏徽标（先用收到的邀请占位，稍后叠加审批数）
+        if (badge) {
+            if (invites.length > 0) { badge.style.display = ''; badge.textContent = String(invites.length); }
+            else { badge.style.display = 'none'; badge.textContent = '0'; }
+        }
+        // 同步模态框列表
+        const modalList = document.getElementById('invitesModalList');
+        if (modalList) {
+            let html = '';
+            // 邀请码加入项目（作为申请人）
+            html += `<div class=\"form-group\" style=\"margin-bottom:12px\"><div class=\"card-info\" style=\"gap:8px; align-items:center\"><div style=\"flex:1\">通过邀请码加入项目</div><div style=\"display:inline-flex; gap:8px\"><input id=\"inviteCodeInput\" type=\"text\" placeholder=\"输入 6 位邀请码\" style=\"width:140px; height:36px; border:1px solid #e5e7eb; border-radius:6px; padding:0 10px\"> <button class=\"btn-primary\" id=\"inviteCodeJoinBtn\">提交申请</button></div></div></div>`;
+            // 我收到的邀请（我同意/拒绝）
+            html += `<h4 style=\"margin:8px 0\">我收到的邀请</h4>`;
+            if (invites.length) {
+                html += invites.map(i => {
+                    const info = `加入「${escapeHtml(i.projectName)}」 · 邀请人：${escapeHtml(i.invitedBy)}`;
+                    return `<div class=\"project-card\" style=\"display:flex; align-items:center; justify-content:space-between; gap:8px\"><div>${info}</div><div style=\"display:inline-flex; gap:8px\"><button class=\"btn-primary\" data-accept-modal=\"${escapeHtml(i.projectId)}\" data-project-name=\"${escapeHtml(i.projectName)}\">接受</button><button class=\"btn-secondary\" data-decline-modal=\"${escapeHtml(i.projectId)}\" data-project-name=\"${escapeHtml(i.projectName)}\">拒绝</button></div></div>`;
+                }).join('');
+            } else {
+                html += `<div class=\"empty-state\">暂无邀请</div>`;
+            }
+            // 我需要审批的"通过邀请码加入项目"的申请（仅当我是项目所有者）
+            try {
+                const approvalsResp = await fetch(`/api/user-approvals/${currentUser}`);
+                const approvalsData = await approvalsResp.json();
+                const approvals = (approvalsData && approvalsData.approvals) || [];
+                // 叠加审批数到徽标
+                if (badge) {
+                    const total = invites.length + approvals.length;
+                    if (total > 0) { badge.style.display = ''; badge.textContent = String(total); }
+                    else { badge.style.display = 'none'; badge.textContent = '0'; }
+                }
+                html += `<h4 style=\"margin:12px 0 8px\">待我处理的加入申请</h4>`;
+                if (approvals.length) {
+                    html += approvals.map(a => {
+                        const text = `${escapeHtml(a.username)} 申请加入「${escapeHtml(a.projectName)}」`;
+                        return `<div class=\"project-card\" style=\"display:flex; align-items:center; justify-content:space-between; gap:8px\"><div>${text}</div><div style=\"display:inline-flex; gap:8px\"><button class=\"btn-primary\" data-approve-join=\"${escapeHtml(a.projectId)}::${escapeHtml(a.username)}\" data-project-name=\"${escapeHtml(a.projectName)}\">同意</button><button class=\"btn-secondary\" data-deny-join=\"${escapeHtml(a.projectId)}::${escapeHtml(a.username)}\" data-project-name=\"${escapeHtml(a.projectName)}\">拒绝</button></div></div>`;
+                    }).join('');
+                } else {
+                    html += `<div class=\"empty-state\">暂无待审批</div>`;
+                }
+                modalList.innerHTML = html;
+                // 绑定收到的邀请按钮
+                modalList.querySelectorAll('button[data-accept-modal]').forEach(btn => {
+                    btn.addEventListener('click', () => acceptInvite(btn.getAttribute('data-accept-modal'), btn.getAttribute('data-project-name') || ''));
+                });
+                modalList.querySelectorAll('button[data-decline-modal]').forEach(btn => {
+                    btn.addEventListener('click', () => declineInvite(btn.getAttribute('data-decline-modal'), btn.getAttribute('data-project-name') || ''));
+                });
+                // 绑定待审批按钮（仅所有者有效，后端会校验）
+                modalList.querySelectorAll('button[data-approve-join]').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const [pid, uname] = btn.getAttribute('data-approve-join').split('::');
+                        const pname = btn.getAttribute('data-project-name') || '';
+                        try {
+                            const resp = await fetch('/api/approve-join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectId: pid, username: uname, actor: currentUser }) });
+                            const result = await resp.json();
+                            if (resp.ok) { uiToast(`已同意 ${uname} 加入「${pname}」`,'success'); loadUserInvites(); loadUserProjects(); }
+                            else { uiToast(result.message || '操作失败','error'); }
+                        } catch (e) { uiToast('操作失败','error'); }
+                    });
+                });
+                modalList.querySelectorAll('button[data-deny-join]').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const [pid, uname] = btn.getAttribute('data-deny-join').split('::');
+                        const pname = btn.getAttribute('data-project-name') || '';
+                        try {
+                            const resp = await fetch('/api/deny-join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectId: pid, username: uname, actor: currentUser }) });
+                            const result = await resp.json();
+                            if (resp.ok) { uiToast(`已拒绝加入「${pname}」的申请`,'success'); loadUserInvites(); }
+                            else { uiToast(result.message || '操作失败','error'); }
+                        } catch (e) { uiToast('操作失败','error'); }
+                    });
+                });
+            } catch (e) {
+                modalList.innerHTML = html;
+            }
+            const joinBtn = document.getElementById('inviteCodeJoinBtn');
+            const input = document.getElementById('inviteCodeInput');
+            if (joinBtn && input) {
+                joinBtn.addEventListener('click', async () => {
+                    const code = (input.value || '').trim().toUpperCase();
+                    if (!code || code.length !== 6) { uiToast('请输入 6 位邀请码','error'); return; }
+                    try {
+                        const response = await fetch('/api/join-project', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, inviteCode: code }) });
+                        const result = await response.json();
+                        if (response.ok) { uiToast(result.message || '申请已提交，等待所有者审批','success'); input.value=''; }
+                        else { uiToast(result.message || '加入项目失败','error'); }
+                    } catch (e) { uiToast('加入项目失败','error'); }
+                });
+            }
+        }
+    } catch (e) {
+        console.error('Load invites error', e);
+    }
+}
+
+function openInvitesModal() {
+    const modal = document.getElementById('invitesModal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+}
+
+function closeInvitesModal() {
+    const modal = document.getElementById('invitesModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+}
+
+async function acceptInvite(projectId, projectName) {
+    try {
+        const resp2 = await fetch('/api/accept-invite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, projectId }) });
+        const result = await resp2.json();
+        if (resp2.ok) {
+            const pname = projectName || '项目';
+            uiToast(`已接受邀请，已加入「${pname}」`,'success');
+            loadUserInvites();
+            loadUserProjects();
+        } else uiToast(result.message || '操作失败','error');
+    } catch (e) { uiToast('操作失败','error'); }
+}
+
+async function declineInvite(projectId, projectName) {
+    try {
+        const resp2 = await fetch('/api/decline-invite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, projectId }) });
+        const result = await resp2.json();
+        if (resp2.ok) {
+            const pname = projectName || '项目';
+            uiToast(`已拒绝加入「${pname}」的邀请`,'success');
+            loadUserInvites();
+        } else uiToast(result.message || '操作失败','error');
+    } catch (e) { uiToast('操作失败','error'); }
+}
+
+let membershipGuardTimer = null;
+let userProjectsLoadToken = 0;
+
+function forceExitCurrentProject(toastMsg) {
+    try { if (socket) socket.close(); } catch (e) {}
+    currentProjectId = null;
+    currentProjectName = null;
+    currentBoardName = null;
+    localStorage.removeItem('kanbanCurrentProjectId');
+    localStorage.removeItem('kanbanCurrentProjectName');
+    localStorage.removeItem('kanbanCurrentBoardName');
+    showProjectPage();
+    loadUserProjects();
+    if (toastMsg) uiToast(toastMsg, 'error');
+}
+
+function startMembershipGuard() {
+    stopMembershipGuard();
+    if (!currentProjectId) return;
+    membershipGuardTimer = setInterval(async () => {
+        try {
+            const resp = await fetch(`/api/project-boards/${currentProjectId}`);
+            if (!resp.ok) { forceExitCurrentProject('已被移出项目'); return; }
+            const data = await resp.json().catch(()=>null);
+            if (!data || !Array.isArray(data.members) || !data.members.includes(currentUser)) {
+                forceExitCurrentProject('已被移出项目');
+            }
+        } catch(e) {}
+    }, 2000);
+}
+
+function stopMembershipGuard() {
+    if (membershipGuardTimer) { clearInterval(membershipGuardTimer); membershipGuardTimer = null; }
+}
+
+// 修改密码流程（需要旧密码）
+async function changePasswordFlow() {
+    try {
+        const data = await openPasswordDialog('修改密码', true);
+        if (!data) return;
+        const rs = await fetch('/api/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, oldPassword: data.oldPwd, newPassword: data.newPwd })
+        });
+        const rj = await rs.json().catch(()=>({}));
+        if (rs.ok) {
+            uiToast('密码已更新','success');
+        } else {
+            uiToast(rj.message || '修改失败','error');
+        }
+    } catch(e) {
+        uiToast('网络错误，请稍后再试','error');
+    }
+}
+
+// 单次对话框：可选旧密码 + 新密码两次确认
+function openPasswordDialog(title, needOld) {
+    return new Promise((resolve) => {
+        const { overlay, body, footer, close } = createBaseModal(title || '设置密码');
+
+        function makeRow(labelText, type = 'password', autocompleteValue, nameValue, lpIgnore) {
+            const wrap = document.createElement('div');
+            const label = document.createElement('div');
+            label.textContent = labelText;
+            label.style.marginTop = '6px';
+            const input = document.createElement('input');
+            input.type = type;
+            if (autocompleteValue) input.autocomplete = autocompleteValue;
+            if (nameValue) input.name = nameValue;
+            if (lpIgnore) input.setAttribute('data-lpignore', 'true');
+            input.setAttribute('autocapitalize','off');
+            input.setAttribute('autocorrect','off');
+            input.setAttribute('spellcheck','false');
+            input.style.width = '100%';
+            input.style.height = '36px';
+            input.style.border = '1px solid #e5e7eb';
+            input.style.borderRadius = '6px';
+            input.style.padding = '0 10px';
+            input.style.marginTop = '6px';
+            // 防密码管理器自动填充：默认只读，用户交互后解锁并清空
+            input.readOnly = true;
+            const unlock = () => { input.readOnly = false; input.value = ''; };
+            input.addEventListener('focus', unlock, { once: true });
+            input.addEventListener('mousedown', unlock, { once: true });
+            wrap.appendChild(label);
+            wrap.appendChild(input);
+            return { wrap, input };
+        }
+
+        // 蜜罐：诱导密码管理器自动填充到隐藏输入，而非真实字段
+        const honeyWrap = document.createElement('div');
+        honeyWrap.style.position = 'absolute';
+        honeyWrap.style.width = '1px';
+        honeyWrap.style.height = '1px';
+        honeyWrap.style.overflow = 'hidden';
+        honeyWrap.style.opacity = '0';
+        const honeyUser = document.createElement('input');
+        honeyUser.type = 'text';
+        honeyUser.autocomplete = 'username';
+        const honeyPass = document.createElement('input');
+        honeyPass.type = 'password';
+        honeyPass.autocomplete = 'current-password';
+        honeyWrap.appendChild(honeyUser);
+        honeyWrap.appendChild(honeyPass);
+        body.appendChild(honeyWrap);
+
+        let oldRow = null;
+        if (needOld) {
+            oldRow = makeRow('当前密码', 'password', 'off', 'opwd', true);
+            body.appendChild(oldRow.wrap);
+            // 强制用户手输旧密码：彻底屏蔽自动填充
+            try {
+                oldRow.input.setAttribute('autocomplete', 'off');
+                oldRow.input.setAttribute('data-1p-ignore', 'true');
+                oldRow.input.setAttribute('data-lpignore', 'true');
+                oldRow.input.setAttribute('data-form-type', 'other');
+                oldRow.input.name = 'opwd-' + Math.random().toString(36).slice(2);
+                oldRow.input.value = '';
+                oldRow.input.readOnly = true;
+                oldRow.input.type = 'text';
+                const forceUnlock = () => { oldRow.input.type = 'password'; oldRow.input.readOnly = false; oldRow.input.value = ''; };
+                oldRow.input.addEventListener('focus', forceUnlock, { once: true });
+                oldRow.input.addEventListener('mousedown', forceUnlock, { once: true });
+                setTimeout(() => { try { oldRow.input.value = ''; } catch(e){} }, 0);
+                setTimeout(() => { try { oldRow.input.value = ''; } catch(e){} }, 300);
+            } catch(e) {}
+        }
+        const newRow = makeRow('新密码（至少6位）', 'password', 'new-password', 'new-password', true);
+        const confirmRow = makeRow('确认新密码', 'password', 'new-password', 'new-password', true);
+        body.appendChild(newRow.wrap);
+        body.appendChild(confirmRow.wrap);
+
+        const cancel = document.createElement('button');
+        cancel.className = 'btn-secondary';
+        cancel.textContent = '取消';
+        cancel.onclick = () => { document.body.removeChild(overlay); resolve(null); };
+
+        const ok = document.createElement('button');
+        ok.className = 'btn-primary';
+        ok.textContent = '确定';
+        ok.onclick = () => {
+            const oldPwd = needOld ? (oldRow.input.value || '') : null;
+            const p1 = (newRow.input.value || '').trim();
+            const p2 = (confirmRow.input.value || '').trim();
+            if (needOld && !oldPwd) { oldRow.input.focus(); return; }
+            if (p1.length < 6) { uiToast('新密码至少6位','error'); newRow.input.focus(); return; }
+            if (p1 !== p2) { uiToast('两次输入的密码不一致','error'); confirmRow.input.focus(); return; }
+            document.body.removeChild(overlay);
+            resolve({ oldPwd, newPwd: p1 });
+        };
+
+        close.onclick = cancel.onclick;
+        footer.appendChild(cancel);
+        footer.appendChild(ok);
+        document.body.appendChild(overlay);
+        setTimeout(() => { (needOld ? oldRow.input : newRow.input).focus(); }, 0);
+        overlay.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') cancel.click();
+            if (e.key === 'Enter') ok.click();
+        });
+    });
+}
+
+function ensureToastContainer() {
+    let c = document.getElementById('toastContainer');
+    if (!c) {
+        c = document.createElement('div');
+        c.id = 'toastContainer';
+        c.className = 'toast-container';
+        document.body.appendChild(c);
+    }
+    return c;
 }
