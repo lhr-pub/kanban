@@ -501,7 +501,8 @@ app.get('/api/user-projects/:username', (req, res) => {
             inviteCode: project.inviteCode,
             memberCount: project.members.length,
             boardCount: project.boards.length,
-            created: project.created
+            created: project.created,
+            owner: project.owner
         };
     }).filter(Boolean);
 

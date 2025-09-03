@@ -41,7 +41,7 @@
                 <h1>工作台</h1>
                 <div class="user-info">
                     <span id="currentUserName">用户名</span>
-                    <button id="invitesBtn" class="btn-secondary">邀请管理 <span id="invitesBadge" class="count"
+                    <button id="invitesBtn" class="btn-secondary">管理邀请 <span id="invitesBadge" class="count"
                             style="margin-left:6px; display:none;">0</span></button>
                     <button id="logoutFromProject" class="logout-btn">退出登录</button>
                 </div>
@@ -106,8 +106,8 @@
                     <span class="home-link" onclick="showProjectPage()">首页</span> / <span id="projectTitle">项目名称</span>
                 </h1>
                 <div class="header-actions">
-                    <button id="backToProjects">返回首页</button>
                     <button id="manageMembersBtn" class="btn-secondary">管理成员</button>
+                    <button id="backToProjects">返回首页</button>
                     <button id="logoutFromBoard" class="logout-btn">退出登录</button>
                 </div>
             </header>
@@ -272,7 +272,7 @@
     <div id="invitesModal" class="modal hidden">
         <div class="modal-content edit-modal">
             <div class="modal-header">
-                <h3>邀请管理</h3>
+                <h3>管理邀请</h3>
                 <button class="close-btn" onclick="closeInvitesModal()" title="关闭">×</button>
             </div>
             <div class="modal-body">

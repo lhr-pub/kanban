@@ -465,13 +465,17 @@ async function loadUserProjects() {
                         showBoard();
                     };
 
+                    const owner = (boardsData.boardOwners && boardsData.boardOwners[boardName]) || '';
+                    const canManage = (currentUser && (currentUser === boardsData.owner || currentUser === owner));
+
                     boardCard.innerHTML = `
                         <span class="board-icon" data-icon="boards"></span>
                         <div class="board-details">
                             <h4>${escapeHtml(boardName)}</h4>
                             <span class="board-project">${escapeHtml(project.name)}</span>
                         </div>
-                        <div class="board-card-actions">
+                        ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
+                        <div class="board-card-actions" ${canManage ? '' : 'style="display:none"'}>
                             <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="重命名">✎</button>
                             <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
                         </div>
@@ -490,6 +494,8 @@ async function loadUserProjects() {
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(project.id, project.name);
 
+            const canManageProject = currentUser && currentUser === project.owner;
+
             projectCard.innerHTML = `
                 <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(project.name)}</h3>
                 <div class="project-info">
@@ -498,10 +504,11 @@ async function loadUserProjects() {
                     看板: ${project.boardCount}个<br>
                     创建于: ${new Date(project.created).toLocaleDateString()}
                 </div>
-                <div class="project-card-actions">
+                <div class="project-card-actions" ${canManageProject ? '' : 'style=\"display:none\"'}>
                     <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button>
                     <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>
                 </div>
+                <div class=\"card-owner\">所有者：${escapeHtml(project.owner || '')}</div>
             `;
 
             projectsList.appendChild(projectCard);
@@ -705,11 +712,11 @@ async function loadProjectBoards() {
                 <div class="board-details">
                     <h4>${escapeHtml(boardName)}</h4>
                     <span class="board-project">${escapeHtml(currentProjectName)}</span>
-                    ${owner ? `<div class="board-owner" style="margin-top:4px;color:#64748b;font-size:12px;">创建者：${escapeHtml(owner)}</div>` : ''}
                 </div>
+                ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
                 <div class="board-card-actions" ${canManage ? '' : 'style="display:none"'}>
-                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
-                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>
+                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeJs(boardName)}', '${currentProjectId}')" title="重命名">✎</button>
+                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${currentProjectId}')" title="删除看板">✕</button>
                 </div>
             `;
 

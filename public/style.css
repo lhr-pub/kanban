@@ -3870,6 +3870,26 @@ body {
   #archivedCards .card:hover { border-color: var(--primary-light); box-shadow: var(--shadow-md); }
 }
 
+/* Owner label positioning for cards */
+.quick-board-card,
+.project-card {
+    position: relative;
+}
+.card-owner {
+    position: absolute;
+    right: 14px;
+    bottom: 10px;
+    color: #64748b;
+    font-size: 12px;
+    background: transparent;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .15s ease;
+}
+.quick-board-card:hover .card-owner,
+.project-card:hover .card-owner,
+.board-card-with-actions:hover .card-owner { opacity: 1; }
+
 /* Center archive layout and prevent header button wrapping */
 #archivePage .header .header-actions button { white-space: nowrap; display: inline-flex; align-items: center; }
 #archivePage .archive-container { max-width: 1200px; margin: 0 auto; padding: 24px 2rem; display: flex; justify-content: center; }
@@ -4207,5 +4227,37 @@ body {
 
 .add-list-open:hover {
     background: rgba(9,30,66,.06) !important;
+}
+
+/* Project page navbar invites button match style */
+#projectPage .project-header #invitesBtn {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid var(--gray-300);
+    border-radius: var(--border-radius);
+    height: 36px;
+    padding: 0 0.875rem;
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition);
+}
+#projectPage .project-header #invitesBtn:hover {
+    background: #e5e7eb;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow);
+    border-color: var(--gray-400);
+}
+
+@media (prefers-color-scheme: dark) {
+    #projectPage .project-header #invitesBtn {
+        background: #0f172a;
+        color: var(--gray-700);
+        border: 1px solid var(--gray-300);
+        box-shadow: none;
+    }
+    #projectPage .project-header #invitesBtn:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--shadow);
+        border-color: var(--gray-400);
+    }
 }
 
