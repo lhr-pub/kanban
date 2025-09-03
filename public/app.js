@@ -765,7 +765,48 @@ async function createProject() {
 
         if (response.ok) {
             hideCreateProjectForm();
-            loadUserProjects();
+
+            const projectsList = document.getElementById('projectsList');
+            const quickAccessBoards = document.getElementById('quickAccessBoards');
+            if (projectsList && projectsList.firstElementChild && projectsList.firstElementChild.classList.contains('empty-state')) {
+                projectsList.innerHTML = '';
+            }
+            if (quickAccessBoards && quickAccessBoards.firstElementChild && quickAccessBoards.firstElementChild.classList.contains('empty-state')) {
+                quickAccessBoards.innerHTML = '';
+            }
+
+            const newProject = {
+                id: result.projectId,
+                name: projectName,
+                inviteCode: result.inviteCode,
+                memberCount: 1,
+                boardCount: 0,
+                created: new Date().toISOString(),
+                owner: currentUser
+            };
+
+            const projectCard = document.createElement('div');
+            projectCard.className = 'project-card project-card-with-actions';
+            projectCard.onclick = () => selectProject(newProject.id, newProject.name);
+            projectCard.innerHTML = `
+                <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(newProject.name)}</h3>
+                <div class="project-info">
+                    邀请码: <span class="invite-code">${newProject.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(newProject.inviteCode)}')">复制</button><br>
+                    成员: ${newProject.memberCount}人<br>
+                    看板: ${newProject.boardCount}个<br>
+                    创建于: ${new Date(newProject.created).toLocaleDateString()}
+                </div>
+                <div class="project-card-actions">
+                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
+                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
+                </div>
+                <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
+            `;
+            if (projectsList) {
+                projectsList.insertBefore(projectCard, projectsList.firstChild);
+                renderIconsInDom(projectCard);
+            }
+
             uiToast(`项目创建成功！邀请码：${result.inviteCode}`,'success');
         } else {
             uiToast(result.message || '创建项目失败','error');
@@ -912,7 +953,42 @@ async function createBoard() {
 
         if (response.ok) {
             document.getElementById('newBoardName').value = '';
-            loadProjectBoards();
+
+            const boardList = document.getElementById('boardList');
+            if (boardList && boardList.firstElementChild && boardList.firstElementChild.classList.contains('empty-state')) {
+                boardList.innerHTML = '';
+            }
+
+            const owner = (result && result.owner) ? result.owner : currentUser;
+            window.currentBoardOwners = window.currentBoardOwners || {};
+            window.currentBoardOwners[boardName] = owner;
+
+            if (Array.isArray(projectBoardsCache[currentProjectId])) {
+                projectBoardsCache[currentProjectId].unshift(boardName);
+            } else {
+                projectBoardsCache[currentProjectId] = [boardName];
+            }
+
+            const canManage = (currentUser && (currentUser === window.currentProjectOwner || currentUser === owner));
+            const boardCard = document.createElement('div');
+            boardCard.className = 'quick-board-card board-card-with-actions';
+            boardCard.onclick = () => selectBoard(boardName);
+            boardCard.innerHTML = `
+                <div class="board-icon" style="display:none"></div>
+                <div class="board-details">
+                    <h4>${escapeHtml(boardName)}</h4>
+                    <span class="board-project">${escapeHtml(currentProjectName)}</span>
+                </div>
+                ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
+                <div class="board-card-actions" ${canManage ? '' : 'style="display:none"'}>
+                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
+                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>
+                </div>
+            `;
+            if (boardList) {
+                boardList.insertBefore(boardCard, boardList.firstChild);
+            }
+
             uiToast('看板创建成功！','success');
         } else {
             uiToast(result.message || '创建看板失败','error');
