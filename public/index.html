@@ -10,7 +10,7 @@
 
 <body>
     <!-- 登录页面 -->
-    <div id="loginPage" class="page">
+    <div id="loginPage" class="page hidden">
         <div class="container">
             <h1>多人协作看板</h1>
             <div class="login-form">
@@ -44,6 +44,14 @@
                     <button id="logoutFromProject" class="logout-btn">退出登录</button>
                 </div>
             </header>
+
+            <!-- 我的邀请 -->
+            <div id="invitesSection" class="dashboard-section">
+                <h2><span data-icon="inbox"></span> 我的邀请</h2>
+                <div id="userInvitesList" class="projects-grid">
+                    <!-- 邀请列表将动态生成 -->
+                </div>
+            </div>
 
             <!-- 项目管理 -->
             <div class="dashboard-section">
@@ -298,6 +306,10 @@
                                 onclick="regenerateInviteCode()">重置</button>
                         </div>
                     </div>
+                </div>
+                <div class="form-group">
+                    <label>待审批申请</label>
+                    <div id="pendingRequestsList"></div>
                 </div>
             </div>
             <div class="modal-footer">

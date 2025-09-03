@@ -234,6 +234,7 @@ function showProjectPage() {
     localStorage.removeItem('kanbanCurrentProjectName');
     localStorage.removeItem('kanbanCurrentBoardName');
 
+    loadUserInvites();
     loadUserProjects();
 }
 
@@ -640,7 +641,7 @@ async function joinProject() {
         if (response.ok) {
             hideJoinProjectForm();
             loadUserProjects();
-            uiToast('成功加入项目！','success');
+            uiToast('已提交申请，等待项目所有者审批','success');
         } else {
             uiToast(result.message || '加入项目失败','error');
         }
@@ -678,6 +679,7 @@ async function loadProjectBoards() {
         // 保存项目成员列表用于分配用户选项
         window.currentProjectMembers = data.members;
         window.currentProjectOwner = data.owner;
+        window.currentPendingRequests = data.pendingRequests || [];
 
         const boardList = document.getElementById('boardList');
         boardList.innerHTML = '';
@@ -946,6 +948,39 @@ function handleWebSocketMessage(data) {
                 showProjectPage();
                 loadUserProjects();
                 uiToast('已被移出项目','error');
+            }
+            break;
+        case 'join-request':
+            if (data.projectId === currentProjectId) {
+                renderPendingRequests(true);
+                // If on board-select or project page, also show a light indicator
+                try {
+                    const h = document.querySelector('#boardSelectPage .board-select-header h1');
+                    if (h) {
+                        let badge = document.getElementById('pendingBadge');
+                        if (!badge) {
+                            badge = document.createElement('span');
+                            badge.id = 'pendingBadge';
+                            badge.style.marginLeft = '8px';
+                            badge.style.fontSize = '12px';
+                            badge.style.color = '#2563eb';
+                            badge.textContent = '有待审批';
+                            h.appendChild(badge);
+                        }
+                    }
+                } catch (e) {}
+                uiToast(`${data.username} 申请加入项目`,'info');
+            }
+            break;
+        case 'member-added':
+            if (data.projectId === currentProjectId) {
+                // 若是我被加入，刷新成员列表
+                if (data.username === currentUser) {
+                    loadUserProjects();
+                }
+                // 刷新成员显示
+                renderPendingRequests(true);
+                loadProjectBoards();
             }
             break;
     }
@@ -3802,14 +3837,21 @@ function renderEditPostsList(card){
         item.dataset.postId = String(p.id||'');
         const content = document.createElement('div');
         content.className = 'post-content';
-        content.innerHTML = `<div class="post-meta">${escapeHtml(p.author||'')} · ${new Date(p.created||Date.now()).toLocaleString()}</div><div class="post-text">${escapeHtml(p.text||'')}</div>`;
+        content.innerHTML = `<div class="post-text">${escapeHtml(p.text||'')}</div>`;
         const actions = document.createElement('div');
-        actions.className = 'post-actions';
+        actions.className = 'post-actions has-meta';
+        const meta = document.createElement('div');
+        meta.className = 'post-meta';
+        meta.textContent = `${p.author || ''} · ${new Date(p.created||Date.now()).toLocaleString()}`;
+        actions.appendChild(meta);
+        const btns = document.createElement('div');
+        btns.className = 'post-actions-buttons';
         if ((p.author||'') === (currentUser||'')){
             const editBtn = document.createElement('button'); editBtn.className='btn-link'; editBtn.textContent='编辑'; editBtn.onclick = ()=> startEditPost(p.id);
             const delBtn = document.createElement('button'); delBtn.className='btn-link'; delBtn.textContent='删除'; delBtn.onclick = ()=> deletePost(p.id);
-            actions.appendChild(editBtn); actions.appendChild(delBtn);
+            btns.appendChild(editBtn); btns.appendChild(delBtn);
         }
+        actions.appendChild(btns);
         item.appendChild(content);
         item.appendChild(actions);
         listEl.appendChild(item);
@@ -3934,10 +3976,11 @@ function openMembersModal() {
     document.getElementById('inviteCodeText').textContent = document.getElementById('projectInviteCode').textContent || '------';
     const isOwner = window.currentProjectOwner && currentUser === window.currentProjectOwner;
     const addRow = document.getElementById('addMemberRow');
-    if (addRow) addRow.style.display = isOwner ? '' : 'none';
+    if (addRow) addRow.style.display = isOwner ? '' : '';
     const regenBtn = document.getElementById('regenerateInviteBtn');
     if (regenBtn) regenBtn.style.display = isOwner ? '' : 'none';
     renderMembersList();
+    renderPendingRequests();
     modal.classList.remove('hidden');
 }
 
@@ -4018,18 +4061,15 @@ async function addProjectMember() {
     const username = (input.value || '').trim();
     if (!username) { uiToast('请输入用户名','error'); return; }
     try {
-        const resp = await fetch('/api/add-project-member', {
+        const resp = await fetch('/api/request-add-member', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId: currentProjectId, username })
+            body: JSON.stringify({ projectId: currentProjectId, username, actor: currentUser })
         });
         const result = await resp.json();
         if (resp.ok) {
             input.value = '';
-            window.currentProjectMembers = result.members || [];
-            renderMembersList();
-            document.getElementById('projectMembers').textContent = (window.currentProjectMembers || []).join(', ');
-            updateAssigneeOptions();
-            uiToast('已添加成员','success');
+            renderPendingRequests(true);
+            uiToast(result.message || '已提交添加请求，待审批','success');
         } else {
             uiToast(result.message || '添加成员失败','error');
         }
@@ -4068,5 +4108,114 @@ async function regenerateInviteCode() {
     } catch (err) {
         console.error('regen invite error', err);
         uiToast('重置失败','error');
+    }
+}
+
+function renderPendingRequests(forceReload) {
+    const list = document.getElementById('pendingRequestsList');
+    if (!list) return;
+    const owner = window.currentProjectOwner;
+    const isOwner = owner && currentUser === owner;
+    const isMember = (window.currentProjectMembers || []).includes(currentUser);
+    if (!isMember) { list.innerHTML = ''; return; }
+    const fetchAndRender = async () => {
+        try {
+            const resp = await fetch(`/api/join-requests/${currentProjectId}`);
+            const data = await resp.json();
+            const requests = (data && data.requests) || [];
+            if (!requests.length) { list.innerHTML = '<div class="empty-state">暂无申请</div>'; return; }
+            list.innerHTML = requests.map(r => {
+                const canAct = isOwner; // 仅所有者可审批
+                const actions = canAct ? `<button class=\"btn-primary\" data-approve=\"${escapeHtml(r.username)}\">同意</button> <button class=\"btn-secondary\" data-deny=\"${escapeHtml(r.username)}\">拒绝</button>` : '<span style=\"font-size:12px;color:#6b7280\">等待项目所有者审批</span>';
+                return `<div class=\"card-info\" style=\"margin:6px 0; display:flex; align-items:center; justify-content:space-between\"><span>${escapeHtml(r.username)} <small style=\"color:#6b7280\">申请加入</small></span><span>${actions}</span></div>`;
+            }).join('');
+            // bind actions
+            list.querySelectorAll('button[data-approve]').forEach(btn => {
+                btn.addEventListener('click', () => approveJoin(btn.getAttribute('data-approve')));
+            });
+            list.querySelectorAll('button[data-deny]').forEach(btn => {
+                btn.addEventListener('click', () => denyJoin(btn.getAttribute('data-deny')));
+            });
+        } catch (e) {
+            console.error('load requests error', e);
+        }
+    };
+    if (forceReload) fetchAndRender(); else fetchAndRender();
+}
+
+async function approveJoin(username) {
+    try {
+        const resp = await fetch('/api/approve-join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectId: currentProjectId, username, actor: currentUser }) });
+        const result = await resp.json();
+        if (resp.ok) {
+            window.currentProjectMembers = result.members || window.currentProjectMembers;
+            document.getElementById('projectMembers').textContent = (window.currentProjectMembers || []).join(', ');
+            updateAssigneeOptions();
+            renderMembersList();
+            renderPendingRequests(true);
+            uiToast('已同意加入','success');
+        } else uiToast(result.message || '操作失败','error');
+    } catch (e) { console.error('approve join error', e); uiToast('操作失败','error'); }
+}
+
+async function denyJoin(username) {
+    try {
+        const resp = await fetch('/api/deny-join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectId: currentProjectId, username, actor: currentUser }) });
+        const result = await resp.json();
+        if (resp.ok) {
+            renderPendingRequests(true);
+            uiToast('已拒绝申请','success');
+        } else uiToast(result.message || '操作失败','error');
+    } catch (e) { console.error('deny join error', e); uiToast('操作失败','error'); }
+}
+
+// 我的邀请：加载并渲染在首页
+async function loadUserInvites() {
+    try {
+        const list = document.getElementById('userInvitesList');
+        if (!list) return;
+        list.innerHTML = '<div class="empty-state">加载中...</div>';
+        const resp = await fetch(`/api/user-invites/${currentUser}`);
+        const data = await resp.json();
+        const invites = (data && data.invites) || [];
+        if (!invites.length) {
+            document.getElementById('invitesSection').classList.add('hidden');
+            list.innerHTML = '';
+            return;
+        }
+        document.getElementById('invitesSection').classList.remove('hidden');
+        list.innerHTML = invites.map(i => {
+            const info = `${escapeHtml(i.projectName)}（邀请人：${escapeHtml(i.invitedBy)}）`;
+            return `<div class=\"project-card\" style=\"display:flex; align-items:center; justify-content:space-between; gap:8px\"><div>${info}</div><div style=\"display:inline-flex; gap:8px\"><button class=\"btn-primary\" data-accept=\"${escapeHtml(i.projectId)}\">接受</button><button class=\"btn-secondary\" data-decline=\"${escapeHtml(i.projectId)}\">拒绝</button></div></div>`;
+        }).join('');
+        list.querySelectorAll('button[data-accept]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const pid = btn.getAttribute('data-accept');
+                try {
+                    const resp2 = await fetch('/api/accept-invite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, projectId: pid }) });
+                    const result = await resp2.json();
+                    if (resp2.ok) {
+                        uiToast('已加入项目','success');
+                        loadUserInvites();
+                        loadUserProjects();
+                    } else uiToast(result.message || '操作失败','error');
+                } catch (e) { uiToast('操作失败','error'); }
+            });
+        });
+        list.querySelectorAll('button[data-decline]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const pid = btn.getAttribute('data-decline');
+                try {
+                    const resp2 = await fetch('/api/decline-invite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, projectId: pid }) });
+                    const result = await resp2.json();
+                    if (resp2.ok) {
+                        uiToast('已拒绝邀请','success');
+                        loadUserInvites();
+                    } else uiToast(result.message || '操作失败','error');
+                } catch (e) { uiToast('操作失败','error'); }
+            });
+        });
+    } catch (e) {
+        console.error('Load invites error', e);
     }
 }

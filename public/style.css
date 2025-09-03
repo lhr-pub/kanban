@@ -4025,10 +4025,22 @@ body {
 
 .post-meta {
     display: flex;
-    justify-content: space-between;
+    align-items: center;
     font-size: 0.8rem;
     color: var(--gray-500);
-    padding: 0 0.5rem;
+    /* padding: 0 0.5rem; */
+}
+
+/* inline meta + actions row */
+.post-actions.has-meta {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+.post-actions-buttons {
+    display: inline-flex;
+    gap: 0.5rem;
+    margin-left: auto;
 }
 
 .post-text {

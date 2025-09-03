@@ -597,18 +597,33 @@ app.post('/api/join-project', (req, res) => {
     }
 
     // 检查用户是否已经在项目中
+    project.members = Array.isArray(project.members) ? project.members : [];
     if (project.members.includes(username)) {
         return res.status(400).json({ message: '您已经是该项目的成员' });
     }
 
-    // 添加用户到项目
-    project.members.push(username);
-    users[username].projects.push(projectId);
+    // 创建加入请求，等待其他成员同意
+    project.pendingRequests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
+    const exists = project.pendingRequests.find(r => r && r.username === username);
+    if (exists) {
+        return res.json({ message: '已提交申请，待审批' });
+    }
+    project.pendingRequests.push({ username, requestedBy: username, requestedAt: new Date().toISOString() });
 
-    if (writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users)) {
-        res.json({ message: '成功加入项目' });
+    if (writeJsonFile(projectsFile, projects)) {
+        try {
+            (project.boards || []).forEach(boardName => {
+                broadcastToBoard(projectId, boardName, {
+                    type: 'join-request',
+                    projectId,
+                    username,
+                    requestedBy: username
+                });
+            });
+        } catch (e) { console.warn('Broadcast join-request warning:', e.message); }
+        res.json({ message: '已提交申请，待审批' });
     } else {
-        res.status(500).json({ message: '加入项目失败' });
+        res.status(500).json({ message: '提交申请失败' });
     }
 });
 
@@ -627,7 +642,9 @@ app.get('/api/project-boards/:projectId', (req, res) => {
         inviteCode: project.inviteCode,
         members: project.members,
         boards: project.boards,
-        owner: project.owner
+        owner: project.owner,
+        pendingRequests: project.pendingRequests || [],
+        pendingInvites: project.pendingInvites || []
     });
 });
 
@@ -1778,4 +1795,99 @@ server.on('error', (error) => {
 
     console.error(`Server error: ${error}`);
     process.exit(1);
+});
+
+// 新增：成员申请与审批 API
+app.post('/api/request-add-member', (req, res) => {
+    const { projectId, username, actor } = req.body || {};
+    if (!projectId || !username || !actor) {
+        return res.status(400).json({ message: '缺少参数' });
+    }
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    project.members = Array.isArray(project.members) ? project.members : [];
+    if (!project.members.includes(actor)) return res.status(403).json({ message: '只有项目成员可以邀请' });
+    if (!users[username]) return res.status(404).json({ message: '被邀请用户不存在' });
+    if (project.members.includes(username)) return res.status(400).json({ message: '该用户已是成员' });
+    project.pendingInvites = Array.isArray(project.pendingInvites) ? project.pendingInvites : [];
+    if (project.pendingInvites.find(r => r && r.username === username)) {
+        return res.json({ message: '邀请已发送，等待对方接受' });
+    }
+    project.pendingInvites.push({ username, invitedBy: actor, invitedAt: new Date().toISOString() });
+    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ message: '邀请已发送，等待对方接受' });
+});
+
+app.get('/api/project-invites/:projectId', (req, res) => {
+    const { projectId } = req.params;
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    res.json({ invites: project.pendingInvites || [] });
+});
+
+app.get('/api/user-invites/:username', (req, res) => {
+    const { username } = req.params;
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+    const result = [];
+    for (const [pid, proj] of Object.entries(projects)) {
+        const invites = (proj.pendingInvites || []).filter(i => i && i.username === username);
+        if (invites.length) {
+            invites.forEach(i => {
+                result.push({ projectId: pid, projectName: proj.name, invitedBy: i.invitedBy, invitedAt: i.invitedAt });
+            });
+        }
+    }
+    res.json({ invites: result });
+});
+
+app.post('/api/accept-invite', (req, res) => {
+    const { username, projectId } = req.body || {};
+    if (!username || !projectId) return res.status(400).json({ message: '缺少参数' });
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    project.pendingInvites = Array.isArray(project.pendingInvites) ? project.pendingInvites : [];
+    const idx = project.pendingInvites.findIndex(i => i && i.username === username);
+    if (idx === -1) return res.status(404).json({ message: '没有该邀请' });
+    project.pendingInvites.splice(idx, 1);
+    project.members = Array.isArray(project.members) ? project.members : [];
+    if (!project.members.includes(username)) project.members.push(username);
+    if (users[username]) {
+        users[username].projects = Array.isArray(users[username].projects) ? users[username].projects : [];
+        if (!users[username].projects.includes(projectId)) users[username].projects.push(projectId);
+    }
+    if (!writeJsonFile(projectsFile, projects) || !writeJsonFile(usersFile, users)) {
+        return res.status(500).json({ message: '保存失败' });
+    }
+    try {
+        (project.boards || []).forEach(boardName => {
+            broadcastToBoard(projectId, boardName, { type: 'member-added', projectId, username });
+        });
+    } catch (e) {}
+    res.json({ message: '已加入项目', members: project.members });
+});
+
+app.post('/api/decline-invite', (req, res) => {
+    const { username, projectId } = req.body || {};
+    if (!username || !projectId) return res.status(400).json({ message: '缺少参数' });
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    project.pendingInvites = Array.isArray(project.pendingInvites) ? project.pendingInvites : [];
+    const idx = project.pendingInvites.findIndex(i => i && i.username === username);
+    if (idx === -1) return res.status(404).json({ message: '没有该邀请' });
+    project.pendingInvites.splice(idx, 1);
+    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
+    res.json({ message: '已拒绝邀请' });
 });
