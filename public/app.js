@@ -1047,7 +1047,7 @@ function renderAddListEntry(container){
     add.id = 'addListEntry';
     add.className = 'add-list column';
     add.innerHTML = `
-        <button class="add-list-open">+ Add another list</button>
+        <button class="add-list-open">+</button>
         <form class="add-list-form" hidden>
             <input type="text" placeholder="输入卡组名称" />
             <div class="actions">
@@ -3764,22 +3764,26 @@ function getListAfterElement(container, x) {
 function adjustBoardCentering() {
     const container = document.getElementById('listsContainer');
     if (!container) return;
-    const items = container.querySelectorAll('.list, .add-list');
-    let totalWidth = 0;
-    items.forEach((item, idx) => {
-        totalWidth += item.offsetWidth;
-        if (idx < items.length - 1) totalWidth += 12; // gap
-    });
-    const containerWidth = container.clientWidth;
-    if (totalWidth < containerWidth) {
-        container.style.justifyContent = 'center';
-        container.style.paddingLeft = '12px';
-        container.style.paddingRight = '12px';
-    } else {
-        container.style.justifyContent = 'flex-start';
+
+    const lists = container.querySelectorAll('.list:not(#addListEntry)');
+    const n = lists.length;
+    if (n === 0) {
         container.style.paddingLeft = '0px';
-        container.style.paddingRight = '12px';
+        return;
+    }
+
+    const listWidth = 272; // var(--list-width)
+    const gap = 12; // var(--list-gap)
+    const totalWidth = n * listWidth + (n - 1) * gap;
+
+    const viewportWidth = container.clientWidth;
+    if (totalWidth < viewportWidth) {
+        const padding = (viewportWidth - totalWidth) / 2;
+        container.style.paddingLeft = `${padding}px`;
+    } else {
+        container.style.paddingLeft = '0px';
     }
 }
-// init listener (at end of DOMContentLoaded)
+
+// Call after render and on resize
 window.addEventListener('resize', adjustBoardCentering);
