@@ -76,6 +76,10 @@ function ensureClientLists() {
 
 function getCardsByStatus(status) { return (boardData[status] || []).slice(); }
 
+function getAllStatusKeys(){
+    return Object.keys(boardData).filter(k => Array.isArray(boardData[k]));
+}
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 渲染静态图标
@@ -1373,7 +1377,7 @@ function openCardModal(cardId){
     // Locate card data
     let card = null;
     let status = null;
-    for (const s of ['todo','doing','done','archived']){
+    for (const s of getAllStatusKeys()){
         const found = (boardData[s]||[]).find(c=>c.id===cardId);
         if(found){ card = found; status = s; break; }
     }
@@ -1475,7 +1479,7 @@ function saveCardFromDrawer(){
     if (!updates.title) { alert('任务标题不能为空'); return; }
 
     // local update to avoid flicker
-    for (const s of ['todo','doing','done','archived']){
+    for (const s of getAllStatusKeys()){
         const i = (boardData[s]||[]).findIndex(c=>c.id===drawerCardId);
         if(i!==-1){ boardData[s][i] = Object.assign({}, boardData[s][i], updates); break; }
     }
@@ -1563,7 +1567,7 @@ function getDrawerChecklist(){
 }
 
 function getCardById(id){
-    for (const s of ['todo','doing','done','archived']){
+    for (const s of getAllStatusKeys()){
         const found = (boardData[s]||[]).find(c=>c.id===id);
         if(found) return found;
     }
@@ -1572,7 +1576,7 @@ function getCardById(id){
 
 function updateCardImmediately(cardId, updates){
     // local
-    for (const s of ['todo','doing','done','archived']){
+    for (const s of getAllStatusKeys()){
         const i = (boardData[s]||[]).findIndex(c=>c.id===cardId);
         if(i!==-1){ boardData[s][i] = Object.assign({}, boardData[s][i], updates); break; }
     }
@@ -1779,7 +1783,7 @@ async function clearArchive() {
 function openEditModal(cardId) {
     let card = null;
 
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
             card = found;
@@ -2107,7 +2111,7 @@ function editCardTitle(cardId, clickEvent) {
     let card = null;
     let cardStatus = null;
 
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
             card = found;
@@ -2315,7 +2319,7 @@ function editCardDescription(cardId, clickEvent) {
     let card = null;
     let cardStatus = null;
 
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
             card = found;
@@ -2520,7 +2524,7 @@ function editCardDescription(cardId, clickEvent) {
 // 内联编辑分配用户
 function editCardAssignee(cardId) {
     let card = null;
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) { card = found; break; }
     }
@@ -2586,7 +2590,7 @@ function editCardDeadline(cardId) {
     let card = null;
     let cardStatus = null;
 
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const found = boardData[status].find(c => c.id === cardId);
         if (found) {
             card = found;
@@ -2800,7 +2804,7 @@ function updateCardField(cardId, field, value) {
     updates[field] = value;
 
     // 先更新本地数据，避免界面闪烁或数据短暂丢失
-    for (const status of ['todo', 'doing', 'done', 'archived']) {
+    for (const status of getAllStatusKeys()) {
         const idx = (boardData[status] || []).findIndex(c => c.id === cardId);
         if (idx !== -1) {
             const current = boardData[status][idx];
