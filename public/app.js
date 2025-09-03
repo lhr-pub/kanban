@@ -1311,9 +1311,7 @@ function createCardElement(card, status) {
         ? `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">${card.deadline}</span>`
         : '';
 
-    const moreBtn = (status === 'archived')
-        ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原"></button>`
-        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
+    const moreBtn = `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
 
     const archiveBtn = (status !== 'archived')
         ? ``
