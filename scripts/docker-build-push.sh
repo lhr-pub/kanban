@@ -35,8 +35,8 @@ Examples:
 EOF
 }
 
-IMAGE=""
-TAG=""
+IMAGE="xj-01-harbor.d.run/xj-01-u-cdd1523c53fb/kanban"
+TAG="latest"
 DOCKERFILE="./Dockerfile"
 CONTEXT="."
 PLATFORMS="linux/amd64"
