@@ -727,24 +727,14 @@ app.post('/api/create-project', (req, res) => {
         owner: username,
         created: new Date().toISOString(),
         members: [username],
-        boards: ['默认看板'] // 创建项目时自动创建默认看板
+        boards: [] // 初始不创建默认看板
     };
 
     // 更新用户项目列表
     users[username].projects.push(projectId);
 
-    // 创建默认看板文件
-    const boardFile = path.join(dataDir, `${projectId}_默认看板.json`);
-    const defaultBoard = {
-        todo: [],
-        doing: [],
-        done: [],
-        archived: []
-    };
-
     if (writeJsonFile(projectsFile, projects) &&
-        writeJsonFile(usersFile, users) &&
-        writeJsonFile(boardFile, defaultBoard)) {
+        writeJsonFile(usersFile, users)) {
         res.json({
             message: '项目创建成功',
             projectId,
