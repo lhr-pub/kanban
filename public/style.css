@@ -4064,3 +4064,41 @@ body {
     justify-content: space-between;
     margin-top: 0.5rem;
 }
+
+
+.badge-icon {
+    /* background: #f3f4f6; */
+    /* padding: 2px 6px; */
+    /* border-radius: 12px; */
+    font-size: 14px;
+    color: #6b778c;
+    display: inline-flex;
+    align-items: center;
+    gap: 0px;
+    margin-bottom: -2px;
+}
+
+
+.badge.comments {
+    /* background: #f3f4f6; */
+    /* padding: 2px 6px; */
+    /* border-radius: 12px; */
+    font-size: 12px;
+    color: #6b778c;
+    display: inline-flex;
+    align-items: center;
+    gap: 0px;
+    margin-bottom: -4px;
+
+}
+/* Remove min-height to make lists auto-height */
+.column, .list {
+    min-height: 0 !important;
+}
+
+/* Media query override */
+@media (max-width: 768px) {
+    .column, .list {
+        min-height: 0 !important;
+    }
+}

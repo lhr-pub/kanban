@@ -1302,6 +1302,7 @@ function createCardElement(card, status) {
 
     const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
     const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
+    const commentsBadge = card.commentsCount > 0 ? `<span class="badge comments" title="${card.commentsCount} 条评论">💬 ${card.commentsCount}</span>` : '';
 
     const assigneeHtml = card.assignee
         ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>`
@@ -1326,7 +1327,7 @@ function createCardElement(card, status) {
         ? `<div class="card-actions-row"><div class="actions-inline"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button></div></div>`
         : '';
 
-    const badges = `${descIcon}${deadlineHtml}${assigneeHtml}`;
+    const badges = `${descIcon}${commentsBadge}${deadlineHtml}${assigneeHtml}`;
 
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
