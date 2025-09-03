@@ -20,6 +20,7 @@
     "build:css:pretty": "cross-env MINIFY=false postcss public/styles.entry.css -o public/style.merged.css",
     "build:css:min": "cross-env MINIFY=true postcss public/styles.entry.css -o public/style.merged.min.css",
     "build:css:purged": "cross-env MINIFY=false postcss public/styles.entry.css -o public/style.merged.purged.css",
-    "build:css:purged:min": "cross-env MINIFY=true postcss public/styles.entry.css -o public/style.merged.purged.min.css"
+    "build:css:purged:min": "cross-env MINIFY=true postcss public/styles.entry.css -o public/style.merged.purged.min.css",
+    "dev:web": "npm --prefix web run dev"
   }
 }

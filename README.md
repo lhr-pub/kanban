@@ -76,6 +76,12 @@ PORT=3001 node server.js
 ### 3) 访问应用
 在浏览器打开 `http://localhost:3000`
 
+> 正在进行中的“新技术重构”：已在 `web/` 目录下创建 `React + TypeScript + Vite` 新前端。开发期可：
+>
+> - 启动旧服务端：`npm start`（默认 3000）
+> - 启动新前端：`npm run dev:web`（Vite 5173，已代理 `/api` 与 `/ws`）
+> - 访问新前端：`http://localhost:5173`
+
 ## ⚙️ 环境变量 (.env)
 
 在项目根目录创建 `.env` 文件（可从 `.env.example` 拷贝）：
@@ -98,7 +104,7 @@ NODE_ENV=development
 ### 看板与任务
 - 在每列顶部与底部都有“快速添加”行：
   - 顶部输入框按 Enter → 直接添加到该列顶部
-  - 底部输入框按 Enter → 直接添加到该列底部
+  - 底部输入框按 Enter → 直接添加到底部
   - 可同时选择分配人和截止日期
 - 卡片内联编辑：
   - 点击标题或描述可就地编辑（多行、无布局跳动）
@@ -240,7 +246,7 @@ NODE_ENV=development
 - 定时清理：每小时清理，仅保留最近 50 份
 
 ## 🔧 技术栈
-- 前端：原生 JavaScript + HTML + CSS
+- 前端：原生 JavaScript + HTML + CSS（进行中：React + TypeScript + Vite）
 - 后端：Node.js + Express
 - 实时：WebSocket（ws）
 - 存储：文件型 JSON（可直接查看/备份/版本化）
@@ -286,7 +292,7 @@ NODE_ENV=development
 
 ### 快捷键与交互
 - 抽屉内：Ctrl/Cmd+Enter 保存描述；Esc 关闭并还原焦点。
-- 卡片：点击任意区域打开抽屉；悬浮右上角出现“更多/还原”按钮（不占位）。
+- 卡片：点击任意区域打开抽屝；悬浮右上角出现“更多/还原”按钮（不占位）。
 
 ## 验收清单（Trello 极简版）
 - [ ] 卡片正面仅有：标签色条、标题、徽标行；描述不在正面显示。
