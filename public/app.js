@@ -580,50 +580,61 @@ async function loadUserProjects() {
         if (quickAccessBoards) quickAccessBoards.innerHTML = '';
         if (projectsList) projectsList.innerHTML = '';
 
-        // 加载所有看板和项目数据
-        for (const project of projects) {
+        // 并发获取所有项目的看板数据，并批量渲染，避免逐个等待导致卡顿
+        const projectFetches = projects.map(project => (async () => {
             try {
-                const boardsResponse = await fetch(`/api/project-boards/${project.id}`);
-                const boardsData = await boardsResponse.json();
-
-                // 添加快速访问看板
-                boardsData.boards.forEach(boardName => {
-                    if (token !== userProjectsLoadToken) return;
-                    const boardCard = document.createElement('div');
-                    boardCard.className = 'quick-board-card board-card-with-actions';
-                    boardCard.onclick = () => {
-                        currentProjectId = project.id;
-                        currentProjectName = project.name;
-                        currentBoardName = boardName;
-                        previousPage = 'project'; // 从项目首页直接进入看板
-                        showBoard();
-                    };
-
-                    const owner = (boardsData.boardOwners && boardsData.boardOwners[boardName]) || '';
-
-                    boardCard.innerHTML = `
-                        <span class="board-icon" data-icon="boards"></span>
-                        <div class="board-details">
-                            <h4>${escapeHtml(boardName)}</h4>
-                            <span class="board-project">${escapeHtml(project.name)}</span>
-                        </div>
-                        ${owner ? `<div class="card-owner">创建者：${escapeHtml(owner)}</div>` : ''}
-                        <div class="board-card-actions">
-                            <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
-                            <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
-                        </div>
-                    `;
-
-                    if (token === userProjectsLoadToken && quickAccessBoards) quickAccessBoards.appendChild(boardCard);
-                    renderIconsInDom(boardCard);
-                });
-
+                let boardsData = { boards: [], boardOwners: {} };
+                if (project.boardCount > 0) {
+                    const boardsResponse = await fetch(`/api/project-boards/${project.id}`);
+                    boardsData = await boardsResponse.json();
+                }
+                return { project, boardsData };
             } catch (error) {
                 console.error(`Error loading boards for project ${project.id}:`, error);
+                return { project, boardsData: { boards: [], boardOwners: {} } };
             }
+        })());
+
+        const results = await Promise.all(projectFetches);
+
+        if (token !== userProjectsLoadToken) return;
+
+        const qabFrag = document.createDocumentFragment();
+        const plFrag = document.createDocumentFragment();
+
+        results.forEach(({ project, boardsData }) => {
+            // 添加快速访问看板
+            (boardsData.boards || []).forEach(boardName => {
+                if (token !== userProjectsLoadToken) return;
+                const boardCard = document.createElement('div');
+                boardCard.className = 'quick-board-card board-card-with-actions';
+                boardCard.onclick = () => {
+                    currentProjectId = project.id;
+                    currentProjectName = project.name;
+                    currentBoardName = boardName;
+                    previousPage = 'project'; // 从项目首页直接进入看板
+                    showBoard();
+                };
+
+                const owner = (boardsData.boardOwners && boardsData.boardOwners[boardName]) || '';
+
+                boardCard.innerHTML = `
+                    <span class="board-icon" data-icon="boards"></span>
+                    <div class="board-details">
+                        <h4>${escapeHtml(boardName)}</h4>
+                        <span class="board-project">${escapeHtml(project.name)}</span>
+                    </div>
+                    ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
+                    <div class="board-card-actions">
+                        <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
+                        <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
+                    </div>
+                `;
+                qabFrag.appendChild(boardCard);
+            });
 
             // 添加项目卡片到项目管理Tab
-            if (token !== userProjectsLoadToken) continue;
+            if (token !== userProjectsLoadToken) return;
             const projectCard = document.createElement('div');
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(project.id, project.name);
@@ -642,9 +653,17 @@ async function loadUserProjects() {
                 </div>
                 <div class="card-owner">所有者：${escapeHtml(project.owner || '')}</div>
             `;
+            plFrag.appendChild(projectCard);
+        });
 
-            if (token === userProjectsLoadToken && projectsList) projectsList.appendChild(projectCard);
-            renderIconsInDom(projectCard);
+        if (token !== userProjectsLoadToken) return;
+        if (quickAccessBoards) {
+            quickAccessBoards.appendChild(qabFrag);
+            renderIconsInDom(quickAccessBoards);
+        }
+        if (projectsList) {
+            projectsList.appendChild(plFrag);
+            renderIconsInDom(projectsList);
         }
 
     } catch (error) {
