@@ -41,17 +41,11 @@
                 <h1>工作台</h1>
                 <div class="user-info">
                     <span id="currentUserName">用户名</span>
+                    <button id="invitesBtn" class="btn-secondary">邀请管理 <span id="invitesBadge" class="count"
+                            style="margin-left:6px; display:none;">0</span></button>
                     <button id="logoutFromProject" class="logout-btn">退出登录</button>
                 </div>
             </header>
-
-            <!-- 我的邀请 -->
-            <div id="invitesSection" class="dashboard-section">
-                <h2><span data-icon="inbox"></span> 我的邀请</h2>
-                <div id="userInvitesList" class="projects-grid">
-                    <!-- 邀请列表将动态生成 -->
-                </div>
-            </div>
 
             <!-- 项目管理 -->
             <div class="dashboard-section">
@@ -270,6 +264,22 @@
                 <button onclick="saveCard()" class="btn-primary">保存</button>
                 <button onclick="deleteCard()" class="btn-danger">删除</button>
                 <button onclick="closeEditModal()" class="btn-secondary">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邀请管理（首页导航栏按钮触发） -->
+    <div id="invitesModal" class="modal hidden">
+        <div class="modal-content edit-modal">
+            <div class="modal-header">
+                <h3>邀请管理</h3>
+                <button class="close-btn" onclick="closeInvitesModal()" title="关闭">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="invitesModalList"></div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeInvitesModal()" class="btn-secondary">关闭</button>
             </div>
         </div>
     </div>

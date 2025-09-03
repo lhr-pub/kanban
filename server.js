@@ -643,6 +643,7 @@ app.get('/api/project-boards/:projectId', (req, res) => {
         members: project.members,
         boards: project.boards,
         owner: project.owner,
+        boardOwners: project.boardOwners || {},
         pendingRequests: project.pendingRequests || [],
         pendingInvites: project.pendingInvites || []
     });
@@ -808,7 +809,7 @@ app.post('/api/regenerate-invite-code', (req, res) => {
 
 // 新增：删除项目API
 app.delete('/api/delete-project', (req, res) => {
-    const { projectId } = req.body;
+    const { projectId, actor } = req.body || {};
 
     if (!projectId) {
         return res.status(400).json({ message: '项目ID不能为空' });
@@ -823,6 +824,9 @@ app.delete('/api/delete-project', (req, res) => {
     const project = projects[projectId];
     if (!project) {
         return res.status(404).json({ message: '项目不存在' });
+    }
+    if (!actor || actor !== project.owner) {
+        return res.status(403).json({ message: '只有所有者可以删除项目' });
     }
 
     try {
@@ -879,7 +883,7 @@ app.delete('/api/delete-project', (req, res) => {
 });
 
 app.post('/api/create-board', (req, res) => {
-    const { projectId, boardName } = req.body;
+    const { projectId, boardName, actor } = req.body || {};
 
     if (!projectId || !boardName) {
         return res.status(400).json({ message: '项目ID和看板名称不能为空' });
@@ -892,6 +896,13 @@ app.post('/api/create-board', (req, res) => {
     if (!project) {
         return res.status(404).json({ message: '项目不存在' });
     }
+
+    // 只有项目所有者或申请者自身是所有者（创建者）
+    if (!actor || (actor !== project.owner && !project.members.includes(actor))) {
+        return res.status(403).json({ message: '无权限创建看板' });
+    }
+
+    project.boardOwners = project.boardOwners || {};
 
     if (project.boards.includes(boardName)) {
         return res.status(400).json({ message: '看板名称已存在' });
@@ -907,9 +918,10 @@ app.post('/api/create-board', (req, res) => {
     };
 
     project.boards.unshift(boardName);
+    project.boardOwners[boardName] = actor || project.owner;
 
     if (writeJsonFile(projectsFile, projects) && writeJsonFile(boardFile, defaultBoard)) {
-        res.json({ message: '看板创建成功' });
+        res.json({ message: '看板创建成功', owner: project.boardOwners[boardName] });
     } else {
         res.status(500).json({ message: '创建看板失败' });
     }
@@ -917,7 +929,7 @@ app.post('/api/create-board', (req, res) => {
 
 // 删除看板API
 app.delete('/api/delete-board', (req, res) => {
-    const { projectId, boardName } = req.body;
+    const { projectId, boardName, actor } = req.body || {};
 
     if (!projectId || !boardName) {
         return res.status(400).json({ message: '项目ID和看板名称不能为空' });
@@ -929,6 +941,11 @@ app.delete('/api/delete-board', (req, res) => {
     const project = projects[projectId];
     if (!project) {
         return res.status(404).json({ message: '项目不存在' });
+    }
+    const isProjectOwner = actor && actor === project.owner;
+    const isBoardOwner = project.boardOwners && actor && project.boardOwners[boardName] === actor;
+    if (!isProjectOwner && !isBoardOwner) {
+        return res.status(403).json({ message: '只有项目所有者或看板创建者可以删除看板' });
     }
 
     const boardIndex = project.boards.indexOf(boardName);
@@ -959,7 +976,7 @@ app.delete('/api/delete-board', (req, res) => {
 
 // 新增：重命名看板API
 app.post('/api/rename-board', (req, res) => {
-    const { projectId, oldName, newName } = req.body;
+    const { projectId, oldName, newName, actor } = req.body || {};
 
     if (!projectId || !oldName || !newName) {
         return res.status(400).json({ message: '项目ID、旧名称和新名称不能为空' });
@@ -983,6 +1000,12 @@ app.post('/api/rename-board', (req, res) => {
         return res.status(404).json({ message: '原看板不存在' });
     }
 
+    const isProjectOwner = actor && actor === project.owner;
+    const isBoardOwner = project.boardOwners && actor && project.boardOwners[oldName] === actor;
+    if (!isProjectOwner && !isBoardOwner) {
+        return res.status(403).json({ message: '只有项目所有者或看板创建者可以重命名看板' });
+    }
+
     if (project.boards.includes(sanitizedNew)) {
         return res.status(400).json({ message: '新看板名称已存在' });
     }
@@ -1000,6 +1023,10 @@ app.post('/api/rename-board', (req, res) => {
 
         // 更新项目中的名称
         project.boards[idx] = sanitizedNew;
+        if (project.boardOwners && project.boardOwners[oldName]) {
+            project.boardOwners[sanitizedNew] = project.boardOwners[oldName];
+            delete project.boardOwners[oldName];
+        }
 
         if (!writeJsonFile(projectsFile, projects)) {
             // 回滚文件名
@@ -1847,6 +1874,24 @@ app.get('/api/user-invites/:username', (req, res) => {
     res.json({ invites: result });
 });
 
+// 汇总需要该用户审批的通过邀请码加入项目的申请（该用户为项目所有者）
+app.get('/api/user-approvals/:username', (req, res) => {
+    const { username } = req.params;
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+    const approvals = [];
+    for (const [pid, proj] of Object.entries(projects)) {
+        if (!proj || proj.owner !== username) continue;
+        const requests = Array.isArray(proj.pendingRequests) ? proj.pendingRequests : [];
+        requests.forEach(r => {
+            if (r && r.username) {
+                approvals.push({ projectId: pid, projectName: proj.name, username: r.username, requestedAt: r.requestedAt });
+            }
+        });
+    }
+    res.json({ approvals });
+});
+
 app.post('/api/accept-invite', (req, res) => {
     const { username, projectId } = req.body || {};
     if (!username || !projectId) return res.status(400).json({ message: '缺少参数' });
@@ -1890,4 +1935,52 @@ app.post('/api/decline-invite', (req, res) => {
     project.pendingInvites.splice(idx, 1);
     if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
     res.json({ message: '已拒绝邀请' });
+});
+
+app.post('/api/deny-join', (req, res) => {
+    const { projectId, username, actor } = req.body || {};
+    if (!projectId || !username || !actor) return res.status(400).json({ message: '缺少参数' });
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    if (!actor || actor !== project.owner) return res.status(403).json({ message: '只有项目所有者可以审批' });
+    project.pendingRequests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
+    const idx = project.pendingRequests.findIndex(r => r && r.username === username);
+    if (idx === -1) return res.status(404).json({ message: '没有该申请' });
+    project.pendingRequests.splice(idx, 1);
+    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ message: '已拒绝申请', pendingRequests: project.pendingRequests });
+});
+
+app.post('/api/approve-join', (req, res) => {
+    const { projectId, username, actor } = req.body || {};
+    if (!projectId || !username || !actor) return res.status(400).json({ message: '缺少参数' });
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    if (!actor || actor !== project.owner) return res.status(403).json({ message: '只有项目所有者可以审批' });
+    project.pendingRequests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
+    const idx = project.pendingRequests.findIndex(r => r && r.username === username);
+    if (idx === -1) return res.status(404).json({ message: '没有该申请' });
+    project.pendingRequests.splice(idx, 1);
+    project.members = Array.isArray(project.members) ? project.members : [];
+    if (!project.members.includes(username)) project.members.push(username);
+    const user = users[username];
+    if (user) {
+        user.projects = Array.isArray(user.projects) ? user.projects : [];
+        if (!user.projects.includes(projectId)) user.projects.push(projectId);
+    }
+    if (!writeJsonFile(projectsFile, projects) || !writeJsonFile(usersFile, users)) {
+        return res.status(500).json({ message: '保存失败' });
+    }
+    try {
+        (project.boards || []).forEach(boardName => {
+            broadcastToBoard(projectId, boardName, { type: 'member-added', projectId, username });
+        });
+    } catch (e) {}
+    return res.json({ message: '已同意加入', members: project.members, pendingRequests: project.pendingRequests });
 });
