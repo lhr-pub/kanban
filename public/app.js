@@ -17,6 +17,7 @@ let pendingFocusCaretIndex = null;
 // 拖拽状态（支持跨列）
 let draggingCardId = null;
 let draggingFromStatus = null;
+let cardPlaceholderEl = null; // 占位元素（卡片拖拽时使用）
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -411,8 +412,8 @@ async function loadUserProjects() {
                             <span class="board-project">${escapeHtml(project.name)}</span>
                         </div>
                         <div class="board-card-actions">
-                            <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="重命名">✎</button>
-                            <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeHtml(boardName)}', '${project.id}')" title="删除看板">✕</button>
+                            <button class="board-action-btn rename-btn" data-board="${encodeURIComponent(boardName)}" data-project="${project.id}" onclick="event.stopPropagation(); onRenameBoardFromHomeClick(this)" title="重命名">✎</button>
+                            <button class="board-action-btn delete-btn" data-board="${encodeURIComponent(boardName)}" data-project="${project.id}" onclick="event.stopPropagation(); onDeleteBoardFromHomeClick(this)" title="删除看板">✕</button>
                         </div>
                     `;
 
@@ -438,8 +439,8 @@ async function loadUserProjects() {
                     创建于: ${new Date(project.created).toLocaleDateString()}
                 </div>
                 <div class="project-card-actions">
-                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeHtml(project.name)}')" title="重命名项目">✎</button>
-                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeHtml(project.name)}')" title="删除项目">✕</button>
+                    <button class="project-action-btn rename-btn" data-project="${project.id}" data-name="${encodeURIComponent(project.name)}" onclick="event.stopPropagation(); onRenameProjectFromHomeClick(this)" title="重命名项目">✎</button>
+                    <button class="project-action-btn delete-btn" data-project="${project.id}" data-name="${encodeURIComponent(project.name)}" onclick="event.stopPropagation(); onDeleteProjectFromHomeClick(this)" title="删除项目">✕</button>
                 </div>
             `;
 
@@ -641,8 +642,8 @@ async function loadProjectBoards() {
                     <span class="board-project">${escapeHtml(currentProjectName)}</span>
                 </div>
                 <div class="board-card-actions">
-                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeHtml(boardName)}')" title="重命名">✎</button>
-                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeHtml(boardName)}')" title="删除看板">✕</button>
+                    <button class="board-action-btn rename-btn" data-board="${encodeURIComponent(boardName)}" onclick="event.stopPropagation(); onPromptRenameBoardClick(this)" title="重命名">✎</button>
+                    <button class="board-action-btn delete-btn" data-board="${encodeURIComponent(boardName)}" onclick="event.stopPropagation(); onDeleteBoardClick(this)" title="删除看板">✕</button>
                 </div>
             `;
 
@@ -935,8 +936,8 @@ function renderBoard() {
             // bind composer
             bindComposer(section, list);
 
-            // enable drag for this column (reuse existing)
-            enableColumnDrag(list.status);
+            // enable drag for this column (bind to concrete container to avoid ambiguity)
+            enableColumnDrag(cardsEl);
         });
 
     // add-list entry (UI only, maps to new status placeholders if needed)
@@ -1182,8 +1183,8 @@ function createCardElement(card, status) {
         : '';
 
     const moreBtn = (status === 'archived')
-        ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')\" aria-label="还原"></button>`
-        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')\" aria-label="编辑"></button>`;
+        ? `<button class="card-quick" onclick="event.stopPropagation(); restoreCard('${card.id}')" aria-label="还原"></button>`
+        : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
 
     const badges = `${assigneeHtml}${deadlineHtml}${descIcon}`;
 
@@ -2600,7 +2601,8 @@ function scheduleDeferredRender() {
         pendingRenderTimer = null;
     }
     pendingRenderTimer = setTimeout(function check() {
-        if (isAnyInlineEditorOpen() || inlineEditorOpening) {
+        // 拖拽或编辑过程中不触发重渲染，避免打断拖拽与光标
+        if (draggingCardId || draggingListId || isAnyInlineEditorOpen() || inlineEditorOpening) {
             pendingRenderTimer = setTimeout(check, 60);
             return;
         }
@@ -2798,23 +2800,35 @@ function getCaretIndexFromSpan(spanEl, clientX, clientY) {
 }
 
 // 列内拖拽排序
-function enableColumnDrag(status) {
-    // Support legacy ids and new dynamic containers
-    let container = document.getElementById(`${status}Cards`);
-    if (!container) {
-        const col = document.querySelector(`.column[data-status="${status}"]`);
-        container = col ? col.querySelector('.cards') : null;
+// 兼容两种调用方式：
+// 1) 传入字符串 status（旧用法，根据 data-status 定位容器）
+// 2) 直接传入列内的 .cards 容器元素（推荐，避免重复 data-status 时选错列）
+function enableColumnDrag(target) {
+    let container = null;
+    let status = null;
+    if (typeof target === 'string') {
+        status = target;
+        // Support legacy ids and new dynamic containers
+        container = document.getElementById(`${status}Cards`);
+        if (!container) {
+            const col = document.querySelector(`.column[data-status="${status}"]`);
+            container = col ? col.querySelector('.cards') : null;
+        }
+    } else if (target && target.nodeType === 1) {
+        container = target;
+        const col = container.closest('.column, .list');
+        status = col ? col.getAttribute('data-status') : null;
     }
     if (!container) return;
 
     container.querySelectorAll('.card').forEach(makeDraggable);
 
     const handleDragOver = (e) => {
+        const dragging = document.querySelector('.card.dragging');
+        if (!dragging || !cardPlaceholderEl) return; // 非卡片拖拽时不干预（避免影响卡组拖拽）
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
         const afterEl = getDragAfterElement(container, e.clientY);
-        const dragging = document.querySelector('.card.dragging');
-        if (!dragging || !cardPlaceholderEl) return;
         if (afterEl == null) {
             container.appendChild(cardPlaceholderEl);
         } else {
@@ -2822,7 +2836,9 @@ function enableColumnDrag(status) {
         }
     };
 
-    const handleDrop = () => {
+    const handleDrop = (e) => {
+        if (e && e.preventDefault) e.preventDefault();
+        if (!draggingCardId) return; // 非卡片拖拽时不处理（避免与卡组拖拽冲突）
         const toStatus = status;
         const fromStatus = draggingFromStatus;
         const movedCardId = draggingCardId;
@@ -2830,11 +2846,14 @@ function enableColumnDrag(status) {
         const draggingEl = document.querySelector('.card.dragging');
         if (draggingEl && cardPlaceholderEl) {
             containerEl.insertBefore(draggingEl, cardPlaceholderEl);
-            draggingEl.style.display = '';
+            // 还原可见性（与 dragstart 中的 visibility 隐藏保持一致）
+            draggingEl.style.visibility = '';
             cardPlaceholderEl.parentNode.removeChild(cardPlaceholderEl);
             cardPlaceholderEl = null;
         }
-        const orderedIds = Array.from(containerEl.querySelectorAll('.card')).map(el => el.dataset.cardId);
+        const orderedIds = Array.from(containerEl.querySelectorAll('.card'))
+            .map(el => el.dataset.cardId)
+            .filter(Boolean);
         if (socket && socket.readyState === WebSocket.OPEN) {
             if (movedCardId && fromStatus && fromStatus !== toStatus) {
                 socket.send(JSON.stringify({ type:'move-card', projectId: currentProjectId, boardName: currentBoardName, cardId:movedCardId, fromStatus, toStatus }));
@@ -2848,12 +2867,19 @@ function enableColumnDrag(status) {
 
     container.ondragover = handleDragOver;
     container.ondrop = handleDrop;
+    container.ondragenter = (e) => { const dragging = document.querySelector('.card.dragging'); if (!dragging || !cardPlaceholderEl) return; e.preventDefault(); };
 
     // bind also on the list wrapper so drop works even if not exactly over cards area
     const listWrapper = container.closest('.list, .column');
     if (listWrapper) {
-        listWrapper.ondragover = handleDragOver;
-        listWrapper.ondrop = handleDrop;
+        // 使用事件监听，避免被列表拖拽逻辑覆盖
+        listWrapper.addEventListener('dragover', handleDragOver);
+        listWrapper.addEventListener('drop', handleDrop);
+        listWrapper.addEventListener('dragenter', (e) => {
+            const dragging = document.querySelector('.card.dragging');
+            if (!dragging || !cardPlaceholderEl) return;
+            e.preventDefault();
+        });
     }
 }
 
@@ -2892,7 +2918,7 @@ function makeDraggable(cardEl) {
 }
 
 function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.card:not(.dragging)')];
+    const draggableElements = [...container.querySelectorAll('.card:not(.dragging):not(.card-placeholder)')];
     return draggableElements.reduce((closest, child) => {
         const box = child.getBoundingClientRect();
         const offset = y - box.top - box.height / 2;
@@ -2917,11 +2943,16 @@ function enableListsDrag() {
     container.querySelectorAll('.list:not(.add-list)').forEach(listEl => {
         const headerEl = listEl.querySelector('.list-header');
         if (!headerEl) return;
+        // 提升可拖拽触发的兼容性：同时设置列表与头部为可拖拽
         listEl.setAttribute('draggable','true');
+        headerEl.setAttribute('draggable','true');
 
         listEl.ondragstart = (e) => {
-            // Only allow drag when started from header region
-            if (!e.target || !e.target.closest('.list-header')) { e.preventDefault(); return; }
+            // 允许从头部或空白处开始；若从卡片/Composer/表单控件开始则阻止
+            const isInsideCard = !!(e.target && e.target.closest('.card'));
+            const isComposer = !!(e.target && e.target.closest('.card-composer, .add-list-form'));
+            const isFormControl = !!(e.target && e.target.closest('input, textarea, button, select'));
+            if (isInsideCard || isComposer || isFormControl) { e.preventDefault(); return; }
             draggingListId = listEl.getAttribute('data-id');
             listEl.classList.add('dragging');
             if (e.dataTransfer) { try { e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {} }
@@ -2963,6 +2994,40 @@ function enableListsDrag() {
             if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
             listPlaceholderEl = null;
         };
+
+        // 让每个列表自身也作为有效的放置目标，增强兼容性
+        listEl.ondragover = (e) => {
+            if (!draggingListId) return;
+            e.preventDefault();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+            const beforeRects = captureListRects(container);
+            const after = getListAfterElement(container, e.clientX);
+            if (!listPlaceholderEl) return;
+            if (after == null) {
+                container.insertBefore(listPlaceholderEl, container.querySelector('#addListEntry'));
+            } else {
+                container.insertBefore(listPlaceholderEl, after);
+            }
+            playFLIPList(container, beforeRects);
+        };
+        listEl.ondrop = (e) => {
+            if (e && e.preventDefault) e.preventDefault();
+            if (!draggingListId || !clientLists) return;
+            const draggingEl = container.querySelector('.list.dragging');
+            if (draggingEl && listPlaceholderEl) {
+                container.insertBefore(draggingEl, listPlaceholderEl);
+                draggingEl.style.visibility = '';
+                listPlaceholderEl.parentNode.removeChild(listPlaceholderEl);
+                listPlaceholderEl = null;
+            }
+            const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
+                .filter(el => el.classList.contains('list'))
+                .map(el => el.getAttribute('data-id'));
+            clientLists.listIds = ids;
+            clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
+            draggingListId = null;
+            if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
+        };
     });
 
     container.ondragover = (e) => {
@@ -2979,7 +3044,8 @@ function enableListsDrag() {
         playFLIPList(container, beforeRects);
     };
 
-    container.ondrop = () => {
+    container.ondrop = (e) => {
+        if (e && e.preventDefault) e.preventDefault();
         if (!draggingListId || !clientLists) return;
         const draggingEl = container.querySelector('.list.dragging');
         if (draggingEl && listPlaceholderEl) {
@@ -2996,6 +3062,7 @@ function enableListsDrag() {
         draggingListId = null;
         if (listDragImageEl && listDragImageEl.parentNode) { listDragImageEl.parentNode.removeChild(listDragImageEl); listDragImageEl = null; }
     };
+    container.ondragenter = (e) => { if (!draggingListId) return; e.preventDefault(); };
 }
 
 function getListAfterElement(container, x) {
@@ -3051,6 +3118,22 @@ function promptRenameBoardFromHome(oldName, projectId) {
     renameBoardRequest(projectId, oldName, true);
 }
 
+// 安全处理首页看板按钮点击（避免内联JS注入风险）
+function onRenameBoardFromHomeClick(btn){
+    try {
+        const board = decodeURIComponent(btn.dataset.board || '');
+        const project = btn.dataset.project || '';
+        promptRenameBoardFromHome(board, project);
+    } catch (e) { console.error(e); }
+}
+function onDeleteBoardFromHomeClick(btn){
+    try {
+        const board = decodeURIComponent(btn.dataset.board || '');
+        const project = btn.dataset.project || '';
+        deleteBoardFromHome(board, project);
+    } catch (e) { console.error(e); }
+}
+
 async function renameBoardRequest(projectId, oldName, isHome) {
     const input = prompt('输入新的看板名称', oldName);
     if (input === null) return; // 取消
@@ -3095,6 +3178,20 @@ async function renameBoardRequest(projectId, oldName, isHome) {
     }
 }
 
+// 安全处理项目看板页“重命名/删除看板”按钮
+function onPromptRenameBoardClick(btn){
+    try {
+        const board = decodeURIComponent(btn.dataset.board || '');
+        promptRenameBoard(board);
+    } catch (e) { console.error(e); }
+}
+function onDeleteBoardClick(btn){
+    try {
+        const board = decodeURIComponent(btn.dataset.board || '');
+        deleteBoard(board);
+    } catch (e) { console.error(e); }
+}
+
 // 从首页重命名项目
 function renameProjectFromHome(projectId, currentName) {
     const input = prompt('输入新的项目名称', currentName || '');
@@ -3131,6 +3228,22 @@ function renameProjectFromHome(projectId, currentName) {
         console.error('Rename project (home) error:', error);
         alert('项目重命名失败');
     });
+}
+
+// 安全处理首页项目按钮点击
+function onRenameProjectFromHomeClick(btn){
+    try {
+        const project = btn.dataset.project || '';
+        const name = decodeURIComponent(btn.dataset.name || '');
+        renameProjectFromHome(project, name);
+    } catch (e) { console.error(e); }
+}
+function onDeleteProjectFromHomeClick(btn){
+    try {
+        const project = btn.dataset.project || '';
+        const name = decodeURIComponent(btn.dataset.name || '');
+        deleteProjectFromHome(project, name);
+    } catch (e) { console.error(e); }
 }
 
 // 删除项目（项目选择页头部按钮）
