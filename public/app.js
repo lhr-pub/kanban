@@ -200,6 +200,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Add listener for resizing
+    window.addEventListener('resize', adjustBoardCentering);
 });
 
 // 页面显示函数
@@ -1032,6 +1035,9 @@ function renderBoard() {
 
     // enable lists drag after render
     enableListsDrag();
+
+    // Add after renderBoard
+    adjustBoardCentering();
 }
 
 function renderAddListEntry(container){
@@ -3752,3 +3758,27 @@ function getListAfterElement(container, x) {
         }
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
+
+// Add after renderBoard
+function adjustBoardCentering() {
+    const container = document.getElementById('listsContainer');
+    if (!container) return;
+    const items = container.querySelectorAll('.list, .add-list');
+    let totalWidth = 0;
+    items.forEach((item, idx) => {
+        totalWidth += item.offsetWidth;
+        if (idx < items.length - 1) totalWidth += 12; // gap
+    });
+    const containerWidth = container.clientWidth;
+    if (totalWidth < containerWidth) {
+        container.style.justifyContent = 'center';
+        container.style.paddingLeft = '12px';
+        container.style.paddingRight = '12px';
+    } else {
+        container.style.justifyContent = 'flex-start';
+        container.style.paddingLeft = '0px';
+        container.style.paddingRight = '12px';
+    }
+}
+// init listener (at end of DOMContentLoaded)
+window.addEventListener('resize', adjustBoardCentering);

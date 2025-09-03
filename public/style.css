@@ -340,7 +340,7 @@ h1 {
     overflow-x: auto;
     max-width: none;
     width: 100%;
-    justify-content: flex-start;
+    justify-content: center;
 }
 
 /* 归档页面样式 */
@@ -3543,7 +3543,7 @@ body {
 .card-labels:empty { display: none !important; }
 
 /* left align lists (columns) */
-.board-container { justify-content: flex-start; }
+.board-container { justify-content: center; }
 
 /* header alignment like home/project: left title, right buttons */
 .header > .container { display: flex; justify-content: space-between; align-items: center; flex-wrap: nowrap; }
@@ -3940,8 +3940,16 @@ body {
     overflow-y: auto;
 }
 
-.form-group textarea {
-    font-size: 1rem;
+.form-group label {
+    display: none; /* Hide unnecessary labels for conciseness */
+}
+
+.form-group:not([for="editPostsInput"]) {
+    margin-bottom: 0.5rem; /* Reduce space for non-posts groups */
+}
+
+.form-group[for="editCardDescription"] {
+    display: none; /* Hide description as per previous optimizations */
 }
 
 .posts-list {
@@ -3949,8 +3957,12 @@ body {
     padding: 0.5rem;
     border: 1px solid var(--gray-200);
     border-radius: 4px;
-    /* max-height: 300px; */
-    /* overflow-y: auto; */
+    max-height: 50vh; /* Increase max-height to emphasize posts */
+    overflow-y: auto;
+}
+
+.posts-list:empty {
+    display: none;
 }
 
 .post-item {
@@ -3978,6 +3990,7 @@ body {
     padding: 0.25rem 0.5rem;
     font-size: 0.95rem;
     line-height: 1.4;
+    white-space: pre-line; /* Preserve line breaks for comments */
 }
 
 .post-actions {
@@ -4050,40 +4063,4 @@ body {
     display: flex;
     justify-content: space-between;
     margin-top: 0.5rem;
-}
-
-/* Optionally hide description if focusing on posts */
-.form-group[for="editCardDescription"] {
-    display: none; /* or opacity: 0.5; to de-emphasize */
-}
-
-/* Board name dropdown caret indicator */
-#currentBoardName {
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 6px;
-    border-radius: 6px;
-    transition: var(--transition);
-}
-#currentBoardName:hover {
-    background: var(--gray-100);
-}
-#currentBoardName::before {  /* 改为 ::before，放在文字前面 */
-    content: '';
-    display: inline-block;
-    margin-right: 4px;  /* 右边距，箭头与文字间距 */
-    width: 0;
-    height: 0;
-    border-top: 5px solid transparent;  /* 右指向箭头 */
-    border-bottom: 5px solid transparent;
-    border-left: 6px solid currentColor;
-    opacity: 0.7;
-    transform-origin: center;
-    transition: transform 0.2s ease, opacity 0.2s ease;
-}
-#currentBoardName.open::before {
-    transform: rotate(90deg);  /* 旋转 90° 变为下指向 */
-    opacity: 0.9;
 }
