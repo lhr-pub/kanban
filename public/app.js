@@ -291,9 +291,7 @@ function showProjectPage(replaceHistory) {
     localStorage.removeItem('kanbanCurrentProjectName');
     localStorage.removeItem('kanbanCurrentBoardName');
 
-    // History
-    updateHistory('project', !!replaceHistory);
-
+    stopMembershipGuard();
     loadUserInvites();
     loadUserProjects();
 }
@@ -315,10 +313,8 @@ function showBoardSelectPage(replaceHistory) {
     localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
     localStorage.removeItem('kanbanCurrentBoardName');
 
-    // History
-    updateHistory('boardSelect', !!replaceHistory);
-
     loadProjectBoards();
+    startMembershipGuard();
 }
 
 function showBoard(replaceHistory) {
@@ -497,6 +493,7 @@ async function handleAuth(e) {
 
 // 加载用户数据
 async function loadUserProjects() {
+    const token = ++userProjectsLoadToken;
     try {
         const response = await fetch(`/api/user-projects/${currentUser}`);
         const projects = await response.json();
@@ -505,8 +502,11 @@ async function loadUserProjects() {
         document.getElementById('currentUserName').textContent = currentUser;
 
         if (projects.length === 0) {
-            document.getElementById('quickAccessBoards').innerHTML = '<div class="empty-state">还没有加入任何项目，请先创建或加入一个项目！</div>';
-            document.getElementById('projectsList').innerHTML = '<div class="empty-state">还没有项目，创建第一个项目开始协作吧！</div>';
+            if (token !== userProjectsLoadToken) return;
+            const qab = document.getElementById('quickAccessBoards');
+            const pl = document.getElementById('projectsList');
+            if (qab) qab.innerHTML = '<div class="empty-state">还没有加入任何项目，请先创建或加入一个项目！</div>';
+            if (pl) pl.innerHTML = '<div class="empty-state">还没有项目，创建第一个项目开始协作吧！</div>';
             return;
         }
 
@@ -514,8 +514,9 @@ async function loadUserProjects() {
         const projectsList = document.getElementById('projectsList');
 
         // 清空现有内容，避免重复
-        quickAccessBoards.innerHTML = '';
-        projectsList.innerHTML = '';
+        if (token !== userProjectsLoadToken) return;
+        if (quickAccessBoards) quickAccessBoards.innerHTML = '';
+        if (projectsList) projectsList.innerHTML = '';
 
         // 加载所有看板和项目数据
         for (const project of projects) {
@@ -525,6 +526,7 @@ async function loadUserProjects() {
 
                 // 添加快速访问看板
                 boardsData.boards.forEach(boardName => {
+                    if (token !== userProjectsLoadToken) return;
                     const boardCard = document.createElement('div');
                     boardCard.className = 'quick-board-card board-card-with-actions';
                     boardCard.onclick = () => {
@@ -536,7 +538,6 @@ async function loadUserProjects() {
                     };
 
                     const owner = (boardsData.boardOwners && boardsData.boardOwners[boardName]) || '';
-                    const canManage = (currentUser && (currentUser === boardsData.owner || currentUser === owner));
 
                     boardCard.innerHTML = `
                         <span class="board-icon" data-icon="boards"></span>
@@ -544,14 +545,14 @@ async function loadUserProjects() {
                             <h4>${escapeHtml(boardName)}</h4>
                             <span class="board-project">${escapeHtml(project.name)}</span>
                         </div>
-                        ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
-                        <div class="board-card-actions" ${canManage ? '' : 'style="display:none"'}>
-                            <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="重命名">✎</button>
+                        ${owner ? `<div class="card-owner">创建者：${escapeHtml(owner)}</div>` : ''}
+                        <div class="board-card-actions">
+                            <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
                             <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
                         </div>
                     `;
 
-                    quickAccessBoards.appendChild(boardCard);
+                    if (token === userProjectsLoadToken && quickAccessBoards) quickAccessBoards.appendChild(boardCard);
                     renderIconsInDom(boardCard);
                 });
 
@@ -560,28 +561,27 @@ async function loadUserProjects() {
             }
 
             // 添加项目卡片到项目管理Tab
+            if (token !== userProjectsLoadToken) continue;
             const projectCard = document.createElement('div');
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(project.id, project.name);
 
-            const canManageProject = currentUser && currentUser === project.owner;
-
             projectCard.innerHTML = `
                 <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(project.name)}</h3>
                 <div class="project-info">
-                    邀请码: <span class="invite-code">${project.inviteCode}</span><br>
+                    邀请码: <span class="invite-code">${project.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(project.inviteCode)}')">复制</button><br>
                     成员: ${project.memberCount}人<br>
                     看板: ${project.boardCount}个<br>
                     创建于: ${new Date(project.created).toLocaleDateString()}
                 </div>
-                <div class="project-card-actions" ${canManageProject ? '' : 'style=\"display:none\"'}>
+                <div class="project-card-actions">
                     <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button>
                     <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>
                 </div>
-                <div class=\"card-owner\">所有者：${escapeHtml(project.owner || '')}</div>
+                <div class="card-owner">所有者：${escapeHtml(project.owner || '')}</div>
             `;
 
-            projectsList.appendChild(projectCard);
+            if (token === userProjectsLoadToken && projectsList) projectsList.appendChild(projectCard);
             renderIconsInDom(projectCard);
         }
 
@@ -785,8 +785,8 @@ async function loadProjectBoards() {
                 </div>
                 ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
                 <div class="board-card-actions" ${canManage ? '' : 'style="display:none"'}>
-                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeJs(boardName)}', '${currentProjectId}')" title="重命名">✎</button>
-                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${currentProjectId}')" title="删除看板">✕</button>
+                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
+                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>
                 </div>
             `;
 
@@ -1017,7 +1017,7 @@ function handleWebSocketMessage(data) {
                 localStorage.removeItem('kanbanCurrentProjectId');
                 localStorage.removeItem('kanbanCurrentProjectName');
                 localStorage.removeItem('kanbanCurrentBoardName');
-                showProjectPage();
+                if (typeof projectPage !== 'undefined' && projectPage && projectPage.classList.contains('hidden')) { showProjectPage(); }
                 loadUserProjects();
                 uiToast('当前项目已被删除','error');
             }
@@ -1025,16 +1025,7 @@ function handleWebSocketMessage(data) {
         case 'member-removed':
             if (data.projectId === currentProjectId && data.username === currentUser) {
                 // 自己被移除出项目：断开连接并返回首页
-                try { if (socket) socket.close(); } catch (e) {}
-                currentProjectId = null;
-                currentProjectName = null;
-                currentBoardName = null;
-                localStorage.removeItem('kanbanCurrentProjectId');
-                localStorage.removeItem('kanbanCurrentProjectName');
-                localStorage.removeItem('kanbanCurrentBoardName');
-                showProjectPage();
-                loadUserProjects();
-                uiToast('已被移出项目','error');
+                forceExitCurrentProject('已被移出项目');
             }
             break;
         case 'join-request':
@@ -1056,7 +1047,8 @@ function handleWebSocketMessage(data) {
                         }
                     }
                 } catch (e) {}
-                uiToast(`${data.username} 申请加入项目`,'info');
+                const pname = currentProjectName || '项目';
+                uiToast(`${data.username} 申请加入「${pname}」`,'info');
             }
             break;
         case 'member-added':
@@ -3486,7 +3478,7 @@ function deleteProject() {
         fetch('/api/delete-project', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId: currentProjectId })
+            body: JSON.stringify({ projectId: currentProjectId, actor: currentUser })
         }).then(async (response) => {
             const result = await response.json().catch(() => ({}));
             if (response.ok) {
@@ -3497,7 +3489,9 @@ function deleteProject() {
                 localStorage.removeItem('kanbanCurrentProjectId');
                 localStorage.removeItem('kanbanCurrentProjectName');
                 localStorage.removeItem('kanbanCurrentBoardName');
-                showProjectPage();
+                if (typeof projectPage !== 'undefined' && projectPage && projectPage.classList.contains('hidden')) {
+                    showProjectPage();
+                }
                 loadUserProjects();
                 uiToast('项目删除成功','success');
             } else {
@@ -3518,7 +3512,7 @@ function deleteProjectFromHome(projectId, projectName) {
         fetch('/api/delete-project', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId })
+            body: JSON.stringify({ projectId, actor: currentUser })
         }).then(async (response) => {
             const result = await response.json().catch(() => ({}));
             if (response.ok) {
@@ -4176,6 +4170,29 @@ function copyInviteCode() {
     }
 }
 
+// Add: copy project invite code from project page (boardSelectPage)
+function copyProjectInviteCode() {
+    try {
+        const el = document.getElementById('projectInviteCode');
+        const code = (el && el.textContent) ? el.textContent.trim() : '';
+        if (!code || code === '------') { uiToast('暂无邀请码','error'); return; }
+        navigator.clipboard.writeText(code).then(() => uiToast('邀请码已复制','success'));
+    } catch (e) {
+        uiToast('复制失败','error');
+    }
+}
+
+// Add: generic copy helper for cards
+function copyCode(code) {
+    const text = (code || '').trim();
+    if (!text) { uiToast('暂无邀请码','error'); return; }
+    try {
+        navigator.clipboard.writeText(text).then(() => uiToast('邀请码已复制','success'));
+    } catch (e) {
+        uiToast('复制失败','error');
+    }
+}
+
 async function regenerateInviteCode() {
     try {
         const ok = await uiConfirm('确定要重置当前项目的邀请码吗？已有旧码将失效。', '重置邀请码');
@@ -4273,13 +4290,13 @@ async function loadUserInvites() {
         if (modalList) {
             let html = '';
             // 邀请码加入项目（作为申请人）
-            html += `<div class=\"form-group\" style=\"margin-bottom:12px\"><div class=\"card-info\" style=\"gap:8px; align-items:center\"><div style=\"flex:1\">使用邀请码加入项目：</div><div style=\"display:inline-flex; gap:8px\"><input id=\"inviteCodeInput\" type=\"text\" placeholder=\"输入6位邀请码\" style=\"width:140px; height:36px; border:1px solid #e5e7eb; border-radius:6px; padding:0 10px\"> <button class=\"btn-primary\" id=\"inviteCodeJoinBtn\">加入</button></div></div></div>`;
+            html += `<div class=\"form-group\" style=\"margin-bottom:12px\"><div class=\"card-info\" style=\"gap:8px; align-items:center\"><div style=\"flex:1\">通过邀请码加入项目</div><div style=\"display:inline-flex; gap:8px\"><input id=\"inviteCodeInput\" type=\"text\" placeholder=\"输入 6 位邀请码\" style=\"width:140px; height:36px; border:1px solid #e5e7eb; border-radius:6px; padding:0 10px\"> <button class=\"btn-primary\" id=\"inviteCodeJoinBtn\">提交申请</button></div></div></div>`;
             // 我收到的邀请（我同意/拒绝）
-            html += `<h4 style=\"margin:8px 0\">收到的邀请</h4>`;
+            html += `<h4 style=\"margin:8px 0\">我收到的邀请</h4>`;
             if (invites.length) {
                 html += invites.map(i => {
-                    const info = `${escapeHtml(i.projectName)}（邀请人：${escapeHtml(i.invitedBy)}）`;
-                    return `<div class=\"project-card\" style=\"display:flex; align-items:center; justify-content:space-between; gap:8px\"><div>${info}</div><div style=\"display:inline-flex; gap:8px\"><button class=\"btn-primary\" data-accept-modal=\"${escapeHtml(i.projectId)}\">接受</button><button class=\"btn-secondary\" data-decline-modal=\"${escapeHtml(i.projectId)}\">拒绝</button></div></div>`;
+                    const info = `加入「${escapeHtml(i.projectName)}」 · 邀请人：${escapeHtml(i.invitedBy)}`;
+                    return `<div class=\"project-card\" style=\"display:flex; align-items:center; justify-content:space-between; gap:8px\"><div>${info}</div><div style=\"display:inline-flex; gap:8px\"><button class=\"btn-primary\" data-accept-modal=\"${escapeHtml(i.projectId)}\" data-project-name=\"${escapeHtml(i.projectName)}\">接受</button><button class=\"btn-secondary\" data-decline-modal=\"${escapeHtml(i.projectId)}\" data-project-name=\"${escapeHtml(i.projectName)}\">拒绝</button></div></div>`;
                 }).join('');
             } else {
                 html += `<div class=\"empty-state\">暂无邀请</div>`;
@@ -4295,11 +4312,11 @@ async function loadUserInvites() {
                     if (total > 0) { badge.style.display = ''; badge.textContent = String(total); }
                     else { badge.style.display = 'none'; badge.textContent = '0'; }
                 }
-                html += `<h4 style=\"margin:12px 0 8px\">待我审批的加入申请</h4>`;
+                html += `<h4 style=\"margin:12px 0 8px\">待我处理的加入申请</h4>`;
                 if (approvals.length) {
                     html += approvals.map(a => {
-                        const text = `${escapeHtml(a.username)} 请求加入 ${escapeHtml(a.projectName)}`;
-                        return `<div class=\"project-card\" style=\"display:flex; align-items:center; justify-content:space-between; gap:8px\"><div>${text}</div><div style=\"display:inline-flex; gap:8px\"><button class=\"btn-primary\" data-approve-join=\"${escapeHtml(a.projectId)}::${escapeHtml(a.username)}\">同意</button><button class=\"btn-secondary\" data-deny-join=\"${escapeHtml(a.projectId)}::${escapeHtml(a.username)}\">拒绝</button></div></div>`;
+                        const text = `${escapeHtml(a.username)} 申请加入「${escapeHtml(a.projectName)}」`;
+                        return `<div class=\"project-card\" style=\"display:flex; align-items:center; justify-content:space-between; gap:8px\"><div>${text}</div><div style=\"display:inline-flex; gap:8px\"><button class=\"btn-primary\" data-approve-join=\"${escapeHtml(a.projectId)}::${escapeHtml(a.username)}\" data-project-name=\"${escapeHtml(a.projectName)}\">同意</button><button class=\"btn-secondary\" data-deny-join=\"${escapeHtml(a.projectId)}::${escapeHtml(a.username)}\" data-project-name=\"${escapeHtml(a.projectName)}\">拒绝</button></div></div>`;
                     }).join('');
                 } else {
                     html += `<div class=\"empty-state\">暂无待审批</div>`;
@@ -4307,19 +4324,20 @@ async function loadUserInvites() {
                 modalList.innerHTML = html;
                 // 绑定收到的邀请按钮
                 modalList.querySelectorAll('button[data-accept-modal]').forEach(btn => {
-                    btn.addEventListener('click', () => acceptInvite(btn.getAttribute('data-accept-modal')));
+                    btn.addEventListener('click', () => acceptInvite(btn.getAttribute('data-accept-modal'), btn.getAttribute('data-project-name') || ''));
                 });
                 modalList.querySelectorAll('button[data-decline-modal]').forEach(btn => {
-                    btn.addEventListener('click', () => declineInvite(btn.getAttribute('data-decline-modal')));
+                    btn.addEventListener('click', () => declineInvite(btn.getAttribute('data-decline-modal'), btn.getAttribute('data-project-name') || ''));
                 });
                 // 绑定待审批按钮（仅所有者有效，后端会校验）
                 modalList.querySelectorAll('button[data-approve-join]').forEach(btn => {
                     btn.addEventListener('click', async () => {
                         const [pid, uname] = btn.getAttribute('data-approve-join').split('::');
+                        const pname = btn.getAttribute('data-project-name') || '';
                         try {
                             const resp = await fetch('/api/approve-join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectId: pid, username: uname, actor: currentUser }) });
                             const result = await resp.json();
-                            if (resp.ok) { uiToast('已同意加入','success'); loadUserInvites(); loadUserProjects(); }
+                            if (resp.ok) { uiToast(`已同意 ${uname} 加入「${pname}」`,'success'); loadUserInvites(); loadUserProjects(); }
                             else { uiToast(result.message || '操作失败','error'); }
                         } catch (e) { uiToast('操作失败','error'); }
                     });
@@ -4327,10 +4345,11 @@ async function loadUserInvites() {
                 modalList.querySelectorAll('button[data-deny-join]').forEach(btn => {
                     btn.addEventListener('click', async () => {
                         const [pid, uname] = btn.getAttribute('data-deny-join').split('::');
+                        const pname = btn.getAttribute('data-project-name') || '';
                         try {
                             const resp = await fetch('/api/deny-join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectId: pid, username: uname, actor: currentUser }) });
                             const result = await resp.json();
-                            if (resp.ok) { uiToast('已拒绝申请','success'); loadUserInvites(); }
+                            if (resp.ok) { uiToast(`已拒绝加入「${pname}」的申请`,'success'); loadUserInvites(); }
                             else { uiToast(result.message || '操作失败','error'); }
                         } catch (e) { uiToast('操作失败','error'); }
                     });
@@ -4343,11 +4362,11 @@ async function loadUserInvites() {
             if (joinBtn && input) {
                 joinBtn.addEventListener('click', async () => {
                     const code = (input.value || '').trim().toUpperCase();
-                    if (!code || code.length !== 6) { uiToast('请输入6位邀请码','error'); return; }
+                    if (!code || code.length !== 6) { uiToast('请输入 6 位邀请码','error'); return; }
                     try {
                         const response = await fetch('/api/join-project', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, inviteCode: code }) });
                         const result = await response.json();
-                        if (response.ok) { uiToast(result.message || '已提交申请，等待项目所有者审批','success'); input.value=''; }
+                        if (response.ok) { uiToast(result.message || '申请已提交，等待所有者审批','success'); input.value=''; }
                         else { uiToast(result.message || '加入项目失败','error'); }
                     } catch (e) { uiToast('加入项目失败','error'); }
                 });
@@ -4370,25 +4389,62 @@ function closeInvitesModal() {
     modal.classList.add('hidden');
 }
 
-async function acceptInvite(projectId) {
+async function acceptInvite(projectId, projectName) {
     try {
         const resp2 = await fetch('/api/accept-invite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, projectId }) });
         const result = await resp2.json();
         if (resp2.ok) {
-            uiToast('已加入项目','success');
+            const pname = projectName || '项目';
+            uiToast(`已接受邀请，已加入「${pname}」`,'success');
             loadUserInvites();
             loadUserProjects();
         } else uiToast(result.message || '操作失败','error');
     } catch (e) { uiToast('操作失败','error'); }
 }
 
-async function declineInvite(projectId) {
+async function declineInvite(projectId, projectName) {
     try {
         const resp2 = await fetch('/api/decline-invite', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, projectId }) });
         const result = await resp2.json();
         if (resp2.ok) {
-            uiToast('已拒绝邀请','success');
+            const pname = projectName || '项目';
+            uiToast(`已拒绝加入「${pname}」的邀请`,'success');
             loadUserInvites();
         } else uiToast(result.message || '操作失败','error');
     } catch (e) { uiToast('操作失败','error'); }
+}
+
+let membershipGuardTimer = null;
+let userProjectsLoadToken = 0;
+
+function forceExitCurrentProject(toastMsg) {
+    try { if (socket) socket.close(); } catch (e) {}
+    currentProjectId = null;
+    currentProjectName = null;
+    currentBoardName = null;
+    localStorage.removeItem('kanbanCurrentProjectId');
+    localStorage.removeItem('kanbanCurrentProjectName');
+    localStorage.removeItem('kanbanCurrentBoardName');
+    showProjectPage();
+    loadUserProjects();
+    if (toastMsg) uiToast(toastMsg, 'error');
+}
+
+function startMembershipGuard() {
+    stopMembershipGuard();
+    if (!currentProjectId) return;
+    membershipGuardTimer = setInterval(async () => {
+        try {
+            const resp = await fetch(`/api/project-boards/${currentProjectId}`);
+            if (!resp.ok) { forceExitCurrentProject('已被移出项目'); return; }
+            const data = await resp.json().catch(()=>null);
+            if (!data || !Array.isArray(data.members) || !data.members.includes(currentUser)) {
+                forceExitCurrentProject('已被移出项目');
+            }
+        } catch(e) {}
+    }, 2000);
+}
+
+function stopMembershipGuard() {
+    if (membershipGuardTimer) { clearInterval(membershipGuardTimer); membershipGuardTimer = null; }
 }
