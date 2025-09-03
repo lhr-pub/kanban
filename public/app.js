@@ -17,6 +17,9 @@ let pendingFocusCaretIndex = null;
 // Board switcher state
 let boardSwitcherMenu = null;
 let boardSwitcherOpen = false;
+let boardSwitcherBodyClickHandler = null;
+let boardSwitcherKeyHandler = null;
+let boardSwitcherFocusInHandler = null;
 let projectBoardsCache = Object.create(null);
 
 // 拖拽状态（支持跨列）
@@ -3693,7 +3696,7 @@ function showBoardSwitcherAt(rect, boards) {
             const response = await fetch('/api/create-board', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: currentProjectId, boardName: name })
+                body: JSON.stringify({ projectId: currentProjectId, boardName: name, actor: currentUser })
             });
             const result = await response.json();
             if (response.ok) {
@@ -3777,22 +3780,31 @@ function showBoardSwitcherAt(rect, boards) {
     boardSwitcherMenu = menu;
     boardSwitcherOpen = true;
 
-    const onBodyClick = (ev) => {
-        if (!boardSwitcherMenu) return;
-        if (!boardSwitcherMenu.contains(ev.target)) {
-            hideBoardSwitcher();
-        }
-    };
-    const onKey = (ev) => { if (ev.key === 'Escape') hideBoardSwitcher(); };
-
     setTimeout(() => {
-        document.addEventListener('click', onBodyClick, { once: true });
-        document.addEventListener('keydown', onKey, { once: true });
+        boardSwitcherBodyClickHandler = (ev) => {
+            if (!boardSwitcherMenu) return;
+            if (!boardSwitcherMenu.contains(ev.target)) {
+                hideBoardSwitcher();
+            }
+        };
+        boardSwitcherKeyHandler = (ev) => { if (ev.key === 'Escape') hideBoardSwitcher(); };
+        boardSwitcherFocusInHandler = (ev) => {
+            if (!boardSwitcherMenu) return;
+            if (!boardSwitcherMenu.contains(ev.target)) {
+                hideBoardSwitcher();
+            }
+        };
+        document.addEventListener('click', boardSwitcherBodyClickHandler);
+        document.addEventListener('keydown', boardSwitcherKeyHandler);
+        document.addEventListener('focusin', boardSwitcherFocusInHandler);
         search.focus();
     }, 0);
 }
 
 function hideBoardSwitcher() {
+    if (boardSwitcherBodyClickHandler) { document.removeEventListener('click', boardSwitcherBodyClickHandler); boardSwitcherBodyClickHandler = null; }
+    if (boardSwitcherKeyHandler) { document.removeEventListener('keydown', boardSwitcherKeyHandler); boardSwitcherKeyHandler = null; }
+    if (boardSwitcherFocusInHandler) { document.removeEventListener('focusin', boardSwitcherFocusInHandler); boardSwitcherFocusInHandler = null; }
     if (boardSwitcherMenu && boardSwitcherMenu.parentNode) {
         boardSwitcherMenu.parentNode.removeChild(boardSwitcherMenu);
     }
