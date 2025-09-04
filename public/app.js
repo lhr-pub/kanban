@@ -238,10 +238,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 看板页面事件
     document.getElementById('logoutBtn').addEventListener('click', logout);
-    document.getElementById('exportBtn').addEventListener('click', exportMarkdown);
-    document.getElementById('importBtn').addEventListener('click', importBoard);
-    document.getElementById('importTextBtn').addEventListener('click', openImportText);
-    document.getElementById('exportJsonBtn').addEventListener('click', exportJSON);
+    // 移除旧的导入/导出按钮绑定，改为下拉菜单
+    const ioMenuBtn = document.getElementById('ioMenuBtn');
+    if (ioMenuBtn) ioMenuBtn.addEventListener('click', toggleIOMenu);
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
@@ -5680,3 +5679,99 @@ async function exportJSON() {
         uiToast('导出失败','error');
     }
 }
+
+function toggleIOMenu(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const btn = document.getElementById('ioMenuBtn');
+    const menu = document.getElementById('ioMenu');
+    if (!btn || !menu) return;
+
+    const wasHidden = menu.classList.contains('hidden');
+    // hide first
+    menu.classList.add('hidden');
+
+    if (wasHidden) {
+        const rect = btn.getBoundingClientRect();
+        // position below button
+        menu.style.position = 'fixed';
+        menu.style.left = `${Math.round(rect.left)}px`;
+        menu.style.top = `${Math.round(rect.bottom + 6)}px`;
+        menu.classList.remove('hidden');
+        bindIOMenuOnce();
+    }
+}
+
+let ioMenuOutsideClickHandler = null;
+let ioMenuKeyHandler = null;
+
+function bindIOMenuOnce(){
+    const menu = document.getElementById('ioMenu');
+    if (!menu) return;
+    // Bind item clicks
+    const importFileItem = document.getElementById('ioImportFile');
+    const importTextItem = document.getElementById('ioImportText');
+    const exportMdItem = document.getElementById('ioExportMarkdown');
+    const exportJsonItem = document.getElementById('ioExportJSON');
+
+    if (importFileItem) importFileItem.onclick = () => { hideIOMenu(); importBoard(); };
+    if (importTextItem) importTextItem.onclick = () => { hideIOMenu(); openImportText(); };
+    if (exportMdItem) exportMdItem.onclick = () => { hideIOMenu(); exportMarkdown(); };
+    if (exportJsonItem) exportJsonItem.onclick = () => { hideIOMenu(); exportJSON(); };
+
+    // Outside click / ESC
+    if (!ioMenuOutsideClickHandler) {
+        ioMenuOutsideClickHandler = (ev) => {
+            const m = document.getElementById('ioMenu');
+            const b = document.getElementById('ioMenuBtn');
+            if (!m) return;
+            if (m.classList.contains('hidden')) return;
+            if (!m.contains(ev.target) && (!b || !b.contains(ev.target))) {
+                hideIOMenu();
+            }
+        };
+        document.addEventListener('click', ioMenuOutsideClickHandler);
+    }
+    if (!ioMenuKeyHandler) {
+        ioMenuKeyHandler = (ev) => { if (ev.key === 'Escape') { hideIOMenu(); } };
+        document.addEventListener('keydown', ioMenuKeyHandler, true);
+    }
+}
+
+function hideIOMenu(){
+    const menu = document.getElementById('ioMenu');
+    if (menu) menu.classList.add('hidden');
+}
+// ... existing code ...
+// 在捕获阶段也拦截一次，确保一次 Esc 生效
+document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    if (e.isComposing) return;
+    let handled = false;
+    const dynamicModals = Array.from(document.querySelectorAll('body > .modal')).filter(m => !m.id && !m.classList.contains('hidden'));
+    const top = dynamicModals.length ? dynamicModals[dynamicModals.length - 1] : null;
+    if (top) {
+        const btn = top.querySelector('.close-btn');
+        if (btn) { btn.click(); handled = true; }
+    } else {
+        const cp = document.getElementById('createProjectForm');
+        if (!handled && cp && !cp.classList.contains('hidden')) { hideCreateProjectForm(); handled = true; }
+        const jp = document.getElementById('joinProjectForm');
+        if (!handled && jp && !jp.classList.contains('hidden')) { hideJoinProjectForm(); handled = true; }
+        const iv = document.getElementById('invitesModal');
+        if (!handled && iv && !iv.classList.contains('hidden')) { closeInvitesModal(); handled = true; }
+        const mm = document.getElementById('membersModal');
+        if (!handled && mm && !mm.classList.contains('hidden')) { closeMembersModal(); handled = true; }
+        if (!handled) {
+            const ioMenu = document.getElementById('ioMenu');
+            if (ioMenu && !ioMenu.classList.contains('hidden')) { hideIOMenu(); handled = true; }
+        }
+        if (!handled && typeof importModal !== 'undefined' && importModal && !importModal.classList.contains('hidden')) { cancelImport(); handled = true; }
+        if (!handled && typeof importTextModal !== 'undefined' && importTextModal && !importTextModal.classList.contains('hidden')) { cancelImportText(); handled = true; }
+        if (!handled && typeof editModal !== 'undefined' && editModal && !editModal.classList.contains('hidden')) { closeEditModal(); handled = true; }
+    }
+    if (handled) {
+        try { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){ }
+    }
+}, true);
+// ... existing code ...

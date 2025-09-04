@@ -161,16 +161,22 @@
                         <div id="userList"></div>
                     </div>
                     <input type="file" id="importFile" accept=".md,.json" hidden>
-                    <button id="importBtn">导入</button>
-                    <button id="importTextBtn">文本导入</button>
-                    <button id="exportBtn">导出Markdown</button>
-                    <button id="exportJsonBtn">导出JSON</button>
+                    <button id="ioMenuBtn">导入/导出 ▾</button>
                     <button id="archiveBtn">归档管理</button>
                     <button id="backToBoardSelect">返回</button>
                     <button id="logoutBtn">退出</button>
                 </div>
             </div>
         </header>
+
+        <div id="ioMenu" class="board-switcher-menu hidden" style="position:absolute; min-width: 200px;">
+            <div class="board-switcher-list">
+                <div class="board-switcher-item" id="ioImportFile">从文件导入 (.json/.md)</div>
+                <div class="board-switcher-item" id="ioImportText">从文本导入</div>
+                <div class="board-switcher-item" id="ioExportMarkdown">导出为 Markdown</div>
+                <div class="board-switcher-item" id="ioExportJSON">导出为 JSON</div>
+            </div>
+        </div>
 
         <main class="board-container" id="listsContainer">
             <!-- 动态卡组列表将由 JS 渲染 -->
