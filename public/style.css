@@ -4261,3 +4261,19 @@ body {
     }
 }
 
+/* Starred boards UI */
+#projectPage #starredSection h2 .star-icon {
+    color: #f59e0b;
+    margin-right: 6px;
+}
+.board-action-btn.star-btn {
+    color: #9ca3af;
+}
+.board-action-btn.star-btn.active {
+    color: #f59e0b;
+}
+#starredBoards .empty-state {
+    color: var(--gray-500);
+    padding: 0.5rem 0;
+}
+
