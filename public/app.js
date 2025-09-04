@@ -4789,6 +4789,10 @@ async function acceptInvite(projectId, projectName) {
                 </div>
                 <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
             `;
+            if (currentUser !== (newProject.owner || '')) {
+                const actionsEl = projectCard.querySelector('.project-card-actions');
+                if (actionsEl) actionsEl.innerHTML = '';
+            }
             if (projectsList) {
                 projectsList.insertBefore(projectCard, projectsList.firstChild);
                 renderIconsInDom(projectCard);
