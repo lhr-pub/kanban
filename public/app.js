@@ -3689,7 +3689,7 @@ async function renameBoardRequest(projectId, oldName, isHome) {
             body: JSON.stringify({ projectId, oldName, newName, actor: currentUser })
         });
         const result = await response.json();
-                    if (response.ok) {
+        if (response.ok) {
             if (isHome) {
                 // Inline update on homepage to avoid flicker
                 try {
@@ -3732,9 +3732,18 @@ async function renameBoardRequest(projectId, oldName, isHome) {
                             if (titleEl && titleEl.textContent === oldName) {
                                 titleEl.textContent = newName;
                                 if (projEl) projEl.textContent = currentProjectName || projEl.textContent;
-                                // also update star buttons' data-board-name
+                                // update card click to open the renamed board
+                                c.onclick = () => selectBoard(newName);
+                                // also update star and action buttons to use new name
                                 const starBtn = c.querySelector('.star-btn');
-                                if (starBtn) starBtn.setAttribute('data-board-name', newName);
+                                if (starBtn) {
+                                    starBtn.setAttribute('data-board-name', newName);
+                                    starBtn.onclick = function(ev){ ev.stopPropagation(); toggleBoardStarFromHome(String(currentProjectId), newName, String(currentProjectName), this); };
+                                }
+                                const renameBtn = c.querySelector('.rename-btn');
+                                if (renameBtn) { renameBtn.onclick = function(ev){ ev.stopPropagation(); promptRenameBoard(newName); }; }
+                                const delBtn = c.querySelector('.delete-btn');
+                                if (delBtn) { delBtn.onclick = function(ev){ ev.stopPropagation(); deleteBoard(newName); }; }
                             }
                         });
                     } catch (e) {}
@@ -3747,6 +3756,8 @@ async function renameBoardRequest(projectId, oldName, isHome) {
                 updateBoardHeader();
                 // Defer reconnect and data reload to WS 'board-renamed' to avoid duplicate refreshes
             }
+            // Ensure all pages reflect the new name for future operations
+            try { updateBoardNameInDom(projectId, oldName, newName); } catch(e) {}
             uiToast('重命名成功','success');
             return { success: true, newName };
         } else {
@@ -3758,6 +3769,55 @@ async function renameBoardRequest(projectId, oldName, isHome) {
         uiToast('重命名失败','error');
         return { success: false };
     }
+}
+
+// Helper: keep homepage and board-select handlers in sync after a board rename
+function updateBoardNameInDom(projectId, oldName, newName){
+    try {
+        // Homepage quick access boards
+        document.querySelectorAll('#quickAccessBoards .quick-board-card').forEach(card => {
+            const starBtn = card.querySelector('.star-btn');
+            if (!starBtn) return;
+            const pid = starBtn.getAttribute('data-project-id');
+            const bname = starBtn.getAttribute('data-board-name');
+            if (String(pid) !== String(projectId) || bname !== oldName) return;
+            // Update title
+            const titleEl = card.querySelector('h4');
+            if (titleEl) titleEl.textContent = newName;
+            // Update dataset and handlers
+            starBtn.setAttribute('data-board-name', newName);
+            card.onclick = () => {
+                currentProjectId = projectId;
+                const projEl = card.querySelector('.board-project');
+                currentProjectName = projEl ? projEl.textContent : currentProjectName;
+                currentBoardName = newName;
+                previousPage = 'project';
+                showBoard();
+            };
+            const renameBtn = card.querySelector('.rename-btn');
+            if (renameBtn) renameBtn.setAttribute('onclick', `event.stopPropagation(); promptRenameBoardFromHome('${projectId}', '${escapeJs(newName)}')`);
+            const delBtn = card.querySelector('.delete-btn');
+            if (delBtn) delBtn.setAttribute('onclick', `event.stopPropagation(); deleteBoardFromHome('${escapeJs(newName)}', '${projectId}')`);
+        });
+    } catch(e) {}
+    try {
+        // Project board-select list
+        document.querySelectorAll('#boardList .quick-board-card').forEach(card => {
+            const starBtn = card.querySelector('.star-btn');
+            const pid = starBtn ? starBtn.getAttribute('data-project-id') : String(currentProjectId || '');
+            const titleEl = card.querySelector('h4');
+            if (!titleEl) return;
+            if (String(pid) !== String(projectId) || titleEl.textContent !== oldName) return;
+            titleEl.textContent = newName;
+            card.onclick = () => selectBoard(newName);
+            const sbtn = card.querySelector('.star-btn');
+            if (sbtn) sbtn.setAttribute('data-board-name', newName);
+            const rbtn = card.querySelector('.rename-btn');
+            if (rbtn) rbtn.setAttribute('onclick', `event.stopPropagation(); promptRenameBoard('${escapeJs(newName)}')`);
+            const dbtn = card.querySelector('.delete-btn');
+            if (dbtn) dbtn.setAttribute('onclick', `event.stopPropagation(); deleteBoard('${escapeJs(newName)}')`);
+        });
+    } catch(e) {}
 }
 
 function renameProjectFromHome(projectId, currentName) {
