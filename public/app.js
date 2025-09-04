@@ -1219,41 +1219,22 @@ function handleWebSocketMessage(data) {
             break;
         case 'board-renamed':
             if (data.projectId === currentProjectId && data.oldName === currentBoardName) {
-                // Preserve scroll positions before refresh
-                try {
-                    const container = document.getElementById('listsContainer');
-                    if (container) {
-                        const x = container.scrollLeft;
-                        const y = window.scrollY;
-                        pendingWindowScroll = { x, y };
-                    } else {
-                        pendingWindowScroll = { x: 0, y: window.scrollY };
-                    }
-                } catch (e) {}
-
                 currentBoardName = data.newName;
                 localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
                 updateBoardHeader();
-                try { if (socket) socket.close(); } catch (e) {}
-                // Suppress auto-reconnect tick once, and reconnect quickly
-                suppressAutoReconnect = true;
-                connectWebSocket();
-                loadBoardData();
-                setTimeout(() => { suppressAutoReconnect = false; }, 100);
-
-                // Restore scroll shortly after render (multi-tick)
-                const apply = () => {
-                    try {
-                        if (pendingWindowScroll) {
-                            const container = document.getElementById('listsContainer');
-                            if (container) { container.scrollLeft = pendingWindowScroll.x || 0; }
-                            window.scrollTo({ top: pendingWindowScroll.y || 0 });
-                        }
-                    } catch(e) {} finally { pendingWindowScroll = null; }
-                };
-                setTimeout(apply, 0);
-                setTimeout(apply, 50);
-                setTimeout(apply, 120);
+                // Keep history state consistent without reloading UI
+                try { updateHistory('board', true); } catch (e) {}
+                // Re-join the renamed board on the existing socket (no reconnect to avoid flicker)
+                try {
+                    if (socket && socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({
+                            type: 'join',
+                            user: currentUser,
+                            projectId: currentProjectId,
+                            boardName: currentBoardName
+                        }));
+                    }
+                } catch (e) {}
             }
             updateStarsOnBoardRenamed(data.projectId, data.oldName, data.newName);
             break;
@@ -1264,8 +1245,11 @@ function handleWebSocketMessage(data) {
                 const projectTitle = document.getElementById('projectTitle');
                 if (projectTitle) projectTitle.textContent = currentProjectName;
                 updateBoardHeader();
+                // Avoid full reload to prevent flicker; update board list labels inline if on board-select page
                 if (!boardSelectPage.classList.contains('hidden')) {
-                    loadProjectBoards();
+                    try {
+                        document.querySelectorAll('#boardList .board-project').forEach(el => { el.textContent = currentProjectName; });
+                    } catch (e) {}
                 }
             }
             updateStarsOnProjectRenamed(data.projectId, data.newName);
@@ -3705,12 +3689,55 @@ async function renameBoardRequest(projectId, oldName, isHome) {
             body: JSON.stringify({ projectId, oldName, newName, actor: currentUser })
         });
         const result = await response.json();
-        if (response.ok) {
+                    if (response.ok) {
             if (isHome) {
-                loadUserProjects();
+                // Inline update on homepage to avoid flicker
+                try {
+                    // Update Quick Access boards
+                    document.querySelectorAll('#quickAccessBoards .star-btn').forEach(btn => {
+                        const pid = btn.getAttribute('data-project-id');
+                        const bname = btn.getAttribute('data-board-name');
+                        if (String(pid) === String(projectId) && bname === oldName) {
+                            btn.setAttribute('data-board-name', newName);
+                            const card = btn.closest('.quick-board-card');
+                            if (card) {
+                                const titleEl = card.querySelector('h4');
+                                if (titleEl) titleEl.textContent = newName;
+                                // rebind card click to use new board name
+                                card.onclick = () => {
+                                    currentProjectId = projectId;
+                                    const projEl = card.querySelector('.board-project');
+                                    currentProjectName = projEl ? projEl.textContent : currentProjectName;
+                                    currentBoardName = newName;
+                                    previousPage = 'project';
+                                    showBoard();
+                                };
+                                // update action buttons
+                                const renameBtn = card.querySelector('.rename-btn');
+                                if (renameBtn) renameBtn.setAttribute('onclick', "event.stopPropagation(); promptRenameBoardFromHome('" + projectId + "', '" + escapeJs(newName) + "')");
+                                const delBtn = card.querySelector('.delete-btn');
+                                if (delBtn) delBtn.setAttribute('onclick', "event.stopPropagation(); deleteBoardFromHome('" + escapeJs(newName) + "', '" + projectId + "')");
+                            }
+                        }
+                    });
+                } catch (e) {}
             } else {
                 if (!boardSelectPage.classList.contains('hidden')) {
-                    loadProjectBoards();
+                    // Update the single renamed card inline to avoid flicker
+                    try {
+                        const cards = document.querySelectorAll('#boardList .quick-board-card');
+                        cards.forEach(c => {
+                            const titleEl = c.querySelector('h4');
+                            const projEl = c.querySelector('.board-project');
+                            if (titleEl && titleEl.textContent === oldName) {
+                                titleEl.textContent = newName;
+                                if (projEl) projEl.textContent = currentProjectName || projEl.textContent;
+                                // also update star buttons' data-board-name
+                                const starBtn = c.querySelector('.star-btn');
+                                if (starBtn) starBtn.setAttribute('data-board-name', newName);
+                            }
+                        });
+                    } catch (e) {}
                 }
             }
             updateStarsOnBoardRenamed(projectId, oldName, newName);
@@ -3756,7 +3783,41 @@ function renameProjectFromHome(projectId, currentName) {
                     updateBoardHeader();
                     if (!boardSelectPage.classList.contains('hidden')) { loadProjectBoards(); }
                 }
-                loadUserProjects();
+                // Inline updates on homepage instead of full reload to avoid flicker
+                try {
+                    // Update project cards in projectsList
+                    const projectsList = document.getElementById('projectsList');
+                    if (projectsList) {
+                        projectsList.querySelectorAll('.project-card').forEach(card => {
+                            const renameBtn = card.querySelector('.project-card-actions .rename-btn');
+                            const delBtn = card.querySelector('.project-card-actions .delete-btn');
+                            const on1 = renameBtn ? (renameBtn.getAttribute('onclick') || '') : '';
+                            const on2 = delBtn ? (delBtn.getAttribute('onclick') || '') : '';
+                            if (on1.includes("'" + projectId + "'") || on2.includes("'" + projectId + "'")) {
+                                const h3 = card.querySelector('h3');
+                                if (h3) { h3.innerHTML = `<span class="project-icon" data-icon="folder"></span>${escapeHtml(newName)}`; try { renderIconsInDom(h3); } catch (e) {} }
+                                if (renameBtn) renameBtn.setAttribute('onclick', `event.stopPropagation(); renameProjectFromHome('${projectId}', '${escapeJs(newName)}')`);
+                                card.onclick = () => selectProject(projectId, newName);
+                            }
+                        });
+                    }
+                    // Update quick access board cards' project label and click handler
+                    document.querySelectorAll(`#quickAccessBoards .star-btn[data-project-id="${projectId}"]`).forEach(btn => {
+                        const card = btn.closest('.quick-board-card');
+                        if (card) {
+                            const projEl = card.querySelector('.board-project');
+                            if (projEl) projEl.textContent = newName;
+                            card.onclick = () => {
+                                currentProjectId = projectId;
+                                currentProjectName = newName;
+                                const titleEl = card.querySelector('h4');
+                                currentBoardName = titleEl ? titleEl.textContent : currentBoardName;
+                                previousPage = 'project';
+                                showBoard();
+                            };
+                        }
+                    });
+                } catch (e) {}
                 updateStarsOnProjectRenamed(projectId, newName);
                 uiToast('项目重命名成功','success');
             } else {
