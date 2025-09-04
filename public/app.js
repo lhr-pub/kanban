@@ -626,7 +626,7 @@ async function loadUserProjects() {
                     </div>
                     ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
                     <div class="board-card-actions">
-                        <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
+                        <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="重命名">✎</button>
                         <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
                     </div>
                 `;
