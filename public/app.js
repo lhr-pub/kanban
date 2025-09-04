@@ -241,6 +241,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('exportBtn').addEventListener('click', exportMarkdown);
     document.getElementById('importBtn').addEventListener('click', importBoard);
     document.getElementById('importTextBtn').addEventListener('click', openImportText);
+    document.getElementById('exportJsonBtn').addEventListener('click', exportJSON);
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
@@ -5654,3 +5655,28 @@ function syncStarButtons(){
         try { syncStarButtons(); } catch(e){}
     };
 })();
+
+// 导出JSON
+async function exportJSON() {
+    try {
+        const response = await fetch(`/api/export-json/${currentProjectId}/${encodeURIComponent(currentBoardName)}`);
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${currentProjectName}-${currentBoardName}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        } else {
+            const text = await response.text().catch(()=> '');
+            console.error('Export JSON error:', response.status, text);
+            uiToast('导出失败','error');
+        }
+    } catch (error) {
+        console.error('Export JSON error:', error);
+        uiToast('导出失败','error');
+    }
+}

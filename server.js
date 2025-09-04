@@ -1434,6 +1434,25 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
     res.send(markdown);
 });
 
+// 导出JSON API
+app.get('/api/export-json/:projectId/:boardName', (req, res) => {
+    const { projectId, boardName } = req.params;
+    const decodedBoardName = decodeURIComponent(boardName);
+    const boardFile = path.join(dataDir, `${projectId}_${decodedBoardName}.json`);
+
+    const boardData = readJsonFile(boardFile, {
+        todo: [],
+        doing: [],
+        done: [],
+        archived: [],
+        lists: null
+    });
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${decodedBoardName}.json"`);
+    res.send(JSON.stringify(boardData));
+});
+
 // WebSocket处理
 wss.on('connection', (ws) => {
     console.log('New WebSocket connection');
