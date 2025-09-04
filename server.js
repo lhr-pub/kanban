@@ -1429,6 +1429,10 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
         }
     });
 
+    // 禁止缓存，避免浏览器对重复下载的缓存优化导致的点击无反应
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${decodedBoardName}.md"`);
     res.send(markdown);
@@ -1448,6 +1452,10 @@ app.get('/api/export-json/:projectId/:boardName', (req, res) => {
         lists: null
     });
 
+    // 禁止缓存
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${decodedBoardName}.json"`);
     res.send(JSON.stringify(boardData));

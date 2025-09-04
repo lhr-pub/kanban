@@ -2400,20 +2400,82 @@ function showCardEditing(cardId, user, editing) {
     }
 }
 
+// 安全触发下载，避免立即撤销 URL 导致的二次下载失效
+function triggerBlobDownload(blob, filename) {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    // 使用同步点击，但延迟撤销 URL，兼容部分浏览器
+    a.click();
+    // 延迟移除与撤销，确保下载流程已开始（修复再次点击无反应问题）
+    setTimeout(() => {
+        try { document.body.removeChild(a); } catch (_) {}
+        try { window.URL.revokeObjectURL(url); } catch (_) {}
+    }, 200);
+}
+
+// 通过临时 <a> 直接触发下载（首选方案）
+function anchorDownload(url, filename){
+    try {
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        // 提供文件名提示；服务器端也会通过 Content-Disposition 指定
+        if (filename) a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { try { document.body.removeChild(a); } catch(_){} }, 200);
+        return true;
+    } catch(_) {
+        return false;
+    }
+}
+
+// 通过页面导航触发下载，规避“多文件下载阻止”策略
+function navigateDownload(url){
+    try {
+        const finalUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        window.location.href = finalUrl;
+        return true;
+    } catch(_) {
+        return false;
+    }
+}
+
+// 使用隐藏 iframe 方式下载，避免部分浏览器对重复下载的限制
+function directDownload(url){
+    try {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        // 加时间戳避免缓存
+        iframe.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        document.body.appendChild(iframe);
+        // 一段时间后清理
+        setTimeout(() => { try { document.body.removeChild(iframe); } catch(_){} }, 15000);
+        return true;
+    } catch(_) {
+        return false;
+    }
+}
+
 // 导出Markdown
 async function exportMarkdown() {
+    try { console.debug('[IO] exportMarkdown triggered', { projectId: currentProjectId, boardName: currentBoardName }); } catch(_){ }
+    // 直接通过 <a> 触发下载（更稳定，点击即下载）
+    const url = `/api/export/${currentProjectId}/${encodeURIComponent(currentBoardName)}`;
+    if (anchorDownload(url, `${currentProjectName}-${currentBoardName}.md`)) return;
+    if (navigateDownload(url)) return;
+    // 回退：隐藏 iframe
+    if (directDownload(url)) return;
+    // 最后回退到 Blob 方式
     try {
-        const response = await fetch(`/api/export/${currentProjectId}/${encodeURIComponent(currentBoardName)}`);
+        const response = await fetch(url);
         if (response.ok) {
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${currentProjectName}-${currentBoardName}.md`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
+            triggerBlobDownload(blob, `${currentProjectName}-${currentBoardName}.md`);
         } else {
             const text = await response.text().catch(()=> '');
             console.error('Export error:', response.status, text);
@@ -5657,18 +5719,17 @@ function syncStarButtons(){
 
 // 导出JSON
 async function exportJSON() {
+    try { console.debug('[IO] exportJSON triggered', { projectId: currentProjectId, boardName: currentBoardName }); } catch(_){ }
+    const url = `/api/export-json/${currentProjectId}/${encodeURIComponent(currentBoardName)}`;
+    if (anchorDownload(url, `${currentProjectName}-${currentBoardName}.json`)) return;
+    if (navigateDownload(url)) return;
+    if (directDownload(url)) return;
+    // 回退到 Blob 方式
     try {
-        const response = await fetch(`/api/export-json/${currentProjectId}/${encodeURIComponent(currentBoardName)}`);
+        const response = await fetch(url);
         if (response.ok) {
             const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${currentProjectName}-${currentBoardName}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
+            triggerBlobDownload(blob, `${currentProjectName}-${currentBoardName}.json`);
         } else {
             const text = await response.text().catch(()=> '');
             console.error('Export JSON error:', response.status, text);
