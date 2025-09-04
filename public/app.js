@@ -305,6 +305,14 @@ document.addEventListener('DOMContentLoaded', function() {
     // 绑定键盘事件
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
+            // Do not close edit/drawer if cursor is inside an editable field
+            try {
+                const ae = document.activeElement;
+                const isEditable = ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.isContentEditable);
+                const inEditModal = isEditable && editModal && !editModal.classList.contains('hidden') && editModal.contains(ae);
+                const inDrawer = isEditable && typeof drawerEl !== 'undefined' && drawerEl && drawerEl.classList.contains('open') && drawerEl.contains(ae);
+                if (inEditModal || inDrawer) { e.preventDefault(); e.stopPropagation(); return; }
+            } catch (_) {}
             if (!editModal.classList.contains('hidden')) {
                 closeEditModal();
             }
@@ -2028,7 +2036,16 @@ function updateCardImmediately(cardId, updates){
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { saveCardFromDrawer(); }
     });
     document.addEventListener('keydown', (e)=>{
-        if (drawerCardId && e.key === 'Escape') closeCardModal();
+        if (drawerCardId && e.key === 'Escape') {
+            // Do not close drawer if focus is inside an editable field
+            try {
+                const ae = document.activeElement;
+                const isEditable = ae && (ae.tagName === 'TEXTAREA' || ae.tagName === 'INPUT' || ae.isContentEditable);
+                const inDrawer = isEditable && drawerEl && drawerEl.classList.contains('open') && drawerEl.contains(ae);
+                if (inDrawer) { e.preventDefault(); e.stopPropagation(); return; }
+            } catch(_){}
+            closeCardModal();
+        }
     });
 })();
 
@@ -4136,6 +4153,13 @@ function uiPrompt(message, defaultValue, title) {
         footer.appendChild(ok);
         document.body.appendChild(overlay);
         setTimeout(() => { input.focus(); input.select(); }, 0);
+        // Ensure single-press Esc/Enter works even when focus is on the input
+        input.addEventListener('keydown', (e) => {
+            const composing = e.isComposing || e.keyCode === 229;
+            if (composing) return;
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}; cancel.click(); }
+            if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}; ok.click(); }
+        }, true);
         overlay.addEventListener('keydown', (e) => {
             const composing = e.isComposing || e.keyCode === 229;
             if (!composing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); e.stopPropagation(); try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){} }
@@ -4931,6 +4955,18 @@ function openPasswordDialog(title, needOld) {
         footer.appendChild(ok);
         document.body.appendChild(overlay);
         setTimeout(() => { (needOld ? oldRow.input : newRow.input).focus(); }, 0);
+        const bindInstantKeys = (el) => {
+            if (!el) return;
+            el.addEventListener('keydown', (e) => {
+                const composing = e.isComposing || e.keyCode === 229;
+                if (composing) return;
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){}; cancel.click(); }
+                if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){}; ok.click(); }
+            }, true);
+        };
+        if (needOld && oldRow && oldRow.input) bindInstantKeys(oldRow.input);
+        bindInstantKeys(newRow.input);
+        bindInstantKeys(confirmRow.input);
         overlay.addEventListener('keydown', (e) => {
             const composing = e.isComposing || e.keyCode === 229;
             if (!composing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){} }
@@ -5038,10 +5074,27 @@ document.addEventListener('keydown', function(e){
 document.addEventListener('keyup', function(e){
     if (e.key !== 'Escape') return;
     if (e.isComposing) return;
+    let handled = false;
     const dynamicModals = Array.from(document.querySelectorAll('body > .modal')).filter(m => !m.id && !m.classList.contains('hidden'));
     const top = dynamicModals.length ? dynamicModals[dynamicModals.length - 1] : null;
-    if (!top) return;
-    try { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}
+    if (top) {
+        const btn = top.querySelector('.close-btn');
+        if (btn) { try { btn.click(); handled = true; } catch(_){} }
+    } else {
+        const cp = document.getElementById('createProjectForm');
+        if (!handled && cp && !cp.classList.contains('hidden')) { try { hideCreateProjectForm(); handled = true; } catch(_){} }
+        const jp = document.getElementById('joinProjectForm');
+        if (!handled && jp && !jp.classList.contains('hidden')) { try { hideJoinProjectForm(); handled = true; } catch(_){} }
+        const iv = document.getElementById('invitesModal');
+        if (!handled && iv && !iv.classList.contains('hidden')) { try { closeInvitesModal(); handled = true; } catch(_){} }
+        const mm = document.getElementById('membersModal');
+        if (!handled && mm && !mm.classList.contains('hidden')) { try { closeMembersModal(); handled = true; } catch(_){} }
+        if (!handled && typeof importModal !== 'undefined' && importModal && !importModal.classList.contains('hidden')) { try { cancelImport(); handled = true; } catch(_){} }
+        if (!handled && typeof editModal !== 'undefined' && editModal && !editModal.classList.contains('hidden')) { try { closeEditModal(); handled = true; } catch(_){} }
+    }
+    if (handled) {
+        try { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}
+    }
 }, true);
 // 为添加任务输入框绑定回车键事件
 ['todo', 'doing', 'done'].forEach(status => {
