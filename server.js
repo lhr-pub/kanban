@@ -730,8 +730,9 @@ app.post('/api/create-project', (req, res) => {
         boards: [] // 初始不创建默认看板
     };
 
-    // 更新用户项目列表
-    users[username].projects.push(projectId);
+    // 更新用户项目列表（新项目置前）
+    users[username].projects = Array.isArray(users[username].projects) ? users[username].projects : [];
+    users[username].projects.unshift(projectId);
 
     if (writeJsonFile(projectsFile, projects) &&
         writeJsonFile(usersFile, users)) {
@@ -2091,7 +2092,7 @@ app.post('/api/accept-invite', (req, res) => {
     if (!project.members.includes(username)) project.members.push(username);
     if (users[username]) {
         users[username].projects = Array.isArray(users[username].projects) ? users[username].projects : [];
-        if (!users[username].projects.includes(projectId)) users[username].projects.push(projectId);
+        if (!users[username].projects.includes(projectId)) users[username].projects.unshift(projectId);
     }
     if (!writeJsonFile(projectsFile, projects) || !writeJsonFile(usersFile, users)) {
         return res.status(500).json({ message: '保存失败' });
@@ -2154,7 +2155,7 @@ app.post('/api/approve-join', (req, res) => {
     const user = users[username];
     if (user) {
         user.projects = Array.isArray(user.projects) ? user.projects : [];
-        if (!user.projects.includes(projectId)) user.projects.push(projectId);
+        if (!user.projects.includes(projectId)) user.projects.unshift(projectId);
     }
     if (!writeJsonFile(projectsFile, projects) || !writeJsonFile(usersFile, users)) {
         return res.status(500).json({ message: '保存失败' });

@@ -4564,7 +4564,53 @@ async function acceptInvite(projectId, projectName) {
             const pname = projectName || '项目';
             uiToast(`已接受邀请，已加入「${pname}」`,'success');
             loadUserInvites();
-            loadUserProjects();
+
+            const projectsList = document.getElementById('projectsList');
+            const quickAccessBoards = document.getElementById('quickAccessBoards');
+            if (projectsList && projectsList.firstElementChild && projectsList.firstElementChild.classList.contains('empty-state')) {
+                projectsList.innerHTML = '';
+            }
+            if (quickAccessBoards && quickAccessBoards.firstElementChild && quickAccessBoards.firstElementChild.classList.contains('empty-state')) {
+                quickAccessBoards.innerHTML = '';
+            }
+
+            let boardsData = { boards: [], owner: '', inviteCode: '' };
+            try {
+                const resp3 = await fetch(`/api/project-boards/${projectId}`);
+                boardsData = await resp3.json();
+            } catch (e) {}
+
+            const newProject = {
+                id: projectId,
+                name: pname,
+                inviteCode: boardsData.inviteCode || '',
+                memberCount: Array.isArray(result.members) ? result.members.length : 1,
+                boardCount: Array.isArray(boardsData.boards) ? boardsData.boards.length : 0,
+                created: new Date().toISOString(),
+                owner: boardsData.owner || ''
+            };
+
+            const projectCard = document.createElement('div');
+            projectCard.className = 'project-card project-card-with-actions';
+            projectCard.onclick = () => selectProject(newProject.id, newProject.name);
+            projectCard.innerHTML = `
+                <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(newProject.name)}</h3>
+                <div class="project-info">
+                    邀请码: <span class="invite-code">${newProject.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(newProject.inviteCode)}')">复制</button><br>
+                    成员: ${newProject.memberCount}人<br>
+                    看板: ${newProject.boardCount}个<br>
+                    创建于: ${new Date(newProject.created).toLocaleDateString()}
+                </div>
+                <div class="project-card-actions">
+                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
+                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
+                </div>
+                <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
+            `;
+            if (projectsList) {
+                projectsList.insertBefore(projectCard, projectsList.firstChild);
+                renderIconsInDom(projectCard);
+            }
         } else uiToast(result.message || '操作失败','error');
     } catch (e) { uiToast('操作失败','error'); }
 }
