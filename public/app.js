@@ -687,11 +687,14 @@ async function loadUserProjects() {
                     创建于: ${new Date(project.created).toLocaleDateString()}
                 </div>
                 <div class="project-card-actions">
-                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button>
-                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>
+                    ${currentUser === (project.owner || '') ? `<button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button><button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>` : ''}
                 </div>
                 <div class="card-owner">所有者：${escapeHtml(project.owner || '')}</div>
             `;
+            if (currentUser !== (project.owner || '')) {
+                const actionsEl = projectCard.querySelector('.project-card-actions');
+                if (actionsEl) actionsEl.innerHTML = '';
+            }
             plFrag.appendChild(projectCard);
         });
 
@@ -763,7 +766,7 @@ async function renameProject() {
     fetch('/api/rename-project', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: currentProjectId, newName })
+        body: JSON.stringify({ projectId: currentProjectId, newName, actor: currentUser })
     }).then(async (response) => {
         const result = await response.json().catch(() => ({}));
         if (response.ok) {
@@ -849,6 +852,10 @@ async function createProject() {
                 </div>
                 <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
             `;
+            if (currentUser !== (newProject.owner || '')) {
+                const actionsEl = projectCard.querySelector('.project-card-actions');
+                if (actionsEl) actionsEl.innerHTML = '';
+            }
             if (projectsList) {
                 projectsList.insertBefore(projectCard, projectsList.firstChild);
                 renderIconsInDom(projectCard);
@@ -3737,7 +3744,7 @@ function renameProjectFromHome(projectId, currentName) {
         fetch('/api/rename-project', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId, newName })
+            body: JSON.stringify({ projectId, newName, actor: currentUser })
         }).then(async (response) => {
             const result = await response.json().catch(() => ({}));
             if (response.ok) {
@@ -3776,6 +3783,7 @@ function deleteProject() {
             const result = await response.json().catch(() => ({}));
             if (response.ok) {
                 if (socket) { try { socket.close(); } catch (e) {} }
+                const deletedProjectId = currentProjectId;
                 currentProjectId = null;
                 currentProjectName = null;
                 currentBoardName = null;
@@ -3786,6 +3794,8 @@ function deleteProject() {
                     showProjectPage();
                 }
                 loadUserProjects();
+                try { purgeStarsForProject(deletedProjectId); } catch(e) {}
+                try { renderStarredBoards(); } catch(e) {}
                 uiToast('项目删除成功','success');
             } else {
                 uiToast(result.message || '项目删除失败','error');
@@ -3820,6 +3830,8 @@ function deleteProjectFromHome(projectId, projectName) {
                     showProjectPage();
                 }
                 loadUserProjects();
+                try { purgeStarsForProject(projectId); } catch(e) {}
+                try { renderStarredBoards(); } catch(e) {}
                 uiToast('项目删除成功','success');
             } else {
                 uiToast(result.message || '项目删除失败','error');
@@ -4414,7 +4426,7 @@ function renderMembersList() {
         btn.addEventListener('click', async (e) => {
             const username = e.currentTarget.getAttribute('data-remove');
             if (!username) return;
-            const ok = await uiConfirm(`确定移除成员 “${username}” 吗？`, '移除成员');
+            const ok = await uiConfirm(`确定移除成员 "${username}" 吗？`, '移除成员');
             if (!ok) return;
             try {
                 const resp = await fetch('/api/remove-project-member', {
@@ -4434,6 +4446,8 @@ function renderMembersList() {
                         localStorage.removeItem('kanbanCurrentBoardName');
                         showProjectPage();
                         loadUserProjects();
+                        try { purgeStarsForProject(currentProjectId); } catch(e) {}
+                        try { renderStarredBoards(); } catch(e) {}
                         uiToast('已退出项目','success');
                         return;
                     }
@@ -5297,6 +5311,162 @@ function syncStarButtons(){
     const _toggle = toggleBoardStar;
     toggleBoardStar = function(projectId, boardName, projectName, btn){
         _toggle(projectId, boardName, projectName, btn);
+        try { syncStarButtons(); } catch(e){}
+    };
+})();
+
+// === Starred boards (server-persisted) ===
+let cachedStars = [];
+async function fetchUserStars(){
+    if (!currentUser) { cachedStars = []; return cachedStars; }
+    try {
+        const resp = await fetch(`/api/user-stars/${currentUser}`);
+        const data = await resp.json();
+        cachedStars = (resp.ok && data && Array.isArray(data.stars)) ? data.stars : [];
+    } catch(e) { cachedStars = []; }
+    return cachedStars;
+}
+function loadStarredBoards(){ return Array.isArray(cachedStars) ? cachedStars : []; }
+function saveStarredBoards(list){ cachedStars = Array.isArray(list) ? list : []; }
+function isBoardStarred(projectId, boardName){
+    const list = loadStarredBoards();
+    return list.some(it => it && it.projectId === projectId && it.boardName === boardName);
+}
+async function toggleBoardStar(projectId, boardName, projectName, btn){
+    try {
+        const resp = await fetch('/api/user-stars/toggle', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, projectId, boardName, projectName })
+        });
+        const data = await resp.json().catch(()=>({}));
+        if (resp.ok && data && Array.isArray(data.stars)) {
+            saveStarredBoards(data.stars);
+            if (btn) btn.classList.toggle('active', !!data.starred);
+            renderStarredBoards();
+            try { syncStarButtons(); } catch(e) {}
+            return;
+        }
+    } catch(e) {}
+    // 失败时轻提示
+    uiToast('星标操作失败','error');
+}
+function removeStarIfExists(projectId, boardName){
+    const list = loadStarredBoards();
+    const idx = list.findIndex(it => it && it.projectId === projectId && it.boardName === boardName);
+    if (idx !== -1){ list.splice(idx,1); saveStarredBoards(list); renderStarredBoards(); }
+}
+function purgeStarsForProject(projectId){
+    const list = loadStarredBoards();
+    const next = list.filter(it => it && it.projectId !== projectId);
+    if (next.length !== list.length){ saveStarredBoards(next); renderStarredBoards(); }
+}
+function updateStarsOnBoardRenamed(projectId, oldName, newName){
+    const list = loadStarredBoards();
+    let changed = false;
+    list.forEach(it => { if (it.projectId === projectId && it.boardName === oldName){ it.boardName = newName; changed = true; } });
+    if (changed){ saveStarredBoards(list); renderStarredBoards(); }
+}
+function updateStarsOnProjectRenamed(projectId, newName){
+    const list = loadStarredBoards();
+    let changed = false;
+    list.forEach(it => { if (it.projectId === projectId){ it.projectName = newName; changed = true; } });
+    if (changed){ saveStarredBoards(list); renderStarredBoards(); }
+}
+function ensureStarNames(projects){
+    try {
+        const map = Object.create(null);
+        (projects||[]).forEach(p => { if (p && p.id) map[p.id] = p.name; });
+        const list = loadStarredBoards();
+        let changed = false;
+        list.forEach(it => { if (it && (!it.projectName || it.projectName==='')) { it.projectName = map[it.projectId] || it.projectName || ''; changed = true; } });
+        if (changed) saveStarredBoards(list);
+    } catch(e){}
+}
+async function renderStarredBoards(){
+    const grid = document.getElementById('starredBoards');
+    if (!grid) return;
+    if (!cachedStars || !cachedStars.length) { await fetchUserStars(); }
+    const list = loadStarredBoards().slice().sort((a,b)=> (b.starredAt||0) - (a.starredAt||0));
+    if (list.length === 0){
+        grid.innerHTML = '<div class="empty-state">暂无星标看板</div>';
+        return;
+    }
+    grid.innerHTML = '';
+    list.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'quick-board-card board-card-with-actions';
+        card.onclick = () => {
+            currentProjectId = item.projectId;
+            currentProjectName = item.projectName || currentProjectName;
+            currentBoardName = item.boardName;
+            previousPage = 'project';
+            showBoard();
+        };
+        const isStar = isBoardStarred(item.projectId, item.boardName);
+        card.innerHTML = `
+            <span class="board-icon" data-icon="boards"></span>
+            <div class="board-details">
+                <h4>${escapeHtml(item.boardName)}</h4>
+                <span class="board-project">${escapeHtml(item.projectName || '')}</span>
+            </div>
+            <div class="board-card-actions">
+                <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${item.projectId}" data-board-name="${escapeHtml(item.boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${item.projectId}', '${escapeJs(item.boardName)}', '${escapeJs(item.projectName || '')}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+    renderIconsInDom(grid);
+}
+function toggleBoardStarFromHome(projectId, boardName, projectName, btn){
+    toggleBoardStar(projectId, boardName, projectName, btn);
+}
+
+function syncStarButtons(){
+    try {
+        const list = loadStarredBoards();
+        const set = new Set(list.map(it => `${it.projectId}::${it.boardName}`));
+        document.querySelectorAll('.board-action-btn.star-btn').forEach(btn => {
+            const pid = btn.getAttribute('data-project-id');
+            const bname = btn.getAttribute('data-board-name');
+            if (!pid || !bname) return;
+            const key = `${pid}::${bname}`;
+            const active = set.has(key);
+            btn.classList.toggle('active', active);
+            btn.title = active ? '取消星标' : '加星';
+        });
+    } catch(e){}
+}
+// After any render, call syncStarButtons
+(function(){
+    const origRenderStarredBoards = renderStarredBoards;
+    renderStarredBoards = async function(){
+        await origRenderStarredBoards.apply(this, arguments);
+        try { syncStarButtons(); } catch(e){}
+    };
+})();
+// Hook into loadProjectBoards completion to sync
+(function(){
+    const origLoadProjectBoards = loadProjectBoards;
+    loadProjectBoards = async function(){
+        await origLoadProjectBoards.apply(this, arguments);
+        try { if (currentUser) await fetchUserStars(); } catch(e){}
+        try { syncStarButtons(); } catch(e){}
+    };
+})();
+// Update after homepage projects/boards load
+(function(){
+    const origLoadUserProjects = loadUserProjects;
+    loadUserProjects = async function(){
+        await origLoadUserProjects.apply(this, arguments);
+        try { if (currentUser) await fetchUserStars(); } catch(e){}
+        try { syncStarButtons(); } catch(e){}
+    };
+})();
+// Update on toggle as well
+(function(){
+    const _toggle = toggleBoardStar;
+    toggleBoardStar = async function(projectId, boardName, projectName, btn){
+        await _toggle(projectId, boardName, projectName, btn);
         try { syncStarButtons(); } catch(e){}
     };
 })();

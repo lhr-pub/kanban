@@ -700,6 +700,55 @@ app.get('/api/user-projects/:username', (req, res) => {
     res.json(userProjects);
 });
 
+// === User Stars (server-side persistence) ===
+app.get('/api/user-stars/:username', (req, res) => {
+    const { username } = req.params;
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    user.stars = Array.isArray(user.stars) ? user.stars : [];
+    // return a copy to avoid accidental mutation
+    return res.json({ stars: user.stars.slice() });
+});
+
+app.post('/api/user-stars/toggle', (req, res) => {
+    const { username, projectId, boardName, projectName } = req.body || {};
+    if (!username || !projectId || !boardName) {
+        return res.status(400).json({ message: '缺少参数' });
+    }
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+
+    // 只能对自己参与的项目进行星标
+    const isMember = Array.isArray(project.members) && project.members.includes(username);
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以设置星标' });
+
+    const exists = Array.isArray(project.boards) && project.boards.includes(boardName);
+    if (!exists) return res.status(404).json({ message: '看板不存在' });
+
+    user.stars = Array.isArray(user.stars) ? user.stars : [];
+    const idx = user.stars.findIndex(s => s && s.projectId === projectId && s.boardName === boardName);
+    let starred = false;
+    if (idx !== -1) {
+        user.stars.splice(idx, 1);
+        starred = false;
+    } else {
+        const pn = projectName || project.name || '';
+        user.stars.unshift({ projectId, boardName, projectName: pn, starredAt: Date.now() });
+        starred = true;
+    }
+    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ starred, stars: user.stars.slice() });
+});
+// === End User Stars ===
+
 app.post('/api/create-project', (req, res) => {
     const { username, projectName } = req.body;
 
@@ -834,7 +883,7 @@ app.get('/api/project-boards/:projectId', (req, res) => {
 
 // 新增：重命名项目API
 app.post('/api/rename-project', (req, res) => {
-    const { projectId, newName } = req.body;
+    const { projectId, newName, actor } = req.body;
 
     if (!projectId || !newName) {
         return res.status(400).json({ message: '项目ID和新名称不能为空' });
@@ -853,9 +902,25 @@ app.post('/api/rename-project', (req, res) => {
         return res.status(404).json({ message: '项目不存在' });
     }
 
+    // 权限校验：只有项目所有者可以重命名项目
+    if (!actor || actor !== project.owner) {
+        return res.status(403).json({ message: '只有项目所有者可以重命名项目' });
+    }
+
     project.name = sanitized;
 
     if (writeJsonFile(projectsFile, projects)) {
+        // 同步更新所有用户的星标中的项目名称
+        try {
+            const usersFile = path.join(dataDir, 'users.json');
+            const users = readJsonFile(usersFile, {});
+            let changed = false;
+            for (const [uname, u] of Object.entries(users)) {
+                if (!u || !Array.isArray(u.stars)) continue;
+                u.stars.forEach(s => { if (s && s.projectId === projectId) { s.projectName = sanitized; changed = true; } });
+            }
+            if (changed) writeJsonFile(usersFile, users);
+        } catch (e) { console.warn('Update stars projectName warning:', e && e.message ? e.message : e); }
         // 通知该项目下所有看板的参与者
         try {
             (project.boards || []).forEach(boardName => {
@@ -945,6 +1010,10 @@ app.post('/api/remove-project-member', (req, res) => {
     const user = users[username];
     if (user && Array.isArray(user.projects)) {
         users[username].projects = user.projects.filter(id => id !== projectId);
+    }
+    // 同时清理该用户在该项目下的星标
+    if (user && Array.isArray(user.stars)) {
+        users[username].stars = user.stars.filter(s => s && s.projectId !== projectId);
     }
 
     const ok = writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users);
@@ -1044,10 +1113,13 @@ app.delete('/api/delete-project', (req, res) => {
             console.warn('Clean backups warning:', e.message);
         }
 
-        // 从所有用户中移除此项目
+        // 从所有用户中移除此项目，并清理星标
         for (const [username, user] of Object.entries(users)) {
             if (Array.isArray(user.projects)) {
                 users[username].projects = user.projects.filter(id => id !== projectId);
+            }
+            if (Array.isArray(user.stars)) {
+                users[username].stars = user.stars.filter(s => s && s.projectId !== projectId);
             }
         }
 
@@ -1147,6 +1219,18 @@ app.delete('/api/delete-board', (req, res) => {
         project.boards.splice(boardIndex, 1);
 
         if (writeJsonFile(projectsFile, projects)) {
+            // 同步清理所有用户在该项目该看板的星标
+            try {
+                const usersFile = path.join(dataDir, 'users.json');
+                const users = readJsonFile(usersFile, {});
+                let changed = false;
+                for (const [uname, u] of Object.entries(users)) {
+                    if (!u || !Array.isArray(u.stars)) continue;
+                    const next = u.stars.filter(s => !(s && s.projectId === projectId && s.boardName === boardName));
+                    if (next.length !== u.stars.length) { u.stars = next; changed = true; }
+                }
+                if (changed) writeJsonFile(usersFile, users);
+            } catch (e) { console.warn('Clean stars on board delete warning:', e && e.message ? e.message : e); }
             res.json({ message: '看板删除成功' });
         } else {
             res.status(500).json({ message: '删除看板失败' });
@@ -1171,7 +1255,9 @@ app.post('/api/rename-board', (req, res) => {
     }
 
     const projectsFile = path.join(dataDir, 'projects.json');
+    const usersFile = path.join(dataDir, 'users.json');
     const projects = readJsonFile(projectsFile, {});
+    const users = readJsonFile(usersFile, {});
 
     const project = projects[projectId];
     if (!project) {
@@ -1217,18 +1303,15 @@ app.post('/api/rename-board', (req, res) => {
             return res.status(500).json({ message: '保存项目数据失败' });
         }
 
-        // 重命名对应备份文件前缀（尽力而为，不影响主流程）
+        // 同步更新所有用户星标中的看板名称
         try {
-            const oldPrefix = `${projectId}_${oldName}_`;
-            const newPrefix = `${projectId}_${sanitizedNew}_`;
-            const files = fs.readdirSync(backupsDir).filter(f => f.startsWith(oldPrefix));
-            files.forEach(f => {
-                const newBackup = path.join(backupsDir, f.replace(oldPrefix, newPrefix));
-                fs.renameSync(path.join(backupsDir, f), newBackup);
-            });
-        } catch (e) {
-            console.warn('Rename backups warning:', e.message);
-        }
+            let changed = false;
+            for (const [uname, u] of Object.entries(users)) {
+                if (!u || !Array.isArray(u.stars)) continue;
+                u.stars.forEach(s => { if (s && s.projectId === projectId && s.boardName === oldName) { s.boardName = sanitizedNew; changed = true; } });
+            }
+            if (changed) writeJsonFile(usersFile, users);
+        } catch (e) { console.warn('Update stars boardName warning:', e && e.message ? e.message : e); }
 
         // 通知旧看板参与者
         broadcastToBoard(projectId, oldName, {
