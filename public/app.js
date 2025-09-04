@@ -2463,7 +2463,6 @@ function directDownload(url){
 
 // 导出Markdown
 async function exportMarkdown() {
-    try { console.debug('[IO] exportMarkdown triggered', { projectId: currentProjectId, boardName: currentBoardName }); } catch(_){ }
     // 直接通过 <a> 触发下载（更稳定，点击即下载）
     const url = `/api/export/${currentProjectId}/${encodeURIComponent(currentBoardName)}`;
     if (anchorDownload(url, `${currentProjectName}-${currentBoardName}.md`)) return;
@@ -5719,7 +5718,6 @@ function syncStarButtons(){
 
 // 导出JSON
 async function exportJSON() {
-    try { console.debug('[IO] exportJSON triggered', { projectId: currentProjectId, boardName: currentBoardName }); } catch(_){ }
     const url = `/api/export-json/${currentProjectId}/${encodeURIComponent(currentBoardName)}`;
     if (anchorDownload(url, `${currentProjectName}-${currentBoardName}.json`)) return;
     if (navigateDownload(url)) return;
