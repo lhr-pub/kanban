@@ -569,7 +569,6 @@ async function loadUserProjects() {
             const pl = document.getElementById('projectsList');
             if (qab) qab.innerHTML = '<div class="empty-state">还没有加入任何项目，请先创建或加入一个项目！</div>';
             if (pl) pl.innerHTML = '<div class="empty-state">还没有项目，创建第一个项目开始协作吧！</div>';
-            renderStarredBoards();
             return;
         }
 
@@ -618,7 +617,6 @@ async function loadUserProjects() {
                 };
 
                 const owner = (boardsData.boardOwners && boardsData.boardOwners[boardName]) || '';
-                const isStar = isBoardStarred(project.id, boardName);
 
                 boardCard.innerHTML = `
                     <span class="board-icon" data-icon="boards"></span>
@@ -628,7 +626,6 @@ async function loadUserProjects() {
                     </div>
                     ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
                     <div class="board-card-actions">
-                        <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${project.id}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${project.id}', '${escapeJs(boardName)}', '${escapeJs(project.name)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                         <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
                         <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
                     </div>
@@ -668,8 +665,6 @@ async function loadUserProjects() {
             projectsList.appendChild(plFrag);
             renderIconsInDom(projectsList);
         }
-        ensureStarNames(projects);
-        renderStarredBoards();
 
     } catch (error) {
         console.error('Load projects error:', error);
@@ -903,7 +898,6 @@ async function loadProjectBoards() {
 
             const owner = (window.currentBoardOwners && window.currentBoardOwners[boardName]) || '';
             const canManage = (currentUser && (currentUser === window.currentProjectOwner || currentUser === owner));
-            const isStar = isBoardStarred(currentProjectId, boardName);
 
             boardCard.innerHTML = `
                 <div class="board-icon" style="display:none"></div>
@@ -912,10 +906,9 @@ async function loadProjectBoards() {
                     <span class="board-project">${escapeHtml(currentProjectName)}</span>
                 </div>
                 ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
-                <div class="board-card-actions">
-                    <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                    ${canManage ? `<button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
-                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
+                <div class="board-card-actions" ${canManage ? '' : 'style="display:none"'}>
+                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
+                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>
                 </div>
             `;
 
@@ -987,10 +980,9 @@ async function createBoard() {
                     <span class="board-project">${escapeHtml(currentProjectName)}</span>
                 </div>
                 ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
-                <div class="board-card-actions">
-                    <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                    ${canManage ? `<button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
-                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
+                <div class="board-card-actions" ${canManage ? '' : 'style="display:none"'}>
+                    <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
+                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>
                 </div>
             `;
             if (boardList) {
@@ -1029,8 +1021,6 @@ async function deleteBoard(boardName) {
 
         if (response.ok) {
             loadProjectBoards();
-            removeStarIfExists(currentProjectId, boardName);
-            renderStarredBoards();
             uiToast('看板删除成功！','success');
         } else {
             uiToast(result.message || '删除看板失败','error');
@@ -1063,8 +1053,6 @@ async function deleteBoardFromHome(boardName, projectId) {
 
         if (response.ok) {
             loadUserProjects();
-            removeStarIfExists(projectId, boardName);
-            renderStarredBoards();
             uiToast('看板删除成功！','success');
         } else {
             uiToast(result.message || '删除看板失败','error');
@@ -1162,7 +1150,6 @@ function handleWebSocketMessage(data) {
                 connectWebSocket();
                 loadBoardData();
             }
-            updateStarsOnBoardRenamed(data.projectId, data.oldName, data.newName);
             break;
         case 'project-renamed':
             if (data.projectId === currentProjectId) {
@@ -1175,7 +1162,6 @@ function handleWebSocketMessage(data) {
                     loadProjectBoards();
                 }
             }
-            updateStarsOnProjectRenamed(data.projectId, data.newName);
             break;
         // 新增：项目被删除
         case 'project-deleted':
@@ -1192,7 +1178,6 @@ function handleWebSocketMessage(data) {
                 loadUserProjects();
                 uiToast('当前项目已被删除','error');
             }
-            purgeStarsForProject(data.projectId);
             break;
         case 'member-removed':
             if (data.projectId === currentProjectId && data.username === currentUser) {
@@ -3562,12 +3547,11 @@ function enableListsDrag() {
 
 // 新增：重命名看板（项目看板页）
 function promptRenameBoard(oldName) {
-    try { hideBoardSwitcher(); } catch (e) {}
     return renameBoardRequest(currentProjectId, oldName, false);
 }
 
 // 新增：重命名看板（首页快捷看板）
-function promptRenameBoardFromHome(projectId, oldName) {
+function promptRenameBoardFromHome(oldName, projectId) {
     return renameBoardRequest(projectId, oldName, true);
 }
 
@@ -3587,7 +3571,6 @@ async function renameBoardRequest(projectId, oldName, isHome) {
         const result = await response.json();
         if (response.ok) {
             if (isHome) { loadUserProjects(); } else { loadProjectBoards(); }
-            updateStarsOnBoardRenamed(projectId, oldName, newName);
             if (projectId === currentProjectId && currentBoardName === oldName) {
                 currentBoardName = newName;
                 localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
@@ -3633,7 +3616,6 @@ function renameProjectFromHome(projectId, currentName) {
                     if (!boardSelectPage.classList.contains('hidden')) { loadProjectBoards(); }
                 }
                 loadUserProjects();
-                updateStarsOnProjectRenamed(projectId, newName);
                 uiToast('项目重命名成功','success');
             } else {
                 uiToast(result.message || '项目重命名失败','error');
@@ -3972,10 +3954,6 @@ function uiAlert(message, title) {
         footer.appendChild(ok);
         document.body.appendChild(overlay);
         setTimeout(() => ok.focus(), 0);
-        overlay.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){} }
-            if (e.key === 'Escape' || e.key === 'Enter') ok.click();
-        }, true);
     });
 }
 
@@ -3999,10 +3977,9 @@ function uiConfirm(message, title) {
         document.body.appendChild(overlay);
         setTimeout(() => ok.focus(), 0);
         overlay.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
             if (e.key === 'Escape') cancel.click();
             if (e.key === 'Enter') ok.click();
-        }, true);
+        });
     });
 }
 
@@ -4036,10 +4013,9 @@ function uiPrompt(message, defaultValue, title) {
         document.body.appendChild(overlay);
         setTimeout(() => { input.focus(); input.select(); }, 0);
         overlay.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
             if (e.key === 'Escape') cancel.click();
             if (e.key === 'Enter') ok.click();
-        }, true);
+        });
     });
 }
 
@@ -4571,19 +4547,6 @@ async function loadUserInvites() {
 function openInvitesModal() {
     const modal = document.getElementById('invitesModal');
     if (!modal) return;
-    // Refresh immediately on open
-    try { loadUserInvites(); } catch (e) {}
-    // Start lightweight polling while modal remains open
-    if (invitesRefreshTimer) { try { clearInterval(invitesRefreshTimer); } catch (e) {} }
-    invitesRefreshTimer = setInterval(() => {
-        const m = document.getElementById('invitesModal');
-        if (!m || m.classList.contains('hidden')) {
-            try { clearInterval(invitesRefreshTimer); } catch (e) {}
-            invitesRefreshTimer = null;
-            return;
-        }
-        try { loadUserInvites(); } catch (e) {}
-    }, 3000);
     modal.classList.remove('hidden');
 }
 
@@ -4591,11 +4554,6 @@ function closeInvitesModal() {
     const modal = document.getElementById('invitesModal');
     if (!modal) return;
     modal.classList.add('hidden');
-    // Stop polling when modal closed
-    if (invitesRefreshTimer) {
-        try { clearInterval(invitesRefreshTimer); } catch (e) {}
-        invitesRefreshTimer = null;
-    }
 }
 
 async function acceptInvite(projectId, projectName) {
@@ -4671,7 +4629,6 @@ async function declineInvite(projectId, projectName) {
 
 let membershipGuardTimer = null;
 let userProjectsLoadToken = 0;
-let invitesRefreshTimer = null;
 
 function forceExitCurrentProject(toastMsg) {
     if (!currentUser) { stopMembershipGuard(); return; }
@@ -4830,10 +4787,9 @@ function openPasswordDialog(title, needOld) {
         document.body.appendChild(overlay);
         setTimeout(() => { (needOld ? oldRow.input : newRow.input).focus(); }, 0);
         overlay.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
             if (e.key === 'Escape') cancel.click();
             if (e.key === 'Enter') ok.click();
-        }, true);
+        });
     });
 }
 
@@ -4847,261 +4803,3 @@ function ensureToastContainer() {
     }
     return c;
 }
-
-// 绑定模态框事件
-editModal.addEventListener('click', function(e) {
-    if (e.target === editModal) {
-        closeEditModal();
-    }
-});
-// 其他模态框键盘处理
-if (importModal) {
-    importModal.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); cancelImport(); }
-        if (e.key === 'Enter') { e.preventDefault(); confirmImport(); }
-    });
-}
-const invitesModalEl = document.getElementById('invitesModal');
-if (invitesModalEl) {
-    invitesModalEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); closeInvitesModal(); }
-    });
-}
-const membersModalEl = document.getElementById('membersModal');
-if (membersModalEl) {
-    membersModalEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); closeMembersModal(); }
-    });
-}
-const createProjectOverlay = document.getElementById('createProjectForm');
-if (createProjectOverlay) {
-    createProjectOverlay.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); hideCreateProjectForm(); }
-    });
-}
-const joinProjectOverlay = document.getElementById('joinProjectForm');
-if (joinProjectOverlay) {
-    joinProjectOverlay.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') { e.preventDefault(); hideJoinProjectForm(); }
-    });
-}
-// ... existing code ...
-// 绑定键盘事件
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        // Prefer closing dynamic modals (uiPrompt/uiConfirm/uiAlert/password) first
-        const dynamicModals = Array.from(document.querySelectorAll('body > .modal')).filter(m => !m.id && !m.classList.contains('hidden'));
-        const top = dynamicModals.length ? dynamicModals[dynamicModals.length - 1] : null;
-        if (top) {
-            const btn = top.querySelector('.close-btn');
-            if (btn) { e.preventDefault(); btn.click(); return; }
-        }
-        if (!editModal.classList.contains('hidden')) { closeEditModal(); }
-        if (!importModal.classList.contains('hidden')) { cancelImport(); }
-        const cp = document.getElementById('createProjectForm');
-        if (cp && !cp.classList.contains('hidden')) { hideCreateProjectForm(); }
-        const jp = document.getElementById('joinProjectForm');
-        if (jp && !jp.classList.contains('hidden')) { hideJoinProjectForm(); }
-        const iv = document.getElementById('invitesModal');
-        if (iv && !iv.classList.contains('hidden')) { closeInvitesModal(); }
-        const mm = document.getElementById('membersModal');
-        if (mm && !mm.classList.contains('hidden')) { closeMembersModal(); }
-    }
-});
-// 为添加任务输入框绑定回车键事件
-// ... existing code ...
-// 为创建看板输入框绑定回车键事件
-const newBoardNameInput = document.getElementById('newBoardName');
-if (newBoardNameInput) {
-    newBoardNameInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && this.value.trim()) {
-            e.preventDefault();
-            createBoard();
-        }
-    });
-}
-// 为创建项目输入框绑定回车/ESC事件
-const newProjectNameEl = document.getElementById('newProjectName');
-if (newProjectNameEl) {
-    newProjectNameEl.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && this.value.trim()) { e.preventDefault(); createProject(); }
-        if (e.key === 'Escape') { e.preventDefault(); hideCreateProjectForm(); }
-    });
-}
-// 为加入项目输入框绑定回车/ESC事件
-const inviteCodeEl = document.getElementById('inviteCode');
-if (inviteCodeEl) {
-    inviteCodeEl.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && this.value.trim()) { e.preventDefault(); joinProject(); }
-        if (e.key === 'Escape') { e.preventDefault(); hideJoinProjectForm(); }
-    });
-}
-// ... existing code ...
-const joinBtn = document.getElementById('inviteCodeJoinBtn');
-const input = document.getElementById('inviteCodeInput');
-if (joinBtn && input) {
-    joinBtn.addEventListener('click', async () => {
-        const code = (input.value || '').trim().toUpperCase();
-        if (!code || code.length !== 6) { uiToast('请输入 6 位邀请码','error'); return; }
-        try {
-            const response = await fetch('/api/join-project', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, inviteCode: code }) });
-            const result = await response.json();
-            if (response.ok) { uiToast(result.message || '申请已提交，等待所有者审批','success'); input.value=''; }
-            else { uiToast(result.message || '加入项目失败','error'); }
-        } catch (e) { uiToast('加入项目失败','error'); }
-    });
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); joinBtn.click(); }
-        if (e.key === 'Escape') { e.preventDefault(); closeInvitesModal(); }
-    });
-}
-
-// === Starred boards (local) ===
-function getStarredStorageKey(){
-    const u = currentUser || localStorage.getItem('kanbanUser') || '__';
-    return 'kanbanStarredBoards:' + u;
-}
-function loadStarredBoards(){
-    try {
-        const raw = localStorage.getItem(getStarredStorageKey());
-        const arr = JSON.parse(raw);
-        return Array.isArray(arr) ? arr : [];
-    } catch(e){ return []; }
-}
-function saveStarredBoards(list){
-    try { localStorage.setItem(getStarredStorageKey(), JSON.stringify(list)); } catch(e){}
-}
-function isBoardStarred(projectId, boardName){
-    const list = loadStarredBoards();
-    return list.some(it => it && it.projectId === projectId && it.boardName === boardName);
-}
-function toggleBoardStar(projectId, boardName, projectName, btn){
-    const list = loadStarredBoards();
-    const idx = list.findIndex(it => it && it.projectId === projectId && it.boardName === boardName);
-    if (idx !== -1){
-        list.splice(idx,1);
-        if (btn) btn.classList.remove('active');
-    } else {
-        list.unshift({ projectId, boardName, projectName: projectName || '', starredAt: Date.now() });
-        if (btn) btn.classList.add('active');
-    }
-    saveStarredBoards(list);
-    renderStarredBoards();
-}
-function removeStarIfExists(projectId, boardName){
-    const list = loadStarredBoards();
-    const idx = list.findIndex(it => it && it.projectId === projectId && it.boardName === boardName);
-    if (idx !== -1){ list.splice(idx,1); saveStarredBoards(list); renderStarredBoards(); }
-}
-function purgeStarsForProject(projectId){
-    const list = loadStarredBoards();
-    const next = list.filter(it => it && it.projectId !== projectId);
-    if (next.length !== list.length){ saveStarredBoards(next); renderStarredBoards(); }
-}
-function updateStarsOnBoardRenamed(projectId, oldName, newName){
-    const list = loadStarredBoards();
-    let changed = false;
-    list.forEach(it => { if (it.projectId === projectId && it.boardName === oldName){ it.boardName = newName; changed = true; } });
-    if (changed){ saveStarredBoards(list); renderStarredBoards(); }
-}
-function updateStarsOnProjectRenamed(projectId, newName){
-    const list = loadStarredBoards();
-    let changed = false;
-    list.forEach(it => { if (it.projectId === projectId){ it.projectName = newName; changed = true; } });
-    if (changed){ saveStarredBoards(list); renderStarredBoards(); }
-}
-function ensureStarNames(projects){
-    try {
-        const map = Object.create(null);
-        (projects||[]).forEach(p => { if (p && p.id) map[p.id] = p.name; });
-        const list = loadStarredBoards();
-        let changed = false;
-        list.forEach(it => { if (it && (!it.projectName || it.projectName==='')) { it.projectName = map[it.projectId] || it.projectName || ''; changed = true; } });
-        if (changed) saveStarredBoards(list);
-    } catch(e){}
-}
-function renderStarredBoards(){
-    const grid = document.getElementById('starredBoards');
-    if (!grid) return;
-    const list = loadStarredBoards().slice().sort((a,b)=> (b.starredAt||0) - (a.starredAt||0));
-    if (list.length === 0){
-        grid.innerHTML = '<div class="empty-state">暂无星标看板</div>';
-        return;
-    }
-    grid.innerHTML = '';
-    list.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'quick-board-card board-card-with-actions';
-        card.onclick = () => {
-            currentProjectId = item.projectId;
-            currentProjectName = item.projectName || currentProjectName;
-            currentBoardName = item.boardName;
-            previousPage = 'project';
-            showBoard();
-        };
-        const isStar = isBoardStarred(item.projectId, item.boardName);
-        card.innerHTML = `
-            <span class="board-icon" data-icon="boards"></span>
-            <div class="board-details">
-                <h4>${escapeHtml(item.boardName)}</h4>
-                <span class="board-project">${escapeHtml(item.projectName || '')}</span>
-            </div>
-            <div class="board-card-actions">
-                <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${item.projectId}" data-board-name="${escapeHtml(item.boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${item.projectId}', '${escapeJs(item.boardName)}', '${escapeJs(item.projectName || '')}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-            </div>
-        `;
-        grid.appendChild(card);
-    });
-    renderIconsInDom(grid);
-}
-function toggleBoardStarFromHome(projectId, boardName, projectName, btn){
-    toggleBoardStar(projectId, boardName, projectName, btn);
-}
-
-function syncStarButtons(){
-    try {
-        const list = loadStarredBoards();
-        const set = new Set(list.map(it => `${it.projectId}::${it.boardName}`));
-        document.querySelectorAll('.board-action-btn.star-btn').forEach(btn => {
-            const pid = btn.getAttribute('data-project-id');
-            const bname = btn.getAttribute('data-board-name');
-            if (!pid || !bname) return;
-            const key = `${pid}::${bname}`;
-            const active = set.has(key);
-            btn.classList.toggle('active', active);
-            btn.title = active ? '取消星标' : '加星';
-        });
-    } catch(e){}
-}
-// After any star list update or render, call syncStarButtons
-(function(){
-    const origRenderStarredBoards = renderStarredBoards;
-    renderStarredBoards = function(){
-        origRenderStarredBoards.apply(this, arguments);
-        try { syncStarButtons(); } catch(e){}
-    };
-})();
-// Hook into loadProjectBoards completion to sync
-(function(){
-    const origLoadProjectBoards = loadProjectBoards;
-    loadProjectBoards = async function(){
-        await origLoadProjectBoards.apply(this, arguments);
-        try { syncStarButtons(); } catch(e){}
-    };
-})();
-// Update after homepage projects/boards load
-(function(){
-    const origLoadUserProjects = loadUserProjects;
-    loadUserProjects = async function(){
-        await origLoadUserProjects.apply(this, arguments);
-        try { syncStarButtons(); } catch(e){}
-    };
-})();
-// Update on toggle as well
-(function(){
-    const _toggle = toggleBoardStar;
-    toggleBoardStar = function(projectId, boardName, projectName, btn){
-        _toggle(projectId, boardName, projectName, btn);
-        try { syncStarButtons(); } catch(e){}
-    };
-})();
