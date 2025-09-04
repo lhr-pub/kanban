@@ -43,6 +43,8 @@ const switchMode = document.getElementById('switchMode');
 const switchText = document.getElementById('switchText');
 const editModal = document.getElementById('editModal');
 const importModal = document.getElementById('importModal');
+const importTextModal = document.getElementById('importTextModal');
+const importTextArea = document.getElementById('importTextArea');
 let importFileData = null;
 
 // ===== Trello-like Lists Adapter (frontend only, keeps backend payloads) =====
@@ -238,6 +240,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('logoutBtn').addEventListener('click', logout);
     document.getElementById('exportBtn').addEventListener('click', exportMarkdown);
     document.getElementById('importBtn').addEventListener('click', importBoard);
+    document.getElementById('importTextBtn').addEventListener('click', openImportText);
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
@@ -359,8 +362,17 @@ document.addEventListener('DOMContentLoaded', function() {
     bindPopstateRouter();
 });
 
+// 页面显示函数前添加清理浮层的工具函数
+function cleanupTransientOverlays() {
+    try { hideBoardSwitcher(); } catch (_) {}
+    try {
+        document.querySelectorAll('.assignee-dropdown, .board-switcher-menu').forEach(el => el.remove());
+    } catch (_) {}
+}
+
 // 页面显示函数
 function showLoginPage() {
+    cleanupTransientOverlays();
     loginPage.classList.remove('hidden');
     projectPage.classList.add('hidden');
     boardSelectPage.classList.add('hidden');
@@ -2419,6 +2431,14 @@ function importBoard() {
     fileInput.click();
 }
 
+function openImportText() {
+    if (importTextArea) { importTextArea.value = ''; }
+    if (importTextModal) {
+        importTextModal.classList.remove('hidden');
+        setTimeout(() => { if (importTextArea) importTextArea.focus(); }, 0);
+    }
+}
+
 // 文件选择后处理
 document.getElementById('importFile').addEventListener('change', function(e) {
     const file = e.target.files[0];
@@ -2447,6 +2467,35 @@ document.getElementById('importFile').addEventListener('change', function(e) {
     };
     reader.readAsText(file);
 });
+
+function parseImportText() {
+    const raw = importTextArea ? importTextArea.value.trim() : '';
+    if (!raw) { uiToast('请输入要导入的文本','error'); return; }
+    try {
+        let data = null;
+        // 优先尝试 JSON
+        try {
+            data = JSON.parse(raw);
+        } catch (_) {
+            data = null;
+        }
+        if (!data) {
+            // 回退为 Markdown 解析
+            data = parseMarkdownToBoard(raw);
+        }
+        importFileData = data;
+        if (importTextModal) importTextModal.classList.add('hidden');
+        if (importModal) importModal.classList.remove('hidden');
+    } catch (err) {
+        console.error('Import text parse error:', err);
+        uiToast('文本格式错误，无法解析为 JSON 或 Markdown','error');
+    }
+}
+
+function cancelImportText() {
+    if (importTextModal) importTextModal.classList.add('hidden');
+    if (importTextArea) importTextArea.value = '';
+}
 
 // 解析 Markdown 为看板数据
 function parseMarkdownToBoard(markdown) {
@@ -3356,6 +3405,7 @@ function renderIconsInDom(root=document) {
         if (Icon[name]) {
             el.innerHTML = Icon[name];
             el.setAttribute('aria-hidden','true');
+            el.classList.add('icon-ready');
         }
     });
 }
@@ -4558,6 +4608,7 @@ function renderMembersList() {
                 if (resp.ok) {
                     // 若是自我移除，立即退出项目
                     if (username === currentUser) {
+                        const exitingProjectId = currentProjectId;
                         try { if (socket) socket.close(); } catch (e2) {}
                         currentProjectId = null;
                         currentProjectName = null;
@@ -4567,7 +4618,7 @@ function renderMembersList() {
                         localStorage.removeItem('kanbanCurrentBoardName');
                         showProjectPage();
                         loadUserProjects();
-                        try { purgeStarsForProject(currentProjectId); } catch(e) {}
+                        try { purgeStarsForProject(exitingProjectId); } catch(e) {}
                         try { renderStarredBoards(); } catch(e) {}
                         uiToast('已退出项目','success');
                         return;
@@ -5134,6 +5185,14 @@ if (importModal) {
         if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){} }
         if (e.key === 'Escape') { cancelImport(); }
         if (e.key === 'Enter') { confirmImport(); }
+    }, true);
+}
+const importTextModalEl = document.getElementById('importTextModal');
+if (importTextModalEl) {
+    importTextModalEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){} }
+        if (e.key === 'Escape') { cancelImportText(); }
+        if (e.key === 'Enter') { parseImportText(); }
     }, true);
 }
 const invitesModalEl = document.getElementById('invitesModal');

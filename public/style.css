@@ -3072,6 +3072,9 @@ body {
 .quick-board-card { padding-left: 1.25rem; }
 
 /* Board and project card icon sizes */
+/* Prevent icon flash: hide [data-icon] until injected */
+[data-icon]:not(.icon-ready) { visibility: hidden; }
+
 .board-icon { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; background: var(--primary-color); color: #fff; }
 .board-icon svg { width: 18px; height: 18px; }
 .project-card .project-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-right: 6px; }

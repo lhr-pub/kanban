@@ -881,6 +881,17 @@ app.get('/api/project-boards/:projectId', (req, res) => {
     });
 });
 
+// 新增：获取项目的待加入请求（兼容前端 /api/join-requests/:projectId 调用）
+app.get('/api/join-requests/:projectId', (req, res) => {
+    const { projectId } = req.params;
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    const requests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
+    return res.json({ requests });
+});
+
 // 新增：重命名项目API
 app.post('/api/rename-project', (req, res) => {
     const { projectId, newName, actor } = req.body;
