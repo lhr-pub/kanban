@@ -141,6 +141,9 @@ function bindPopstateRouter() {
     });
 }
 
+// New: track last hovered list section for Enter-to-open
+let lastHoveredListSection = null;
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 渲染静态图标
@@ -1538,6 +1541,8 @@ function renderBoard() {
         if (archBtn) archBtn.onclick = async (e)=>{ e.stopPropagation(); await archiveList(list.status); };
         bindComposer(section, list);
         enableColumnDrag(list.status);
+        // track hover target for Enter-to-open
+        section.addEventListener('mouseenter', ()=>{ lastHoveredListSection = section; });
     });
 
     // add-list entry (UI only, maps to new status placeholders if needed)
@@ -1725,6 +1730,21 @@ function bindComposer(section, list){
         }
     });
 
+    // Open composer with Enter when closed, when focus is within this list
+    section.addEventListener('keydown', (e) => {
+        const t = e.target;
+        const isIme = e.isComposing || e.keyCode === 229;
+        if (isIme && t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        if (e.key !== 'Enter' || e.shiftKey) return;
+        if (!form.hidden) return;
+        // ignore when typing in inputs or interactive elements
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable || t.closest('button, select, .composer, .add-list-form, .list-actions'))) return;
+        // ignore if event happens inside a card
+        if (t && t.closest('.card')) return;
+        e.preventDefault();
+        open();
+    }, true);
+
     function submit(){
         if (isSubmitting) return;
         isSubmitting = true;
@@ -1747,10 +1767,8 @@ function bindComposer(section, list){
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type:'add-card', projectId: currentProjectId, boardName: currentBoardName, status, card, position:'bottom' }));
         }
-        // collapse composer before drawing
-        const wrapBefore = section.querySelector('.card-composer');
-        if (wrapBefore) { wrapBefore.classList.remove('is-open'); }
-        // append card DOM directly to avoid full re-render jitter
+        // keep composer open for quick multi-add
+        // append new card DOM directly
         let cardsContainer = section.querySelector('.cards');
         if (!cardsContainer) {
             const col = document.querySelector(`.column[data-status="${status}"]`);
@@ -1763,7 +1781,11 @@ function bindComposer(section, list){
         } else {
             renderBoard();
         }
-        setTimeout(()=>{ isSubmitting = false; }, 300);
+        // clear and focus for next entry
+        textarea.value = '';
+        try { textarea.focus(); } catch(e) {}
+        try { autoResizeTextarea(textarea); } catch(e) {}
+        setTimeout(()=>{ isSubmitting = false; }, 150);
     }
 }
 
@@ -5970,6 +5992,62 @@ document.addEventListener('keydown', function(e){
     if (handled) {
         try { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){ }
     }
+}, true);
+// Open list composer with Enter when closed (global capture)
+document.addEventListener('keydown', function(e){
+    // Allow IME Enter when not in an editor
+    if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!boardPage || boardPage.classList.contains('hidden')) return;
+    // avoid when dynamic modals or menus visible
+    const hasDynamicModal = Array.from(document.querySelectorAll('body > .modal')).some(m => !m.id && !m.classList.contains('hidden'));
+    if (hasDynamicModal) return;
+    const ioMenu = document.getElementById('ioMenu');
+    if (ioMenu && !ioMenu.classList.contains('hidden')) return;
+    if (document.querySelector('.board-switcher-menu')) return;
+    const t = e.target;
+    // ignore interactive/inside-card targets
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable ||
+              t.closest('button, select, .composer, .add-list-form, .list-actions, .assignee-dropdown'))) return;
+    if (t && t.closest && t.closest('.card')) return;
+    // ignore if any composer already open
+    if (document.querySelector('.card-composer.is-open')) return;
+
+    let section = (t && t.closest && t.closest('.list:not(.add-list):not(#addListEntry)')) || lastHoveredListSection;
+    if (!section || !document.body.contains(section)) {
+        section = document.querySelector('#listsContainer .list:not(.add-list):not(#addListEntry)');
+    }
+    if (!section) return;
+
+    const wrap = section.querySelector('.card-composer');
+    const form = wrap ? wrap.querySelector('.composer') : null;
+    const textarea = wrap ? wrap.querySelector('textarea') : null;
+    if (!wrap || !form || !form.hidden) return;
+
+    e.preventDefault();
+    try { e.stopPropagation(); e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}
+    // Open composer directly to avoid relying on onclick binding
+    wrap.classList.add('is-open');
+    form.hidden = false;
+    setTimeout(()=>{ try{ textarea && textarea.focus(); }catch(_){ } }, 0);
+}, true);
+// Keyup fallback in case other keydown handlers consume Enter earlier
+document.addEventListener('keyup', function(e){
+    if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (!boardPage || boardPage.classList.contains('hidden')) return;
+    // if composer already open anywhere, skip
+    if (document.querySelector('.card-composer.is-open')) return;
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    let section = (t && t.closest && t.closest('.list:not(.add-list):not(#addListEntry)')) || lastHoveredListSection || document.querySelector('#listsContainer .list:not(.add-list):not(#addListEntry)');
+    if (!section) return;
+    const wrap = section.querySelector('.card-composer');
+    const form = wrap ? wrap.querySelector('.composer') : null;
+    const textarea = wrap ? wrap.querySelector('textarea') : null;
+    if (!wrap || !form || !form.hidden) return;
+    try { e.preventDefault(); e.stopPropagation(); } catch(_){}
+    wrap.classList.add('is-open');
+    form.hidden = false;
+    setTimeout(()=>{ try{ textarea && textarea.focus(); }catch(_){ } }, 0);
 }, true);
 // ... existing code ...
 

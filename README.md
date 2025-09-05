@@ -11,12 +11,11 @@
 
 ### 👥 账号、邮件与成员/邀请
 - **邮箱验证登录**：注册后发送验证邮件（支持自定义 SMTP）；未验证邮箱不能登录
-- **忘记/重置密码**：邮件链接设置新密码
+- **忘记/重置密码**：邮件链接设置新密码（带 60s 频率限制）
 - **邀请管理（首页导航）**：
   - 我收到的邀请：接受/拒绝
-  - 待我审批的加入申请（项目所有者）：同意/拒绝
+  - 待我审批的加入申请（项目所有者）：同意/拒绝（打开弹窗后自动 3s 轮询）
   - 支持在弹窗内输入邀请码发起加入申请
-  - 打开后自动轮询刷新（3s）
 - **成员管理（项目内）**：查看成员、移除成员（仅所有者可移除他人，非所有者仅能移除自己）
 - **严格所有权规则**：
   - 仅项目所有者可删除项目
@@ -31,48 +30,127 @@
   - 支持搜索、创建看板（使用搜索框文本）、重命名当前/其他看板、快速切换
 - **项目创建不再默认生成看板**，项目与服务器均能良好处理“无看板”状态
 - **看板归档**：项目的看板支持归档/还原；归档列表显示在项目的“选择看板”页面下方；归档后的看板不在首页/项目列表中展示，但不会删除数据，可随时还原或在归档处删除
+- **移动看板**：可将看板在项目间移动（带项目选择器与搜索）
 
 ### 🧱 Trello 式卡组（List）
-- **动态卡组（客户端 lists 元数据）**：
-  - 新增卡组、重命名卡组、删除卡组
-  - 卡组顺序持久化，随看板一起保存
-- **卡组拖拽排序**：
-  - 以列表头/标题作为拖拽手柄
-  - 拖拽时直接移动 DOM，放下后持久化顺序
-- **设计规范**（前端样式令牌，已在 `public/style.css` 中实现）：
-  - 列宽 `272px`，列间距 `12px`
-  - 列背景 `#ebecf0`
-  - Trello-like 样式统一作用域在 `#boardPage`
+- **动态卡组（客户端 lists 元数据）**：新增/重命名/删除，顺序持久化
+- **卡组拖拽排序**：列表头/标题为手柄；释放后保存顺序（容器单一 `ondragover`）
+- **设计规范**（见 `public/style.css`）：列宽 `272px`、间距 `12px`、列背景 `#ebecf0`，样式作用域 `#boardPage`
 
 ### 📝 卡片（Card）与内联编辑
-- **标题/描述内联编辑**：多行编辑，容器锁高不抖动；点击位置即光标；Esc 取消；Ctrl/Cmd+Enter 保存
-- **负责人与截止日期**：
-  - 负责人为悬浮下拉，不改变布局
-  - 截止日期内联 `input[type=date]`，固定宽高避免跳动
-- **评论/帖子（Posts）**：
-  - 详情弹窗内嵌评论列表与输入框（滚动容器）
-  - 卡片正面显示评论数徽标（commentsCount）
-  - 实时刷新：收到看板更新时，如编辑弹窗打开会重渲染帖子列表
+- **标题/描述内联编辑**：多行、锁高不抖动；Esc 取消；Ctrl/Cmd+Enter 保存
+- **负责人与截止日期**：悬浮下拉与固定尺寸的日期输入，不改变布局
+- **评论/帖子（Posts）**：详情弹窗内嵌评论列表与输入框（滚动容器）；卡片正面显示评论数徽标；弹窗打开时收到看板更新会自动刷新帖子列表
 - **归档**：卡片可归档/还原；归档页支持删除；看板支持归档/还原（项目页下方）
+- **快速添加**：
+  - 每个卡组底部有“添加卡片”composer（Enter 提交，Esc 取消）
+  - 在列表空白处按 Enter 可快速展开 composer
+  - 提交后 composer 保持打开，便于连续添加
 
 ### ↔️ 拖拽与排序
 - **列内拖拽排序**：拖拽卡片改变同列顺序并持久化
 - **跨列移动**：拖拽到其他列时发送移动消息并更新
-- **卡组拖拽**：简单、稳定的标题栏手柄方式；释放后保存 lists 顺序（容器采用单一 `ondragover` 防止重复绑定）
+- **卡组拖拽**：标题栏手柄方式；释放后保存 lists 顺序（容器单一 `ondragover`）
 
 ### ⬆️ 导入/导出与备份
-- **导出 Markdown**：便于分享/审阅
-- **导入 JSON/Markdown**：支持合并或覆盖两种模式
+- **I/O 菜单**：导航上的“导入/导出”下拉（导入文件、粘贴文本导入、导出 Markdown/JSON）
+- **导入 JSON/Markdown**：支持合并或覆盖两种模式；支持“粘贴文本导入”
+- **导出 Markdown/JSON**：更稳健的下载兼容策略
 - **自动备份**：每次写入在 `data/backups/` 生成时间戳版本，保留最近 50 份
 
-### ⭐ 星标看板（本地）
-- 首页与项目页看板卡片提供星标按钮；本地存储 `kanbanStarredBoards:<username>`（记录 `projectId/boardName/starredAt`）
-- “星标看板”区置顶展示（最近加星的在前）
-- 支持重命名/删除时同步星标记录
+### ⭐ 星标看板（服务器持久化）
+- 星标列表为每个用户服务器持久化（非本地存储）
+- 首页与项目页看板卡片提供星标按钮；顶部“星标看板”区按最近加星时间倒序展示
+- 重命名/移动/删除看板后会同步更新星标记录；跨项目移动后星标仍保留
 
-### ⌨️ 快捷键与可用性
-- 输入框/弹窗均支持 Enter 提交、Esc 关闭（包含创建/加入项目、导入、成员与邀请管理、通用 Prompt/Confirm/Alert/密码弹窗）
-- 详情弹窗描述支持 Ctrl/Cmd+Enter 保存；IME 组合输入受保护（避免误触 Enter/Esc）
+## 🧭 使用指南
+
+### 账号与项目
+1. 注册后前往邮箱验证，再登录
+2. 首页创建项目，或在“邀请管理”中输入邀请码发起加入申请
+3. 进入项目选择看板，或在导航栏点击看板名打开切换器进行切换/创建/重命名（下拉不展示已归档看板）
+
+### 看板与卡片
+- 每个卡组底部提供“添加卡片”入口（点击展开、Enter 添加、Esc 取消），在列表空白处按 Enter 也可展开；提交后保持打开便于连续添加
+- 卡片正面：标签点、标题、徽标行（描述/评论/截止日期/负责人）
+- 点击卡片打开详情抽屉，或点击标题/描述进入内联编辑
+- 归档页支持搜索过滤（标题/描述/标签/负责人）
+
+## 🔌 API 参考（摘要）
+
+### 认证与邮箱
+- POST `/api/register` { username, password, email }
+- POST `/api/login` { username, password }（支持邮箱登录）
+- GET `/api/verify?token=...` 邮箱验证回调
+- POST `/api/resend-verification` { username }（60s 频率限制）
+- POST `/api/forgot-password` { email? | username? }（60s 频率限制）
+- POST `/api/reset-password` { token, newPassword }
+- POST `/api/change-password` { username, oldPassword, newPassword }
+
+### 项目与看板
+- GET `/api/user-projects/:username`
+- POST `/api/create-project` { username, projectName }
+- POST `/api/rename-project` { projectId, newName }
+- DELETE `/api/delete-project` { projectId, actor }
+- GET `/api/project-boards/:projectId` → { inviteCode, members, boards, owner, boardOwners, archivedBoards }
+- POST `/api/create-board` { projectId, boardName, actor }
+- POST `/api/rename-board` { projectId, oldName, newName, actor }
+- POST `/api/archive-board` { projectId, boardName, actor }
+- POST `/api/unarchive-board` { projectId, boardName, actor }
+- POST `/api/move-board` { fromProjectId, toProjectId, boardName, actor }
+- DELETE `/api/delete-board` { projectId, boardName, actor }
+- GET `/api/board/:projectId/:boardName`
+- GET `/api/export/:projectId/:boardName` → Markdown 下载
+- GET `/api/export-json/:projectId/:boardName` → JSON 下载
+
+### 成员与邀请
+- GET `/api/user-invites/:username`
+- POST `/api/accept-invite` { username, projectId }
+- POST `/api/decline-invite` { username, projectId }
+- GET `/api/user-approvals/:username`
+- GET `/api/join-requests/:projectId`
+- POST `/api/join-project` { username, inviteCode }
+- POST `/api/approve-join` { projectId, username, actor }
+- POST `/api/deny-join` { projectId, username, actor }
+- POST `/api/remove-project-member` { projectId, username, actor }
+- POST `/api/regenerate-invite-code` { projectId, actor }
+
+### 星标
+- GET `/api/user-stars/:username` → { stars }
+- POST `/api/user-stars/toggle` { username, projectId, boardName, projectName } → { stars, starred }
+
+### 管理员
+- POST `/api/admin/login` { username, password }
+- POST `/api/admin/logout` Bearer token
+- GET `/api/admin/users` Bearer token
+- PATCH `/api/admin/users/:username` { verified?, admin?, password? } Bearer token
+- DELETE `/api/admin/users/:username` Bearer token（若用户是任一项目所有者将被阻止）
+
+> 注：客户端通过 WebSocket 同步看板变更；归档看板不会出现在首页/项目看板列表中（可在项目页底部展开“归档的看板”并搜索、还原或删除）。
+
+## 🌐 WebSocket 消息（关键类型）
+- `join` 加入看板
+- `board-update` 看板数据更新（含 lists 元信息与各列卡片）
+- `user-list` 在线用户更新
+- `card-editing` 某卡片被用户编辑/释放
+- `add-card` / `update-card` / `delete-card`
+- `move-card` / `reorder-cards`
+- `archive-card` / `restore-card` / `clear-archive`
+- `save-lists` 保存卡组元信息（新增/重命名/删除/排序）
+- `import-board` 导入数据（merge/overwrite）
+- `project-renamed` / `board-renamed` / `board-moved` / `project-deleted` / `member-removed` / `member-added` / `join-request` / `import-success` / `error`
+
+## ⏱️ 频率限制
+- 重新发送验证邮件：同一用户 60s 一次
+- 忘记密码邮件：同一用户 60s 一次
+
+## UI 组件
+- `uiToast(type: info|success|error)`：信息/成功/错误提示（自动消失）
+- `uiConfirm(title, message)`：确认对话框（Enter 确认、Esc 取消）
+- `uiPrompt(title, default)`：输入对话框（Enter 提交、Esc 取消；IME 组合输入安全）
+- 密码弹窗：修改/重置密码时统一处理 Enter/Esc（捕获阶段阻止冒泡）
+- I/O 菜单：导入文件/文本、导出 Markdown/JSON
+- 项目选择器：移动看板时选择目标项目（支持搜索）
 
 ## 📁 项目结构
 
@@ -179,13 +257,13 @@ docker compose -f docker-compose.prod.yml up -d
 ### 账号与项目
 1. 注册后前往邮箱验证，再登录
 2. 首页创建项目，或在“邀请管理”中输入邀请码发起加入申请
-3. 进入项目选择看板，或在导航栏点击看板名打开切换器进行切换/创建/重命名
+3. 进入项目选择看板，或在导航栏点击看板名打开切换器进行切换/创建/重命名（下拉不展示已归档看板）
 
 ### 看板与卡片
-- 每个卡组底部提供“添加卡片”入口（点击展开、Enter 添加、Esc 取消）
+- 每个卡组底部提供“添加卡片”入口（点击展开、Enter 添加、Esc 取消），在列表空白处按 Enter 也可展开；提交后保持打开便于连续添加
 - 卡片正面：标签点、标题、徽标行（描述/评论/截止日期/负责人）
-- 点击卡片打开详情抽屇，或点击标题/描述进入内联编辑
-- 归档卡片在归档页可显示“还原”与“删除”
+- 点击卡片打开详情抽屉，或点击标题/描述进入内联编辑
+- 归档页支持搜索过滤（标题/描述/标签/负责人）
 
 ## 🔌 API 参考（摘要）
 
@@ -193,8 +271,8 @@ docker compose -f docker-compose.prod.yml up -d
 - POST `/api/register` { username, password, email }
 - POST `/api/login` { username, password }（支持邮箱登录）
 - GET `/api/verify?token=...` 邮箱验证回调
-- POST `/api/resend-verification` { username }
-- POST `/api/forgot-password` { email? | username? }
+- POST `/api/resend-verification` { username }（60s 频率限制）
+- POST `/api/forgot-password` { email? | username? }（60s 频率限制）
 - POST `/api/reset-password` { token, newPassword }
 - POST `/api/change-password` { username, oldPassword, newPassword }
 
@@ -203,24 +281,32 @@ docker compose -f docker-compose.prod.yml up -d
 - POST `/api/create-project` { username, projectName }
 - POST `/api/rename-project` { projectId, newName }
 - DELETE `/api/delete-project` { projectId, actor }
-- GET `/api/project-boards/:projectId` → { inviteCode, members, boards, owner, boardOwners }
+- GET `/api/project-boards/:projectId` → { inviteCode, members, boards, owner, boardOwners, archivedBoards }
 - POST `/api/create-board` { projectId, boardName, actor }
 - POST `/api/rename-board` { projectId, oldName, newName, actor }
+- POST `/api/archive-board` { projectId, boardName, actor }
+- POST `/api/unarchive-board` { projectId, boardName, actor }
+- POST `/api/move-board` { fromProjectId, toProjectId, boardName, actor }
 - DELETE `/api/delete-board` { projectId, boardName, actor }
 - GET `/api/board/:projectId/:boardName`
 - GET `/api/export/:projectId/:boardName` → Markdown 下载
+- GET `/api/export-json/:projectId/:boardName` → JSON 下载
 
 ### 成员与邀请
 - GET `/api/user-invites/:username`
 - POST `/api/accept-invite` { username, projectId }
 - POST `/api/decline-invite` { username, projectId }
-- GET `/api/user-approvals/:username`（我作为所有者需审批的加入申请）
+- GET `/api/user-approvals/:username`
 - GET `/api/join-requests/:projectId`
-- POST `/api/join-project` { username, inviteCode }（发起加入申请）
+- POST `/api/join-project` { username, inviteCode }
 - POST `/api/approve-join` { projectId, username, actor }
 - POST `/api/deny-join` { projectId, username, actor }
 - POST `/api/remove-project-member` { projectId, username, actor }
 - POST `/api/regenerate-invite-code` { projectId, actor }
+
+### 星标
+- GET `/api/user-stars/:username` → { stars }
+- POST `/api/user-stars/toggle` { username, projectId, boardName, projectName } → { stars, starred }
 
 ### 管理员
 - POST `/api/admin/login` { username, password }
@@ -229,7 +315,7 @@ docker compose -f docker-compose.prod.yml up -d
 - PATCH `/api/admin/users/:username` { verified?, admin?, password? } Bearer token
 - DELETE `/api/admin/users/:username` Bearer token（若用户是任一项目所有者将被阻止）
 
-> 注：具体字段与响应以服务端实现为准；客户端严格通过 WebSocket 同步看板变更。
+> 注：客户端通过 WebSocket 同步看板变更；归档看板不会出现在首页/项目看板列表中（可在项目页底部展开“归档的看板”并搜索、还原或删除）。
 
 ## 🌐 WebSocket 消息（关键类型）
 - `join` 加入看板
@@ -241,7 +327,7 @@ docker compose -f docker-compose.prod.yml up -d
 - `archive-card` / `restore-card` / `clear-archive`
 - `save-lists` 保存卡组元信息（新增/重命名/删除/排序）
 - `import-board` 导入数据（merge/overwrite）
-- 其他：`project-renamed`、`board-renamed`、`project-deleted`、`member-removed`、`member-added`、`join-request`、`import-success`、`error`
+- `project-renamed` / `board-renamed` / `board-moved` / `project-deleted` / `member-removed` / `member-added` / `join-request` / `import-success` / `error`
 
 ## 🗃️ 数据模型（要点）
 
@@ -321,8 +407,10 @@ docker compose -f docker-compose.prod.yml up -d
 ### UI 组件
 - `uiToast(type: info|success|error)`：信息/成功/错误提示（自动消失）
 - `uiConfirm(title, message)`：确认对话框（Enter 确认、Esc 取消）
-- `uiPrompt(title, default)`：输入对话框（Enter 提交、Esc 取消）
-- 密码弹窗：修改/重置密码时统一处理 Enter/Esc（捕获阶段阻止冒泡，避免需要多次按 Esc）
+- `uiPrompt(title, default)`：输入对话框（Enter 提交、Esc 取消；IME 组合输入安全）
+- 密码弹窗：修改/重置密码时统一处理 Enter/Esc（捕获阶段阻止冒泡）
+- I/O 菜单：导入文件/文本、导出 Markdown/JSON
+- 项目选择器：移动看板时选择目标项目（支持搜索）
 
 ## 🤝 贡献
 - 欢迎提交 Issue 与 PR 改进项目
