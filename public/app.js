@@ -678,6 +678,7 @@ async function loadUserProjects() {
                     <div class="board-card-actions">
                         <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${project.id}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${project.id}', '${escapeJs(boardName)}', '${escapeJs(project.name)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                         <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
+                        <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
                         <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
                     </div>
                 `;
@@ -982,6 +983,7 @@ async function loadProjectBoards() {
                 <div class="board-card-actions">
                     <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                     ${canManage ? `<button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
+                    <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoard('${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
                     <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
                 </div>
             `;
@@ -1062,6 +1064,7 @@ async function createBoard() {
                 <div class="board-card-actions">
                     <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                     ${canManage ? `<button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
+                    <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoard('${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
                     <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
                 </div>
             `;
@@ -1249,6 +1252,27 @@ function handleWebSocketMessage(data) {
                 } catch (e) {}
             }
             updateStarsOnBoardRenamed(data.projectId, data.oldName, data.newName);
+            break;
+        case 'board-moved':
+            if (data.boardName === currentBoardName && data.fromProjectId === currentProjectId) {
+                // Switch to the new project context and rejoin
+                currentProjectId = data.toProjectId;
+                currentProjectName = data.toProjectName || currentProjectName;
+                localStorage.setItem('kanbanCurrentProjectId', currentProjectId);
+                if (currentProjectName) localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
+                updateBoardHeader();
+                try { updateHistory('board', true); } catch (e) {}
+                try {
+                    if (socket && socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({ type:'join', user: currentUser, projectId: currentProjectId, boardName: currentBoardName }));
+                    }
+                } catch (e) {}
+                // Refresh project members and lists lazily
+                try { if (!boardSelectPage.classList.contains('hidden')) loadProjectBoards(); } catch(e){}
+            }
+            // Update local stars cache for moved board
+            try { updateStarsOnBoardMoved(data.fromProjectId, data.toProjectId, data.boardName, data.toProjectName || ''); } catch(e) {}
+            try { renderStarredBoards(); } catch(e) {}
             break;
         case 'project-renamed':
             if (data.projectId === currentProjectId) {
@@ -2434,7 +2458,7 @@ function anchorDownload(url, filename){
     }
 }
 
-// 通过页面导航触发下载，规避“多文件下载阻止”策略
+// 通过页面导航触发下载，规避"多文件下载阻止"策略
 function navigateDownload(url){
     try {
         const finalUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -5834,3 +5858,121 @@ document.addEventListener('keydown', function(e){
     }
 }, true);
 // ... existing code ...
+
+// 移动看板（项目看板页）
+async function promptMoveBoard(boardName){
+    try { hideBoardSwitcher(); } catch (e) {}
+    const target = await chooseTargetProject(currentProjectId);
+    if (!target) return;
+    await moveBoardRequest(currentProjectId, target.id, boardName);
+}
+
+// 移动看板（首页快捷看板）
+async function promptMoveBoardFromHome(fromProjectId, boardName){
+    const target = await chooseTargetProject(fromProjectId);
+    if (!target) return;
+    await moveBoardRequest(fromProjectId, target.id, boardName, true);
+}
+
+// 选择目标项目（简单下拉/提示）
+async function chooseTargetProject(excludeProjectId){
+    try {
+        const resp = await fetch(`/api/user-projects/${currentUser}`);
+        if (!resp.ok) { uiToast('加载项目列表失败','error'); return null; }
+        const list = await resp.json();
+        const candidates = (Array.isArray(list) ? list : []).filter(p => String(p.id) !== String(excludeProjectId));
+        if (!candidates.length) { uiToast('没有可移动到的项目','info'); return null; }
+        // 简单的prompt选择：显示序号与名称
+        const optionsText = candidates.map((p, i) => `${i+1}. ${p.name}`).join('\n');
+        const input = await uiPrompt(`选择目标项目序号:\n\n${optionsText}`, '', '移动到项目');
+        if (input === null) return null;
+        const idx = parseInt(String(input).trim(), 10) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= candidates.length) { uiToast('无效的序号','error'); return null; }
+        return candidates[idx];
+    } catch (e) {
+        uiToast('加载项目列表失败','error');
+        return null;
+    }
+}
+
+async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
+    if (String(fromProjectId) === String(toProjectId)) { uiToast('目标项目不能与源项目相同','error'); return; }
+    try {
+        const resp = await fetch('/api/move-board', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fromProjectId, toProjectId, boardName, actor: currentUser })
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok) { uiToast(result.message || '移动失败','error'); return; }
+        // Inline UI updates: remove from source list and add to target quick lists if visible
+        try {
+            // 更新首页快捷看板：修改该卡片的项目显示与点击行为
+            document.querySelectorAll('#quickAccessBoards .quick-board-card').forEach(card => {
+                const starBtn = card.querySelector('.star-btn');
+                const titleEl = card.querySelector('h4');
+                if (!starBtn || !titleEl) return;
+                const pid = starBtn.getAttribute('data-project-id');
+                const bname = starBtn.getAttribute('data-board-name');
+                if (String(pid) === String(fromProjectId) && bname === boardName) {
+                    starBtn.setAttribute('data-project-id', String(toProjectId));
+                    const projEl = card.querySelector('.board-project');
+                    if (projEl && result && result.toProjectName) projEl.textContent = result.toProjectName;
+                    card.onclick = () => {
+                        currentProjectId = String(toProjectId);
+                        currentProjectName = (result && result.toProjectName) || currentProjectName;
+                        currentBoardName = boardName;
+                        previousPage = 'project';
+                        showBoard();
+                    };
+                    const renameBtn = card.querySelector('.rename-btn');
+                    if (renameBtn) renameBtn.setAttribute('onclick', `event.stopPropagation(); promptRenameBoardFromHome('${toProjectId}', '${escapeJs(boardName)}')`);
+                    const moveBtn = card.querySelector('.move-btn');
+                    if (moveBtn) moveBtn.setAttribute('onclick', `event.stopPropagation(); promptMoveBoardFromHome('${toProjectId}', '${escapeJs(boardName)}')`);
+                    const delBtn = card.querySelector('.delete-btn');
+                    if (delBtn) delBtn.setAttribute('onclick', `event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${toProjectId}')`);
+                }
+            });
+        } catch(e) {}
+
+        try {
+            // 如果在源项目的看板选择页，移除该卡片
+            if (!boardSelectPage.classList.contains('hidden') && String(currentProjectId) === String(fromProjectId)) {
+                const list = document.getElementById('boardList');
+                if (list) {
+                    list.querySelectorAll('.quick-board-card').forEach(c => {
+                        const title = c.querySelector('h4');
+                        if (title && title.textContent === boardName) { c.remove(); }
+                    });
+                }
+            }
+        } catch(e) {}
+
+        uiToast('移动成功','success');
+        // 当前打开的看板被移动：等待WS事件进行重连；如在主页，则无需刷新
+        if (String(fromProjectId) === String(currentProjectId) && currentBoardName === boardName && socket && socket.readyState === WebSocket.OPEN) {
+            // no-op: server WS will instruct rejoin via board-moved
+        }
+        // 轻量刷新数据
+        try { if (!projectPage.classList.contains('hidden')) loadUserProjects(); } catch(e) {}
+        try { renderStarredBoards(); } catch(e) {}
+    } catch (e) {
+        console.error('Move board error:', e);
+        uiToast('移动失败','error');
+    }
+}
+
+function updateStarsOnBoardMoved(fromProjectId, toProjectId, boardName, toProjectName){
+    try {
+        const list = loadStarredBoards();
+        let changed = false;
+        list.forEach(s => {
+            if (s && s.projectId === fromProjectId && s.boardName === boardName) {
+                s.projectId = toProjectId;
+                if (toProjectName) s.projectName = toProjectName;
+                changed = true;
+            }
+        });
+        if (changed) saveStarredBoards(list);
+    } catch (e) {}
+}

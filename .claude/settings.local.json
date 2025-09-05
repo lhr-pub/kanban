@@ -6,7 +6,10 @@
       "Bash(PORT=3001 node server.js)",
       "Bash(pkill:*)",
       "Bash(node server.js)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(grep:*)",
+      "Bash(node:*)",
+      "Bash(npm --version)"
     ],
     "deny": [],
     "ask": []

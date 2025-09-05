@@ -1339,6 +1339,124 @@ app.post('/api/rename-board', (req, res) => {
     }
 });
 
+// 新增：移动看板到其他项目
+app.post('/api/move-board', (req, res) => {
+    const { fromProjectId, toProjectId, boardName, actor } = req.body || {};
+
+    if (!fromProjectId || !toProjectId || !boardName) {
+        return res.status(400).json({ message: '缺少必要参数' });
+    }
+    if (fromProjectId === toProjectId) {
+        return res.status(400).json({ message: '目标项目不能与源项目相同' });
+    }
+
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const usersFile = path.join(dataDir, 'users.json');
+    const projects = readJsonFile(projectsFile, {});
+    const users = readJsonFile(usersFile, {});
+
+    const fromProject = projects[fromProjectId];
+    const toProject = projects[toProjectId];
+    if (!fromProject || !toProject) {
+        return res.status(404).json({ message: '源项目或目标项目不存在' });
+    }
+
+    const idx = Array.isArray(fromProject.boards) ? fromProject.boards.indexOf(boardName) : -1;
+    if (idx === -1) {
+        return res.status(404).json({ message: '源项目中不存在该看板' });
+    }
+
+    // 权限：源项目所有者或该看板的创建者，且必须是目标项目成员
+    const isSourceOwner = actor && actor === fromProject.owner;
+    const isBoardOwner = fromProject.boardOwners && actor && fromProject.boardOwners[boardName] === actor;
+    const isDestMember = Array.isArray(toProject.members) && toProject.members.includes(actor);
+    if (!isSourceOwner && !isBoardOwner) {
+        return res.status(403).json({ message: '只有源项目所有者或看板创建者可以移动看板' });
+    }
+    if (!isDestMember) {
+        return res.status(403).json({ message: '只能移动到你参与的目标项目' });
+    }
+
+    if (Array.isArray(toProject.boards) && toProject.boards.includes(boardName)) {
+        return res.status(400).json({ message: '目标项目已存在同名看板' });
+    }
+
+    const oldFile = path.join(dataDir, `${fromProjectId}_${boardName}.json`);
+    const newFile = path.join(dataDir, `${toProjectId}_${boardName}.json`);
+
+    try {
+        // 移动数据文件（重命名）
+        if (fs.existsSync(oldFile)) {
+            fs.renameSync(oldFile, newFile);
+        } else {
+            // 源文件不存在则创建空板数据
+            writeJsonFile(newFile, { todo: [], doing: [], done: [], archived: [], lists: null });
+        }
+
+        // 同步重命名已有的备份文件前缀
+        try {
+            const oldPrefix = `${fromProjectId}_${boardName}_`;
+            const newPrefix = `${toProjectId}_${boardName}_`;
+            const files = fs.readdirSync(backupsDir).filter(f => f.startsWith(oldPrefix));
+            files.forEach(f => {
+                try {
+                    fs.renameSync(path.join(backupsDir, f), path.join(backupsDir, f.replace(oldPrefix, newPrefix)));
+                } catch (e) { console.warn('Rename backup on move warning:', f, e && e.message ? e.message : e); }
+            });
+        } catch (e) { console.warn('List backups on move warning:', e && e.message ? e.message : e); }
+
+        // 从源项目移除并加入目标项目
+        fromProject.boards.splice(idx, 1);
+        fromProject.boardOwners = fromProject.boardOwners || {};
+        const owner = fromProject.boardOwners[boardName] || fromProject.owner;
+        if (!toProject.boards) toProject.boards = [];
+        if (!toProject.boardOwners) toProject.boardOwners = {};
+        toProject.boards.unshift(boardName);
+        toProject.boardOwners[boardName] = owner;
+        delete fromProject.boardOwners[boardName];
+
+        if (!writeJsonFile(projectsFile, projects)) {
+            // 回滚文件
+            try { if (fs.existsSync(newFile)) fs.renameSync(newFile, oldFile); } catch (e) {}
+            return res.status(500).json({ message: '保存项目数据失败' });
+        }
+
+        // 更新所有用户的星标（项目ID与项目名称）
+        try {
+            let changed = false;
+            for (const [uname, u] of Object.entries(users)) {
+                if (!u || !Array.isArray(u.stars)) continue;
+                u.stars.forEach(s => {
+                    if (s && s.projectId === fromProjectId && s.boardName === boardName) {
+                        s.projectId = toProjectId;
+                        s.projectName = toProject.name || s.projectName || '';
+                        changed = true;
+                    }
+                });
+            }
+            if (changed) writeJsonFile(usersFile, users);
+        } catch (e) { console.warn('Update stars on move warning:', e && e.message ? e.message : e); }
+
+        // 通知旧看板参与者重连到新项目
+        try {
+            broadcastToBoard(fromProjectId, boardName, {
+                type: 'board-moved',
+                fromProjectId,
+                toProjectId,
+                toProjectName: toProject.name || '',
+                boardName
+            });
+        } catch (e) { console.warn('Broadcast board-moved warning:', e && e.message ? e.message : e); }
+
+        return res.json({ message: '移动成功', toProjectId, toProjectName: toProject.name || '' });
+    } catch (error) {
+        console.error('Move board error:', error);
+        // 尝试回滚文件名
+        try { if (fs.existsSync(newFile)) fs.renameSync(newFile, oldFile); } catch (e) {}
+        return res.status(500).json({ message: '移动失败' });
+    }
+});
+
 // 看板数据API
 app.get('/api/board/:projectId/:boardName', (req, res) => {
     const { projectId, boardName } = req.params;
