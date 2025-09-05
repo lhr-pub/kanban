@@ -730,7 +730,7 @@ app.post('/api/user-stars/toggle', (req, res) => {
     const isMember = Array.isArray(project.members) && project.members.includes(username);
     if (!isMember) return res.status(403).json({ message: '只有项目成员可以设置星标' });
 
-    const exists = Array.isArray(project.boards) && project.boards.includes(boardName);
+    const exists = (Array.isArray(project.boards) && project.boards.includes(boardName)) || (Array.isArray(project.archivedBoards) && project.archivedBoards.includes(boardName));
     if (!exists) return res.status(404).json({ message: '看板不存在' });
 
     user.stars = Array.isArray(user.stars) ? user.stars : [];
@@ -777,6 +777,7 @@ app.post('/api/create-project', (req, res) => {
         created: new Date().toISOString(),
         members: [username],
         boards: [] // 初始不创建默认看板
+        , archivedBoards: []
     };
 
     // 更新用户项目列表（新项目置前）
@@ -874,6 +875,7 @@ app.get('/api/project-boards/:projectId', (req, res) => {
         inviteCode: project.inviteCode,
         members: project.members,
         boards: project.boards,
+        archivedBoards: Array.isArray(project.archivedBoards) ? project.archivedBoards : [],
         owner: project.owner,
         boardOwners: project.boardOwners || {},
         pendingRequests: project.pendingRequests || [],
@@ -1216,7 +1218,14 @@ app.delete('/api/delete-board', (req, res) => {
 
     const boardIndex = project.boards.indexOf(boardName);
     if (boardIndex === -1) {
-        return res.status(404).json({ message: '看板不存在' });
+        // allow deletion from archived list as well
+        project.archivedBoards = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
+        const aidx = project.archivedBoards.indexOf(boardName);
+        if (aidx === -1) {
+            return res.status(404).json({ message: '看板不存在' });
+        }
+        // remove from archived list and proceed to delete file
+        project.archivedBoards.splice(aidx, 1);
     }
 
     // 删除看板文件
@@ -1226,8 +1235,10 @@ app.delete('/api/delete-board', (req, res) => {
             fs.unlinkSync(boardFile);
         }
 
-        // 从项目中移除看板
-        project.boards.splice(boardIndex, 1);
+        // 从项目中移除看板（若存在于 boards 列表）
+        if (boardIndex !== -1) {
+            project.boards.splice(boardIndex, 1);
+        }
 
         if (writeJsonFile(projectsFile, projects)) {
             // 同步清理所有用户在该项目该看板的星标
@@ -2185,7 +2196,12 @@ setInterval(() => {
         const projects = readJsonFile(projectsFile, {});
 
         for (const [projectId, project] of Object.entries(projects)) {
-            project.boards.forEach(boardName => {
+            const boards = Array.isArray(project.boards) ? project.boards : [];
+            boards.forEach(boardName => {
+                cleanOldBackups(projectId, boardName);
+            });
+            const archived = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
+            archived.forEach(boardName => {
                 cleanOldBackups(projectId, boardName);
             });
         }
@@ -2397,4 +2413,65 @@ app.post('/api/approve-join', (req, res) => {
         });
     } catch (e) {}
     return res.json({ message: '已同意加入', members: project.members, pendingRequests: project.pendingRequests });
+});
+
+app.post('/api/archive-board', (req, res) => {
+    const { projectId, boardName, actor } = req.body || {};
+    if (!projectId || !boardName) return res.status(400).json({ message: '项目ID和看板名称不能为空' });
+
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+
+    const isProjectOwner = actor && actor === project.owner;
+    const isBoardOwner = project.boardOwners && actor && project.boardOwners[boardName] === actor;
+    if (!isProjectOwner && !isBoardOwner) {
+        return res.status(403).json({ message: '只有项目所有者或看板创建者可以归档看板' });
+    }
+
+    project.archivedBoards = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
+    project.boards = Array.isArray(project.boards) ? project.boards : [];
+
+    const idx = project.boards.indexOf(boardName);
+    if (idx === -1) return res.status(404).json({ message: '看板不存在' });
+
+    // Move name from boards to archivedBoards (avoid duplicates)
+    project.boards.splice(idx, 1);
+    if (!project.archivedBoards.includes(boardName)) project.archivedBoards.unshift(boardName);
+
+    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
+
+    return res.json({ message: '看板已归档', boards: project.boards, archivedBoards: project.archivedBoards });
+});
+
+app.post('/api/unarchive-board', (req, res) => {
+    const { projectId, boardName, actor } = req.body || {};
+    if (!projectId || !boardName) return res.status(400).json({ message: '项目ID和看板名称不能为空' });
+
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+
+    const isProjectOwner = actor && actor === project.owner;
+    const isBoardOwner = project.boardOwners && actor && project.boardOwners[boardName] === actor;
+    if (!isProjectOwner && !isBoardOwner) {
+        return res.status(403).json({ message: '只有项目所有者或看板创建者可以还原看板' });
+    }
+
+    project.archivedBoards = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
+    project.boards = Array.isArray(project.boards) ? project.boards : [];
+
+    const idx = project.archivedBoards.indexOf(boardName);
+    if (idx === -1) return res.status(404).json({ message: '归档中不存在该看板' });
+
+    project.archivedBoards.splice(idx, 1);
+    if (!project.boards.includes(boardName)) project.boards.unshift(boardName);
+
+    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
+
+    return res.json({ message: '看板已还原', boards: project.boards, archivedBoards: project.archivedBoards });
 });

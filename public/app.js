@@ -653,7 +653,8 @@ async function loadUserProjects() {
 
         results.forEach(({ project, boardsData }) => {
             // 添加快速访问看板
-            (boardsData.boards || []).forEach(boardName => {
+            const archivedSet = new Set(Array.isArray(boardsData.archivedBoards) ? boardsData.archivedBoards : []);
+            (boardsData.boards || []).filter(n => !archivedSet.has(n)).forEach(boardName => {
                 if (token !== userProjectsLoadToken) return;
                 const boardCard = document.createElement('div');
                 boardCard.className = 'quick-board-card board-card-with-actions';
@@ -679,6 +680,7 @@ async function loadUserProjects() {
                         <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${project.id}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${project.id}', '${escapeJs(boardName)}', '${escapeJs(project.name)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                         <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
                         <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
+                        <button class="board-action-btn archive-btn" onclick="event.stopPropagation(); archiveBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="归档看板">📁</button>
                         <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
                     </div>
                 `;
@@ -955,11 +957,12 @@ async function loadProjectBoards() {
         window.currentProjectOwner = data.owner;
         window.currentBoardOwners = data.boardOwners || {};
         window.currentPendingRequests = data.pendingRequests || [];
+        window.currentArchivedBoards = Array.isArray(data.archivedBoards) ? data.archivedBoards : [];
 
         const boardList = document.getElementById('boardList');
         boardList.innerHTML = '';
 
-        if (data.boards.length === 0) {
+        if (data.boards.length === 0 && (!window.currentArchivedBoards || window.currentArchivedBoards.length === 0)) {
             boardList.innerHTML = '<div class="empty-state">还没有看板，创建第一个看板吧！</div>';
             return;
         }
@@ -984,6 +987,7 @@ async function loadProjectBoards() {
                     <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                     ${canManage ? `<button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
                     <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoard('${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
+                    <button class="board-action-btn archive-btn" onclick="event.stopPropagation(); archiveBoard('${escapeJs(boardName)}')" title="归档看板">📁</button>
                     <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
                 </div>
             `;
@@ -991,6 +995,34 @@ async function loadProjectBoards() {
             boardList.appendChild(boardCard);
         });
 
+        // Archived boards section
+        if (window.currentArchivedBoards && window.currentArchivedBoards.length) {
+            const archivedHeader = document.createElement('h3');
+            archivedHeader.textContent = '归档的看板';
+            archivedHeader.style.marginTop = '18px';
+            boardList.appendChild(archivedHeader);
+
+            window.currentArchivedBoards.forEach(boardName => {
+                const boardCard = document.createElement('div');
+                boardCard.className = 'quick-board-card board-card-with-actions';
+                // archived not clickable to open; offer unarchive
+                const owner = (window.currentBoardOwners && window.currentBoardOwners[boardName]) || '';
+                const canManage = (currentUser && (currentUser === window.currentProjectOwner || currentUser === owner));
+                boardCard.innerHTML = `
+                    <div class="board-icon" style="display:none"></div>
+                    <div class="board-details">
+                        <h4>${escapeHtml(boardName)}</h4>
+                        <span class="board-project">${escapeHtml(currentProjectName)} · 已归档</span>
+                    </div>
+                    ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
+                    <div class="board-card-actions">
+                        ${canManage ? `<button class="board-action-btn" onclick="event.stopPropagation(); unarchiveBoard('${escapeJs(boardName)}')" title="还原看板">↩︎</button>
+                        <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
+                    </div>
+                `;
+                boardList.appendChild(boardCard);
+            });
+        }
     } catch (error) {
         console.error('Load boards error:', error);
         uiToast('加载看板列表失败','error');
@@ -1065,6 +1097,7 @@ async function createBoard() {
                     <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                     ${canManage ? `<button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
                     <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoard('${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
+                    <button class="board-action-btn archive-btn" onclick="event.stopPropagation(); archiveBoard('${escapeJs(boardName)}')" title="归档看板">📁</button>
                     <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
                 </div>
             `;
@@ -4158,6 +4191,12 @@ async function openBoardSwitcher(e) {
             const resp = await fetch(`/api/project-boards/${currentProjectId}`);
             const data = await resp.json();
             boards = Array.isArray(data.boards) ? data.boards : [];
+            // exclude archived boards from switcher
+            const archived = Array.isArray(data.archivedBoards) ? data.archivedBoards : [];
+            if (archived && archived.length) {
+                const set = new Set(archived);
+                boards = boards.filter(n => !set.has(n));
+            }
             projectBoardsCache[currentProjectId] = boards;
         } catch (err) {
             boards = [];
@@ -4243,6 +4282,12 @@ function showBoardSwitcherAt(rect, boards) {
                     const resp = await fetch(`/api/project-boards/${currentProjectId}`);
                     const data = await resp.json();
                     boards = Array.isArray(data.boards) ? data.boards : [];
+                    // exclude archived boards from switcher
+                    const archived = Array.isArray(data.archivedBoards) ? data.archivedBoards : [];
+                    if (archived && archived.length) {
+                        const set = new Set(archived);
+                        boards = boards.filter(n => !set.has(n));
+                    }
                     projectBoardsCache[currentProjectId] = boards;
                     renderList(search.value);
                 } catch {}
@@ -5975,4 +6020,56 @@ function updateStarsOnBoardMoved(fromProjectId, toProjectId, boardName, toProjec
         });
         if (changed) saveStarredBoards(list);
     } catch (e) {}
+}
+
+async function archiveBoard(boardName){
+    const ok = await uiConfirm(`将看板 "${boardName}" 归档？\n\n归档后不会显示在列表中，但可在该项目页面下方的"归档的看板"中还原或删除。`, '归档看板');
+    if (!ok) return;
+    try {
+        const resp = await fetch('/api/archive-board', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: currentProjectId, boardName, actor: currentUser })
+        });
+        const data = await resp.json().catch(()=>({}));
+        if (resp.ok) {
+            uiToast('看板已归档','success');
+            loadProjectBoards();
+            try { removeStarIfExists(currentProjectId, boardName); renderStarredBoards(); } catch(e){}
+        } else {
+            uiToast(data.message || '归档失败','error');
+        }
+    } catch(e) { uiToast('归档失败','error'); }
+}
+async function unarchiveBoard(boardName){
+    try {
+        const resp = await fetch('/api/unarchive-board', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: currentProjectId, boardName, actor: currentUser })
+        });
+        const data = await resp.json().catch(()=>({}));
+        if (resp.ok) {
+            uiToast('看板已还原','success');
+            loadProjectBoards();
+        } else {
+            uiToast(data.message || '还原失败','error');
+        }
+    } catch(e) { uiToast('还原失败','error'); }
+}
+async function archiveBoardFromHome(projectId, boardName){
+    const ok = await uiConfirm(`将看板 "${boardName}" 归档？\n\n可在项目的看板选择页面下方查看并还原。`, '归档看板');
+    if (!ok) return;
+    try {
+        const resp = await fetch('/api/archive-board', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, boardName, actor: currentUser })
+        });
+        const data = await resp.json().catch(()=>({}));
+        if (resp.ok) {
+            uiToast('看板已归档','success');
+            loadUserProjects();
+            try { removeStarIfExists(projectId, boardName); renderStarredBoards(); } catch(e){}
+        } else {
+            uiToast(data.message || '归档失败','error');
+        }
+    } catch(e) { uiToast('归档失败','error'); }
 }
