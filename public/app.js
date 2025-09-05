@@ -1779,13 +1779,13 @@ function bindComposer(section, list){
             cardsContainer.appendChild(el);
             makeDraggable(el);
         } else {
-            renderBoard();
+            // avoid full re-render while composer is open
         }
         // clear and focus for next entry
         textarea.value = '';
         try { textarea.focus(); } catch(e) {}
         try { autoResizeTextarea(textarea); } catch(e) {}
-        setTimeout(()=>{ isSubmitting = false; }, 150);
+        setTimeout(()=>{ isSubmitting = false; }, 120);
     }
 }
 
@@ -3509,7 +3509,7 @@ function shouldKeepInlineEditingActive(cardId) {
 
 // 检测是否有任何内联编辑控件正在打开
 function isAnyInlineEditorOpen() {
-    return !!document.querySelector('.inline-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
+    return !!document.querySelector('.inline-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown, .card-composer.is-open');
 }
 
 // 恢复待聚焦的编辑器（带重试）
@@ -3534,7 +3534,7 @@ function scheduleDeferredRender() {
     }
     pendingRenderTimer = setTimeout(function check() {
         if (isAnyInlineEditorOpen() || inlineEditorOpening) {
-            pendingRenderTimer = setTimeout(check, 60);
+            pendingRenderTimer = setTimeout(check, 80);
             return;
         }
         if (pendingBoardUpdate) {
@@ -3542,7 +3542,7 @@ function scheduleDeferredRender() {
             renderBoard();
         }
         pendingRenderTimer = null;
-    }, 60);
+    }, 80);
 }
 
 // 管理卡片的内联编辑状态
