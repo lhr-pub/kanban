@@ -468,6 +468,16 @@ function showArchive(replaceHistory) {
     // History
     updateHistory('archive', !!replaceHistory);
 
+    const search = document.getElementById('archiveSearch');
+    if (search) {
+        search.style.display = '';
+        if (!search._bound) {
+            search._bound = true;
+            search.addEventListener('input', ()=> renderArchive());
+        }
+        setTimeout(()=>{ try{ search.focus(); }catch(_){} }, 0);
+    }
+
     renderArchive();
 }
 
@@ -997,15 +1007,36 @@ async function loadProjectBoards() {
 
         // Archived boards section
         if (window.currentArchivedBoards && window.currentArchivedBoards.length) {
-            const archivedHeader = document.createElement('h3');
-            archivedHeader.textContent = '归档的看板';
-            archivedHeader.style.marginTop = '18px';
-            boardList.appendChild(archivedHeader);
+            const archivedWrap = document.createElement('div');
+            archivedWrap.className = 'archived-boards-wrap';
 
-            window.currentArchivedBoards.forEach(boardName => {
+            const header = document.createElement('div');
+            header.className = 'archived-boards-header';
+            header.innerHTML = `<div class=\"archived-left\"><h3 id=\"archivedHeaderTitle\">归档的看板 <span class=\"count\" id=\"archivedBoardsCount\">0</span></h3><input id=\"archivedBoardsSearch\" type=\"text\" placeholder=\"搜索归档看板...\"><button id=\"toggleArchivedBtn\" class=\"btn-secondary\" aria-expanded=\"false\">展开</button></div>`;
+            archivedWrap.appendChild(header);
+
+            const listContainer = document.createElement('div');
+            listContainer.className = 'archived-boards-list hidden';
+            archivedWrap.appendChild(listContainer);
+
+            function renderArchivedList() {
+                const qEl = document.getElementById('archivedBoardsSearch');
+                const countEl = document.getElementById('archivedBoardsCount');
+                const q = (qEl && qEl.value ? qEl.value.trim().toLowerCase() : '');
+                listContainer.innerHTML = '';
+                const all = (window.currentArchivedBoards || []).slice();
+                const boards = q ? all.filter(name => name.toLowerCase().includes(q)) : all;
+                if (countEl) countEl.textContent = String(boards.length);
+                if (!boards.length) {
+                    const msg = document.createElement('div');
+                    msg.className = 'empty-state';
+                    msg.textContent = q ? '暂无匹配的归档看板' : '暂无归档看板';
+                    listContainer.appendChild(msg);
+                    return;
+                }
+                boards.forEach(boardName => {
                 const boardCard = document.createElement('div');
                 boardCard.className = 'quick-board-card board-card-with-actions';
-                // archived not clickable to open; offer unarchive
                 const owner = (window.currentBoardOwners && window.currentBoardOwners[boardName]) || '';
                 const canManage = (currentUser && (currentUser === window.currentProjectOwner || currentUser === owner));
                 boardCard.innerHTML = `
@@ -1020,8 +1051,34 @@ async function loadProjectBoards() {
                         <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
                     </div>
                 `;
-                boardList.appendChild(boardCard);
-            });
+                    listContainer.appendChild(boardCard);
+                });
+            }
+
+            const toggleBtn = header.querySelector('#toggleArchivedBtn');
+            toggleBtn.onclick = () => {
+                const isHidden = listContainer.classList.contains('hidden');
+                if (isHidden) {
+                    listContainer.classList.remove('hidden');
+                    toggleBtn.textContent = '收起';
+                    toggleBtn.setAttribute('aria-expanded','true');
+                    renderArchivedList();
+                } else {
+                    listContainer.classList.add('hidden');
+                    toggleBtn.textContent = '展开';
+                    toggleBtn.setAttribute('aria-expanded','false');
+                }
+            };
+            const title = header.querySelector('#archivedHeaderTitle');
+            if (title) { title.onclick = () => toggleBtn.click(); }
+
+            boardList.appendChild(archivedWrap);
+
+            const searchInput = header.querySelector('#archivedBoardsSearch');
+            if (searchInput && !searchInput._bound) {
+                searchInput._bound = true;
+                searchInput.addEventListener('input', () => { if (!listContainer.classList.contains('hidden')) renderArchivedList(); });
+            }
         }
     } catch (error) {
         console.error('Load boards error:', error);
@@ -1756,10 +1813,22 @@ function renderArchive() {
 
     archivedCards.innerHTML = '';
     const cards = boardData.archived || [];
-    archivedCount.textContent = cards.length;
 
-    // 保持当前顺序
-    const sortedCards = cards.slice();
+    const search = document.getElementById('archiveSearch');
+    const q = (search && search.value ? search.value.trim().toLowerCase() : '');
+
+    const filtered = q
+        ? cards.filter(c =>
+            ((c.title||'').toLowerCase().includes(q)) ||
+            ((c.description||'').toLowerCase().includes(q)) ||
+            ((Array.isArray(c.labels)?c.labels.join(','):'').toLowerCase().includes(q)) ||
+            ((c.assignee||'').toLowerCase().includes(q))
+          )
+        : cards;
+
+    archivedCount.textContent = filtered.length;
+
+    const sortedCards = filtered.slice();
 
     sortedCards.forEach(card => {
         const cardElement = createCardElement(card, 'archived');
@@ -5907,39 +5976,93 @@ document.addEventListener('keydown', function(e){
 // 移动看板（项目看板页）
 async function promptMoveBoard(boardName){
     try { hideBoardSwitcher(); } catch (e) {}
-    const target = await chooseTargetProject(currentProjectId);
+    const target = await openProjectChooser(currentProjectId);
     if (!target) return;
     await moveBoardRequest(currentProjectId, target.id, boardName);
 }
 
 // 移动看板（首页快捷看板）
 async function promptMoveBoardFromHome(fromProjectId, boardName){
-    const target = await chooseTargetProject(fromProjectId);
+    const target = await openProjectChooser(fromProjectId);
     if (!target) return;
     await moveBoardRequest(fromProjectId, target.id, boardName, true);
 }
 
-// 选择目标项目（简单下拉/提示）
-async function chooseTargetProject(excludeProjectId){
+// 打开项目选择器模态框，返回选中项目
+async function openProjectChooser(excludeProjectId){
     try {
         const resp = await fetch(`/api/user-projects/${currentUser}`);
         if (!resp.ok) { uiToast('加载项目列表失败','error'); return null; }
-        const list = await resp.json();
-        const candidates = (Array.isArray(list) ? list : []).filter(p => String(p.id) !== String(excludeProjectId));
+        const all = await resp.json();
+        const candidates = (Array.isArray(all) ? all : []).filter(p => String(p.id) !== String(excludeProjectId));
         if (!candidates.length) { uiToast('没有可移动到的项目','info'); return null; }
-        // 简单的prompt选择：显示序号与名称
-        const optionsText = candidates.map((p, i) => `${i+1}. ${p.name}`).join('\n');
-        const input = await uiPrompt(`选择目标项目序号:\n\n${optionsText}`, '', '移动到项目');
-        if (input === null) return null;
-        const idx = parseInt(String(input).trim(), 10) - 1;
-        if (isNaN(idx) || idx < 0 || idx >= candidates.length) { uiToast('无效的序号','error'); return null; }
-        return candidates[idx];
+
+        const modal = document.getElementById('projectChooserModal');
+        const listEl = document.getElementById('projectChooserList');
+        const searchEl = document.getElementById('projectChooserSearch');
+        const confirmBtn = document.getElementById('projectChooserConfirm');
+        if (!modal || !listEl || !searchEl || !confirmBtn) { return null; }
+
+        let selectedId = null;
+        function renderList(items){
+            listEl.innerHTML = '';
+            items.forEach(p => {
+                const item = document.createElement('div');
+                item.className = 'board-switcher-item';
+                item.innerHTML = `<span class="board-switcher-label" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>`;
+                item.onclick = () => {
+                    selectedId = p.id;
+                    confirmBtn.disabled = false;
+                    // highlight selection
+                    listEl.querySelectorAll('.board-switcher-item').forEach(el=>el.classList.remove('active'));
+                    item.classList.add('active');
+                };
+                listEl.appendChild(item);
+            });
+        }
+        renderList(candidates);
+        searchEl.value = '';
+        searchEl.oninput = () => {
+            const q = searchEl.value.trim().toLowerCase();
+            const filtered = q ? candidates.filter(p => (p.name||'').toLowerCase().includes(q)) : candidates;
+            renderList(filtered);
+            selectedId = null; confirmBtn.disabled = true;
+        };
+
+        return await new Promise(resolve => {
+            function cleanup(){
+                modal.classList.add('hidden');
+                confirmBtn.onclick = null;
+                closeBtn.onclick = null;
+                document.removeEventListener('keydown', keyHandler, true);
+            }
+            const closeBtn = modal.querySelector('.close-btn');
+            const keyHandler = (e) => {
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeBtn && closeBtn.click(); }
+                if (e.key === 'Enter' && !confirmBtn.disabled) { e.preventDefault(); confirmBtn.click(); }
+            };
+            document.addEventListener('keydown', keyHandler, true);
+            closeBtn && (closeBtn.onclick = () => { cleanup(); resolve(null); });
+            confirmBtn.onclick = () => {
+                const picked = candidates.find(p => String(p.id) === String(selectedId));
+                cleanup();
+                resolve(picked || null);
+            };
+            modal.classList.remove('hidden');
+            setTimeout(()=>{ try{ searchEl.focus(); }catch(_){} }, 0);
+        });
     } catch (e) {
         uiToast('加载项目列表失败','error');
         return null;
     }
 }
 
+function closeProjectChooser(){
+    const modal = document.getElementById('projectChooserModal');
+    if (modal) modal.classList.add('hidden');
+}
+
+// 发送移动看板请求并进行轻量 UI 更新
 async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
     if (String(fromProjectId) === String(toProjectId)) { uiToast('目标项目不能与源项目相同','error'); return; }
     try {
@@ -5950,9 +6073,7 @@ async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
         });
         const result = await resp.json().catch(() => ({}));
         if (!resp.ok) { uiToast(result.message || '移动失败','error'); return; }
-        // Inline UI updates: remove from source list and add to target quick lists if visible
         try {
-            // 更新首页快捷看板：修改该卡片的项目显示与点击行为
             document.querySelectorAll('#quickAccessBoards .quick-board-card').forEach(card => {
                 const starBtn = card.querySelector('.star-btn');
                 const titleEl = card.querySelector('h4');
@@ -5979,9 +6100,7 @@ async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
                 }
             });
         } catch(e) {}
-
         try {
-            // 如果在源项目的看板选择页，移除该卡片
             if (!boardSelectPage.classList.contains('hidden') && String(currentProjectId) === String(fromProjectId)) {
                 const list = document.getElementById('boardList');
                 if (list) {
@@ -5994,11 +6113,9 @@ async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
         } catch(e) {}
 
         uiToast('移动成功','success');
-        // 当前打开的看板被移动：等待WS事件进行重连；如在主页，则无需刷新
         if (String(fromProjectId) === String(currentProjectId) && currentBoardName === boardName && socket && socket.readyState === WebSocket.OPEN) {
-            // no-op: server WS will instruct rejoin via board-moved
+            // server will broadcast board-moved
         }
-        // 轻量刷新数据
         try { if (!projectPage.classList.contains('hidden')) loadUserProjects(); } catch(e) {}
         try { renderStarredBoards(); } catch(e) {}
     } catch (e) {
@@ -6007,69 +6124,121 @@ async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
     }
 }
 
-function updateStarsOnBoardMoved(fromProjectId, toProjectId, boardName, toProjectName){
-    try {
-        const list = loadStarredBoards();
-        let changed = false;
-        list.forEach(s => {
-            if (s && s.projectId === fromProjectId && s.boardName === boardName) {
-                s.projectId = toProjectId;
-                if (toProjectName) s.projectName = toProjectName;
-                changed = true;
-            }
-        });
-        if (changed) saveStarredBoards(list);
-    } catch (e) {}
+// 显示归档并启用搜索
+function showArchive(replaceHistory) {
+    boardPage.classList.add('hidden');
+    archivePage.classList.remove('hidden');
+
+    // 保存页面状态
+    localStorage.setItem('kanbanPageState', 'archive');
+
+    // History
+    updateHistory('archive', !!replaceHistory);
+
+    const search = document.getElementById('archiveSearch');
+    if (search) {
+        search.style.display = '';
+        if (!search._bound) {
+            search._bound = true;
+            search.addEventListener('input', ()=> renderArchive());
+        }
+        setTimeout(()=>{ try{ search.focus(); }catch(_){} }, 0);
+    }
+
+    renderArchive();
 }
 
+// 渲染归档页面（支持搜索过滤）
+function renderArchive() {
+    const archivedCards = document.getElementById('archivedCards');
+    const archivedCount = document.getElementById('archivedCount');
+
+    archivedCards.innerHTML = '';
+    const cards = boardData.archived || [];
+
+    const search = document.getElementById('archiveSearch');
+    const q = (search && search.value ? search.value.trim().toLowerCase() : '');
+
+    const filtered = q
+        ? cards.filter(c =>
+            ((c.title||'').toLowerCase().includes(q)) ||
+            ((c.description||'').toLowerCase().includes(q)) ||
+            ((Array.isArray(c.labels)?c.labels.join(','):'').toLowerCase().includes(q)) ||
+            ((c.assignee||'').toLowerCase().includes(q))
+          )
+        : cards;
+
+    archivedCount.textContent = filtered.length;
+
+    const sortedCards = filtered.slice();
+
+    sortedCards.forEach(card => {
+        const cardElement = createCardElement(card, 'archived');
+        archivedCards.appendChild(cardElement);
+    });
+}
+
+// ... existing code ...
+// 归档看板（项目内）
 async function archiveBoard(boardName){
-    const ok = await uiConfirm(`将看板 "${boardName}" 归档？\n\n归档后不会显示在列表中，但可在该项目页面下方的"归档的看板"中还原或删除。`, '归档看板');
+    const ok = await uiConfirm(`将看板 "${boardName}" 移至归档？`, '归档看板');
     if (!ok) return;
     try {
         const resp = await fetch('/api/archive-board', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectId: currentProjectId, boardName, actor: currentUser })
         });
-        const data = await resp.json().catch(()=>({}));
-        if (resp.ok) {
+        const result = await resp.json().catch(()=>({}));
+        if (!resp.ok) { uiToast(result.message || '归档失败','error'); return; }
             uiToast('看板已归档','success');
-            loadProjectBoards();
-            try { removeStarIfExists(currentProjectId, boardName); renderStarredBoards(); } catch(e){}
-        } else {
-            uiToast(data.message || '归档失败','error');
-        }
-    } catch(e) { uiToast('归档失败','error'); }
+        try { loadProjectBoards(); } catch(e){}
+        try { renderStarredBoards(); } catch(e){}
+    } catch (e) {
+        console.error('Archive board error:', e);
+        uiToast('归档失败','error');
+    }
 }
-async function unarchiveBoard(boardName){
-    try {
-        const resp = await fetch('/api/unarchive-board', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId: currentProjectId, boardName, actor: currentUser })
-        });
-        const data = await resp.json().catch(()=>({}));
-        if (resp.ok) {
-            uiToast('看板已还原','success');
-            loadProjectBoards();
-        } else {
-            uiToast(data.message || '还原失败','error');
-        }
-    } catch(e) { uiToast('还原失败','error'); }
-}
+
+// 归档看板（首页快捷卡片）
 async function archiveBoardFromHome(projectId, boardName){
-    const ok = await uiConfirm(`将看板 "${boardName}" 归档？\n\n可在项目的看板选择页面下方查看并还原。`, '归档看板');
+    const ok = await uiConfirm(`将看板 "${boardName}" 移至归档？`, '归档看板');
     if (!ok) return;
     try {
         const resp = await fetch('/api/archive-board', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectId, boardName, actor: currentUser })
         });
-        const data = await resp.json().catch(()=>({}));
-        if (resp.ok) {
+        const result = await resp.json().catch(()=>({}));
+        if (!resp.ok) { uiToast(result.message || '归档失败','error'); return; }
             uiToast('看板已归档','success');
-            loadUserProjects();
-            try { removeStarIfExists(projectId, boardName); renderStarredBoards(); } catch(e){}
-        } else {
-            uiToast(data.message || '归档失败','error');
-        }
-    } catch(e) { uiToast('归档失败','error'); }
+        try { renderStarredBoards(); } catch(e){}
+        try { if (!projectPage.classList.contains('hidden')) loadUserProjects(); } catch(e) {}
+    } catch (e) {
+        console.error('Archive board (home) error:', e);
+        uiToast('归档失败','error');
+    }
 }
+
+// 还原归档看板
+async function unarchiveBoard(boardName){
+    const ok = await uiConfirm(`还原看板 "${boardName}" 到项目列表？`, '还原看板');
+    if (!ok) return;
+    try {
+        const resp = await fetch('/api/unarchive-board', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: currentProjectId, boardName, actor: currentUser })
+        });
+        const result = await resp.json().catch(()=>({}));
+        if (!resp.ok) { uiToast(result.message || '还原失败','error'); return; }
+        uiToast('看板已还原','success');
+        try { loadProjectBoards(); } catch(e){}
+        try { renderStarredBoards(); } catch(e){}
+    } catch (e) {
+        console.error('Unarchive board error:', e);
+        uiToast('还原失败','error');
+    }
+}
+// ... existing code ...

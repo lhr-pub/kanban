@@ -190,6 +190,7 @@
             <div class="container">
                 <h1>归档任务</h1>
                 <div class="header-actions">
+                    <input id="archiveSearch" type="text" placeholder="搜索归档任务..." style="display:none">
                     <button id="backToBoard">返回看板</button>
                     <button onclick="clearArchive()" class="clear-archive-btn">清空归档</button>
                 </div>
@@ -202,6 +203,25 @@
                 <div class="cards" id="archivedCards"></div>
             </div>
         </main>
+    </div>
+
+    <!-- 项目选择器模态框 -->
+    <div id="projectChooserModal" class="modal hidden">
+        <div class="modal-content edit-modal">
+            <div class="modal-header">
+                <h3>选择目标项目</h3>
+                <button class="close-btn" onclick="closeProjectChooser()" title="关闭">×</button>
+            </div>
+            <div class="modal-body">
+                <input id="projectChooserSearch" type="text" placeholder="搜索项目名称" class="board-switcher-search"
+                    style="width:100%; margin-bottom:10px;">
+                <div id="projectChooserList" class="board-switcher-list"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeProjectChooser()">取消</button>
+                <button class="btn-primary" id="projectChooserConfirm" disabled>确定</button>
+            </div>
+        </div>
     </div>
 
     <!-- 导入选项模态框 -->
