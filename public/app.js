@@ -731,7 +731,10 @@ async function loadUserProjects() {
             if (token !== userProjectsLoadToken) return;
             const projectCard = document.createElement('div');
             projectCard.className = 'project-card project-card-with-actions';
-            projectCard.onclick = () => selectProject(project.id, project.name);
+            projectCard.addEventListener('click', (e) => {
+                if (e.target.closest('.project-card-actions')) return;
+                selectProject(project.id, project.name);
+            });
             projectCard.setAttribute('data-project-id', project.id);
 
             // build DOM incrementally to avoid innerHTML measuring/reflow
@@ -742,8 +745,9 @@ async function loadUserProjects() {
             info.innerHTML = `邀请码: <span class="invite-code">${project.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(project.inviteCode)}')">复制</button><br>成员: ${project.memberCount}人<br>看板: ${project.boardCount}个<br>创建于: ${new Date(project.created).toLocaleDateString()}`;
             const actions = document.createElement('div');
             actions.className = 'project-card-actions';
+            actions.innerHTML = `<button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${project.id}')" title="置前">⇧</button>`;
             if (currentUser === (project.owner || '')) {
-                actions.innerHTML = `<button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${project.id}')" title="置前">⇧</button><button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button><button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>`;
+                actions.innerHTML += `<button class=\"project-action-btn rename-btn\" onclick=\"event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')\" title=\"重命名项目\">✎</button><button class=\"project-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')\" title=\"删除项目\">✕</button>`;
             }
             const ownerEl = document.createElement('div');
             ownerEl.className = 'card-owner';
@@ -787,34 +791,70 @@ async function loadUserProjects() {
     }
 }
 
+// 选择项目
+function selectProject(projectId, projectName) {
+    currentProjectId = projectId;
+    currentProjectName = projectName;
+    const titleEl = document.getElementById('projectTitle');
+    if (titleEl) titleEl.textContent = projectName;
+    previousPage = 'project';
+    showBoardSelectPage();
+}
+
+// 创建/加入项目弹层
+function showCreateProjectForm() {
+    const el = document.getElementById('createProjectForm');
+    if (el) el.classList.remove('hidden');
+    const input = document.getElementById('newProjectName');
+    try { if (input) input.focus(); } catch(_) {}
+}
+function hideCreateProjectForm() {
+    const el = document.getElementById('createProjectForm');
+    if (el) el.classList.add('hidden');
+    const input = document.getElementById('newProjectName');
+    if (input) input.value = '';
+}
+function showJoinProjectForm() {
+    const el = document.getElementById('joinProjectForm');
+    if (el) el.classList.remove('hidden');
+    const input = document.getElementById('inviteCode');
+    try { if (input) input.focus(); } catch(_) {}
+}
+function hideJoinProjectForm() {
+    const el = document.getElementById('joinProjectForm');
+    if (el) el.classList.add('hidden');
+    const input = document.getElementById('inviteCode');
+    if (input) input.value = '';
+}
+
 // === Pinned projects helpers ===
-function getPinnedProjectsKey(){
-    return `kanbanPinnedProjects:${currentUser || ''}`;
+async function fetchServerPinned(){
+    try {
+        const rs = await fetch(`/api/user-pins/${currentUser}`);
+        const rj = await rs.json().catch(()=>({ pinned: [] }));
+        return Array.isArray(rj.pinned) ? rj.pinned : [];
+    } catch (e) { return []; }
 }
-function loadPinnedProjects(){
-    try { return JSON.parse(localStorage.getItem(getPinnedProjectsKey()) || '[]') || []; } catch(e){ return []; }
-}
-function savePinnedProjects(list){
-    try { localStorage.setItem(getPinnedProjectsKey(), JSON.stringify(list)); } catch(e) {}
+async function pinProjectToFront(projectId){
+    if (!projectId || !currentUser) return;
+    try {
+        const rs = await fetch('/api/user-pins/pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, projectId })
+        });
+        const rj = await rs.json().catch(()=>({}));
+        if (!rs.ok) { uiToast(rj.message || '置前失败','error'); return; }
+        uiToast('已置前','success');
+        // 刷新列表以应用顺序
+        await loadUserProjects();
+    } catch (e) {
+        uiToast('网络错误，置前失败','error');
+    }
 }
 function applyPinnedProjectOrdering(projects){
-    const pinned = loadPinnedProjects();
-    if (!Array.isArray(projects) || !pinned.length) return projects;
-    const map = new Map(projects.map(p => [p.id, p]));
-    const ordered = [];
-    pinned.forEach(id => { const p = map.get(id); if (p) { ordered.push(p); map.delete(id); } });
-    map.forEach(p => ordered.push(p));
-    return ordered;
-}
-function pinProjectToFront(projectId){
-    if (!projectId) return;
-    const list = loadPinnedProjects();
-    const idx = list.indexOf(projectId);
-    if (idx !== -1) list.splice(idx,1);
-    list.unshift(projectId);
-    savePinnedProjects(list);
-    // 重新渲染以应用排序
-    try { loadUserProjects(); } catch(e) {}
+    // server already returns ordered projects; keep hook for future if needed
+    return projects;
 }
 
 // 加载项目成员信息
@@ -1791,10 +1831,6 @@ function createCardElement(card, status) {
         ? `<div class="card-actions-row"><div class="actions-inline"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button></div></div>`
         : '';
 
-    const topBtn = (status !== 'archived')
-        ? `<button class="card-quick-top" onclick="event.stopPropagation(); moveCardToFront('${card.id}')" title="置顶" aria-label="置顶"></button>`
-        : '';
-
     const badges = `${descIcon}${commentsBadge}${deadlineHtml}${assigneeHtml}`;
 
     cardElement.innerHTML = `
@@ -1804,12 +1840,11 @@ function createCardElement(card, status) {
         ${restoreChip}
         ${archiveBtn}
         ${deleteBtn}
-        ${topBtn}
         ${moreBtn}
     `;
 
     cardElement.addEventListener('click', (e) => {
-        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.card-quick-top') || e.target.closest('.restore-chip')) return;
+        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.restore-chip')) return;
         if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
         // If inline editors are open within this card, keep editing instead of opening details
         const inlineEditor = cardElement.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
@@ -5071,7 +5106,10 @@ async function acceptInvite(projectId, projectName) {
 
             const projectCard = document.createElement('div');
             projectCard.className = 'project-card project-card-with-actions';
-            projectCard.onclick = () => selectProject(newProject.id, newProject.name);
+            projectCard.addEventListener('click', (e) => {
+                if (e.target.closest('.project-card-actions')) return;
+                selectProject(newProject.id, newProject.name);
+            });
             projectCard.innerHTML = `
                 <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(newProject.name)}</h3>
                 <div class="project-info">
@@ -5081,6 +5119,7 @@ async function acceptInvite(projectId, projectName) {
                     创建于: ${new Date(newProject.created).toLocaleDateString()}
                 </div>
                 <div class="project-card-actions">
+                    <button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${newProject.id}')" title="置前">⇧</button>
                     <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
                     <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
                 </div>
