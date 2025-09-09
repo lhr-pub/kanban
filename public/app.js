@@ -796,12 +796,10 @@ async function loadUserProjects() {
                 const ownerEl = owner ? (()=>{ const d=document.createElement('div'); d.className='card-owner'; d.textContent=`创建者：${owner}`; return d; })() : null;
                 const actions = document.createElement('div');
                 actions.className = 'board-card-actions';
+                const canManage = currentUser && (currentUser === (project.owner || '') || currentUser === owner);
                 actions.innerHTML = `
                         <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${project.id}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${project.id}', '${escapeJs(boardName)}', '${escapeJs(project.name)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                        <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
-                        <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
-                        <button class="board-action-btn archive-btn" onclick="event.stopPropagation(); archiveBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="归档看板">📁</button>
-                        <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>`;
+                        ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('home','${project.id}','${escapeJs(boardName)}', this)" title="更多操作">⋮</button>` : ''}`;
 
                 boardCard.appendChild(icon);
                 boardCard.appendChild(details);
@@ -1154,12 +1152,9 @@ async function loadProjectBoards() {
             const actions = document.createElement('div');
             actions.className = 'board-card-actions';
             actions.innerHTML = `
-                <button class=\"board-action-btn pin-btn\" onclick=\"event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')\" title=\"置前\">⇧</button>
-                <button class=\"board-action-btn star-btn ${isStar ? 'active' : ''}\" data-project-id=\"${currentProjectId}\" data-board-name=\"${escapeHtml(boardName)}\" onclick=\"event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)\" title=\"${isStar ? '取消星标' : '加星'}\">★</button>
-                ${canManage ? `<button class=\"board-action-btn rename-btn\" onclick=\"event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')\" title=\"重命名\">✎</button>
-                <button class=\"board-action-btn move-btn\" onclick=\"event.stopPropagation(); promptMoveBoard('${escapeJs(boardName)}')\" title=\"移动到其他项目\">⇄</button>
-                <button class=\"board-action-btn archive-btn\" onclick=\"event.stopPropagation(); archiveBoard('${escapeJs(boardName)}')\" title=\"归档看板\">📁</button>
-                <button class=\"board-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')\" title=\"删除看板\">✕</button>` : ''}
+                <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')" title="置前">⇧</button>
+                <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
+                ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)" title="更多操作">⋮</button>` : ''}
             `;
 
             boardCard.appendChild(icon);
@@ -1341,10 +1336,7 @@ async function createBoard() {
                 <div class="board-card-actions">
                     <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')" title="置前">⇧</button>
                     <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                    ${canManage ? `<button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
-                    <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoard('${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
-                    <button class="board-action-btn archive-btn" onclick="event.stopPropagation(); archiveBoard('${escapeJs(boardName)}')" title="归档看板">📁</button>
-                    <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
+                    ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)" title="更多操作">⋮</button>` : ''}
                 </div>
             `;
             if (boardList) {
@@ -6175,6 +6167,56 @@ function syncStarButtons(){
         try { syncStarButtons(); } catch(e){}
     };
 })();
+
+// === Collapsed board actions menu ===
+let boardActionsMenuEl = null;
+let boardActionsMenuCloser = null;
+function closeBoardActionsMenu(){
+    if (boardActionsMenuCloser) { try { document.removeEventListener('click', boardActionsMenuCloser, true); } catch(_){} boardActionsMenuCloser = null; }
+    if (boardActionsMenuEl && boardActionsMenuEl.parentNode) { try { boardActionsMenuEl.parentNode.removeChild(boardActionsMenuEl); } catch(_){} }
+    boardActionsMenuEl = null;
+}
+function openBoardActionsMenu(scope, projectId, boardName, anchor){
+    try { closeBoardActionsMenu(); } catch(_){ }
+    const rect = anchor.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'board-actions-menu';
+    menu.innerHTML = `
+        <button data-act="rename">重命名</button>
+        <button data-act="move">移动到其他项目</button>
+        <button data-act="archive">归档看板</button>
+        <button data-act="delete" class="danger">删除看板</button>
+    `;
+    Object.assign(menu.style, {
+        position: 'fixed',
+        top: (rect.bottom + 6) + 'px',
+        right: (Math.max(8, window.innerWidth - rect.right)) + 'px',
+        zIndex: 1000
+    });
+    document.body.appendChild(menu);
+    boardActionsMenuEl = menu;
+    const handler = (e) => {
+        if (!menu.contains(e.target)) closeBoardActionsMenu();
+    };
+    setTimeout(()=>{ document.addEventListener('click', handler, true); boardActionsMenuCloser = handler; }, 0);
+    menu.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const act = ev.target && ev.target.getAttribute('data-act');
+        if (!act) return;
+        closeBoardActionsMenu();
+        if (scope === 'home') {
+            if (act === 'rename') return promptRenameBoardFromHome(projectId, boardName);
+            if (act === 'move') return promptMoveBoardFromHome(projectId, boardName);
+            if (act === 'archive') return archiveBoardFromHome(projectId, boardName);
+            if (act === 'delete') return deleteBoardFromHome(boardName, projectId);
+        } else {
+            if (act === 'rename') return promptRenameBoard(boardName);
+            if (act === 'move') return promptMoveBoard(boardName);
+            if (act === 'archive') return archiveBoard(boardName);
+            if (act === 'delete') return deleteBoard(boardName);
+        }
+    });
+}
 
 // === Starred boards (server-persisted) ===
 let cachedStars = [];
