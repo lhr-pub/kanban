@@ -3622,6 +3622,12 @@ body {
     cursor: pointer;
 }
 .board-switcher-create:hover { background: #e5e7eb; }
+.board-switcher-create:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: #f3f4f6;
+    color: #9ca3af;
+}
 
 .board-switcher-list { padding: 6px 0; }
 .board-switcher-item {
@@ -3649,6 +3655,12 @@ body {
     .board-switcher-search { background: #0b1220; color: #e5e7eb; border-color: var(--gray-300); }
     .board-switcher-create { background: #111827; color: #e5e7eb; border-color: var(--gray-300); }
     .board-switcher-create:hover { background: #1f2937; }
+    .board-switcher-create:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        background: #111827;
+        color: #6b7280;
+    }
     .board-switcher-item:hover { background: #111827; }
     .board-switcher-item.active { background: #112042; color: #93c5fd; }
     .board-switcher-rename { background: #0f172a; color: #9ca3af; border-color: var(--gray-300); }

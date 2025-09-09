@@ -3079,25 +3079,27 @@ function showProjectSwitcherAt(rect, projects) {
     const search = document.createElement('input');
     search.type = 'text';
     search.className = 'board-switcher-search';
-    search.placeholder = '搜索项目...';
+    search.placeholder = '搜索或创建项目...';
     const createBtn = document.createElement('button');
     createBtn.type = 'button';
     createBtn.className = 'board-switcher-create';
     createBtn.textContent = '创建新项目';
+    createBtn.disabled = true;
+    const updateCreateBtn = () => { createBtn.disabled = !((search.value||'').trim()); };
     createBtn.onclick = async (ev) => {
         ev.stopPropagation();
+        const name = (search.value || '').trim();
+        if (!name) return;
         try {
-            const name = await uiPrompt('输入新的项目名称', '', '创建项目');
-            if (!name) return;
             const rs = await fetch('/api/create-project', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: currentUser, projectName: name.trim() })
+                body: JSON.stringify({ username: currentUser, projectName: name })
             });
             const rj = await rs.json().catch(()=>({}));
             if (rs.ok && rj && rj.projectId) {
-                try { loadUserProjects(); } catch(_){}
+                try { loadUserProjects(); } catch(_){ }
                 hideProjectSwitcher();
-                selectProject(rj.projectId, name.trim());
+                selectProject(rj.projectId, name);
                 uiToast('项目创建成功','success');
             } else {
                 uiToast(rj.message || '创建失败','error');
@@ -3140,7 +3142,8 @@ function showProjectSwitcherAt(rect, projects) {
     }
 
     renderList('');
-    search.addEventListener('input', () => renderList(search.value));
+    search.addEventListener('input', () => { renderList(search.value); updateCreateBtn(); });
+    updateCreateBtn();
 
     menu.appendChild(list);
     document.body.appendChild(menu);
@@ -4651,14 +4654,16 @@ function showBoardSwitcherAt(rect, boards) {
     const search = document.createElement('input');
     search.type = 'text';
     search.className = 'board-switcher-search';
-    search.placeholder = '搜索看板...';
+    search.placeholder = '搜索或创建看板...';
     const createBtn = document.createElement('button');
     createBtn.type = 'button';
     createBtn.className = 'board-switcher-create';
     createBtn.textContent = '创建新看板';
+    createBtn.disabled = true;
+    const updateCreateBtn = () => { createBtn.disabled = !((search.value||'').trim()); };
     createBtn.onclick = async (ev) => {
         ev.stopPropagation();
-        const name = search.value.trim();
+        const name = (search.value || '').trim();
         if (!name) return;
         try {
             const response = await fetch('/api/create-board', {
@@ -4745,9 +4750,8 @@ function showBoardSwitcherAt(rect, boards) {
 
     renderList('');
 
-    search.addEventListener('input', (ev) => {
-        renderList(search.value);
-    });
+    search.addEventListener('input', () => { renderList(search.value); updateCreateBtn(); });
+    updateCreateBtn();
 
     menu.appendChild(list);
     document.body.appendChild(menu);
