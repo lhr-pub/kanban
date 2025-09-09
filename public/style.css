@@ -3388,6 +3388,18 @@ body {
 /* 登录与项目页整体字号收紧一点点 */
 .login-form input, .login-form button { font-size: 14px; }
 .project-header h1, .board-select-header h1, #boardPage .board-breadcrumb { font-size: 20px; }
+/* Normalize header title alignment across pages */
+.project-header h1, .board-select-header h1 {
+    margin: 0 !important;
+    text-align: left !important;
+    color: #1f2937 !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .quick-boards-grid, .projects-grid { gap: 12px; }
 .project-card, .quick-board-card { padding: 10px; border-radius: 8px; }
 
