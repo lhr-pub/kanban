@@ -1,3 +1,32 @@
+/*
+====================================================================
+ CSS Structure Index (search for SECTION tags)
+====================================================================
+ 1) SECTION: Variables & Resets
+ 2) SECTION: Layout & Containers
+ 3) SECTION: Headers & Breadcrumbs
+ 4) SECTION: Pages
+    - Project Page Header
+    - Board Select Header
+    - Board Page Header
+    - Archive Page Header
+ 5) SECTION: Components
+    - Cards & Lists (Kanban)
+    - Project/Board Cards (homepage / project page)
+    - Actions Menus / Switchers
+ 6) SECTION: Grids (archived boards, tools)
+ 7) SECTION: Buttons & Utilities
+ 8) SECTION: Dark Mode Overrides
+ 9) SECTION: Responsive
+
+ Tips:
+ - Keep page-specific overrides near the bottom of that page's section.
+ - Prefer component-level styles over page overrides when possible.
+ - Use neutral tokens from :root variables.
+====================================================================
+*/
+
+/* SECTION: Variables & Resets */
 /* CSS Variables for consistent theming */
 :root {
     --primary-color: #3b82f6;
@@ -1682,6 +1711,7 @@ h1 {
     color: #4b5563;
 }
 
+/* SECTION: Headers & Breadcrumbs */
 /* 看板头部样式 */
 .board-header-left {
     display: flex;
@@ -1690,7 +1720,7 @@ h1 {
 }
 
 .board-breadcrumb {
-    font-size: 1.875rem;
+    /* base breadcrumb styles; page-specific sizes set later */
     color: #374151;
     margin: 0;
     font-weight: bold;
@@ -1934,6 +1964,7 @@ h1 {
     background: #fff;
 }
 
+/* SECTION: Actions Menus / Switchers */
 /* Collapsed board actions menu */
 .board-actions-menu {
     background: #fff;
@@ -3090,7 +3121,7 @@ body {
 #boardPage .header { padding: 1rem 0; margin-top: 0; }
 #boardPage .header > .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; }
 /* #boardPage .board-header-left { display: flex; align-items: center; } */
-#boardPage .board-breadcrumb { margin: 0; font-size: 1.75rem; }
+#boardPage .board-breadcrumb { margin: 0; }
 
 /* Ensure project/board select headers keep their spacing */
 #projectPage .project-header { margin-bottom: 2rem; }
@@ -3309,7 +3340,7 @@ body {
 .assignee-select, .date-input { height: 32px; font-size: 12px; }
 
 /* 面包屑标题更紧凑 */
-.board-breadcrumb { font-size: 16px; color: #172b4d; margin: 0; }
+.board-breadcrumb { color: #374151; margin: 0; }
 
 /* 归档页面和普通列保持一致风格 */
 .archive-container { padding: 12px; }
@@ -3317,7 +3348,7 @@ body {
 
 /* 登录与项目页整体字号收紧一点点 */
 .login-form input, .login-form button { font-size: 14px; }
-.project-header h1, .board-select-header h1 { font-size: 20px; }
+.project-header h1, .board-select-header h1, #boardPage .board-breadcrumb { font-size: 20px; }
 .quick-boards-grid, .projects-grid { gap: 12px; }
 .project-card, .quick-board-card { padding: 10px; border-radius: 8px; }
 
@@ -4420,6 +4451,7 @@ body {
 /* Ensure archived section starts on a new full-width row in grid */
 .quick-boards-grid .archived-boards-wrap { grid-column: 1 / -1; width: 100%; }
 
+/* SECTION: Grids (Archived boards, Board-select tools) */
 /* Archived boards: grid layout */
 .archived-boards-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 @media (min-width: 900px) { .archived-boards-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

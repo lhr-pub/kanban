@@ -369,6 +369,24 @@ classDiagram
   - 首页卡片与项目页卡片：三栏（宽屏），两栏（中屏）；归档看板列表固定三栏
   - 归档页任务：单列，与普通卡片样式一致
 
+## 🧾 样式索引（Style Index）
+
+主要样式文件：`public/style.css`
+
+- 结构说明：文件顶部含“CSS Structure Index”，可按“SECTION:” 标签快速定位：
+  - SECTION: Variables & Resets
+  - SECTION: Layout & Containers
+  - SECTION: Headers & Breadcrumbs（含看板/项目页面包屑、链接样式与字号对齐）
+  - SECTION: Pages（Project / Board Select / Board / Archive 的头部与页面特定规则）
+  - SECTION: Components（看板卡片、列表、项目/看板卡片、按钮等）
+  - SECTION: Actions Menus / Switchers（下拉菜单、更多菜单、切换器）
+  - SECTION: Grids（归档看板三栏、项目页工具两列）
+  - SECTION: Buttons & Utilities（按钮态、通用工具类）
+  - SECTION: Dark Mode Overrides（深色模式覆盖）
+  - SECTION: Responsive（断点适配）
+
+维护建议：优先修改组件层，再通过页面段落做轻量覆盖；避免重复声明字号/间距。
+
 
 ### 🧱 Trello 式卡组（List）
 - 动态卡组（客户端 lists 元数据）：新增/重命名/删除，顺序持久化
