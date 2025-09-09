@@ -4558,6 +4558,27 @@ async function pinBoardToFront(projectId, boardName){
     }
 }
 
+// === Starred boards independent pin order ===
+async function pinStarBoardToFront(projectId, boardName){
+    if (!currentUser || !projectId || !boardName) return;
+    try {
+        const resp = await fetch('/api/user-star-pins/pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, projectId, boardName })
+        });
+        const result = await resp.json().catch(()=>({}));
+        if (resp.ok) {
+            try { renderStarredBoards(); } catch(e){}
+            uiToast('已置前','success');
+        } else {
+            uiToast(result.message || '置前失败','error');
+        }
+    } catch(e) {
+        uiToast('置前失败','error');
+    }
+}
+
 // 删除项目（项目选择页头部按钮）
 function deleteProject() {
     if (!currentProjectId) return;
@@ -6057,31 +6078,51 @@ function renderStarredBoards(){
         grid.innerHTML = '<div class="empty-state">暂无星标看板</div>';
         return;
     }
-    grid.innerHTML = '';
-    list.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'quick-board-card board-card-with-actions';
-        card.onclick = () => {
-            currentProjectId = item.projectId;
-            currentProjectName = item.projectName || currentProjectName;
-            currentBoardName = item.boardName;
-            previousPage = 'project';
-            showBoard();
-        };
-        const isStar = isBoardStarred(item.projectId, item.boardName);
-        card.innerHTML = `
-            <span class="board-icon" data-icon="boards"></span>
-            <div class="board-details">
-                <h4>${escapeHtml(item.boardName)}</h4>
-                <span class="board-project">${escapeHtml(item.projectName || '')}</span>
-            </div>
-            <div class="board-card-actions">
-                <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${item.projectId}" data-board-name="${escapeHtml(item.boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${item.projectId}', '${escapeJs(item.boardName)}', '${escapeJs(item.projectName || '')}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-            </div>
-        `;
-        grid.appendChild(card);
-    });
-    renderIconsInDom(grid);
+    const renderList = (arr) => {
+        grid.innerHTML = '';
+        arr.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'quick-board-card board-card-with-actions';
+            card.onclick = () => {
+                currentProjectId = item.projectId;
+                currentProjectName = item.projectName || currentProjectName;
+                currentBoardName = item.boardName;
+                previousPage = 'project';
+                showBoard();
+            };
+            const isStar = isBoardStarred(item.projectId, item.boardName);
+            card.innerHTML = `
+                <span class="board-icon" data-icon="boards"></span>
+                <div class="board-details">
+                    <h4>${escapeHtml(item.boardName)}</h4>
+                    <span class="board-project">${escapeHtml(item.projectName || '')}</span>
+                </div>
+                <div class="board-card-actions">
+                    <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinStarBoardToFront('${item.projectId}', '${escapeJs(item.boardName)}')" title="置前">⇧</button>
+                    <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${item.projectId}" data-board-name="${escapeHtml(item.boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${item.projectId}', '${escapeJs(item.boardName)}', '${escapeJs(item.projectName || '')}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+        renderIconsInDom(grid);
+    };
+    // first pass
+    renderList(list);
+    // fetch pins and re-render with pinned-first order
+    (async ()=>{
+        try {
+            const resp = await fetch(`/api/user-star-pins/${currentUser}`);
+            const data = await resp.json().catch(()=>({pins:[]}));
+            const pins = (resp.ok && data && Array.isArray(data.pins)) ? data.pins : [];
+            if (pins.length){
+                const map = new Map(list.map(it => [ `${it.projectId}::${it.boardName}`, it ]));
+                const ahead = [];
+                pins.forEach(k => { const it = map.get(k); if (it){ ahead.push(it); map.delete(k); } });
+                const rest = Array.from(map.values());
+                renderList(ahead.concat(rest));
+            }
+        } catch(e) {}
+    })();
 }
 function toggleBoardStarFromHome(projectId, boardName, projectName, btn){
     toggleBoardStar(projectId, boardName, projectName, btn);
@@ -6211,8 +6252,20 @@ async function renderStarredBoards(){
         grid.innerHTML = '<div class="empty-state">暂无星标看板</div>';
         return;
     }
+    // apply starred pin order from server
+    let pins = [];
+    try {
+        const resp = await fetch(`/api/user-star-pins/${currentUser}`);
+        const data = await resp.json().catch(()=>({pins:[]}));
+        pins = (resp.ok && data && Array.isArray(data.pins)) ? data.pins : [];
+    } catch(e) {}
+    const map = new Map(list.map(it => [ `${it.projectId}::${it.boardName}`, it ]));
+    const ahead = [];
+    pins.forEach(k => { const it = map.get(k); if (it){ ahead.push(it); map.delete(k); } });
+    const rest = Array.from(map.values());
+    const ordered = ahead.concat(rest);
     grid.innerHTML = '';
-    list.forEach(item => {
+    ordered.forEach(item => {
         const card = document.createElement('div');
         card.className = 'quick-board-card board-card-with-actions';
         card.onclick = () => {
@@ -6230,6 +6283,7 @@ async function renderStarredBoards(){
                 <span class="board-project">${escapeHtml(item.projectName || '')}</span>
             </div>
             <div class="board-card-actions">
+                <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinStarBoardToFront('${item.projectId}', '${escapeJs(item.boardName)}')" title="置前">⇧</button>
                 <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${item.projectId}" data-board-name="${escapeHtml(item.boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${item.projectId}', '${escapeJs(item.boardName)}', '${escapeJs(item.projectName || '')}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
             </div>
         `;

@@ -815,6 +815,50 @@ app.post('/api/user-board-pins/pin', (req, res) => {
 });
 // === End User Pinned Boards ===
 
+// === User Starred Boards Pin Order (server-side persistence) ===
+// Get pinned order for starred boards list (independent of project lists)
+app.get('/api/user-star-pins/:username', (req, res) => {
+    const { username } = req.params;
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const pins = Array.isArray(user.pinnedStarBoards) ? user.pinnedStarBoards.slice() : [];
+    return res.json({ pins });
+});
+
+// Pin a starred board to the front of the starred list
+app.post('/api/user-star-pins/pin', (req, res) => {
+    const { username, projectId, boardName } = req.body || {};
+    if (!username || !projectId || !boardName) return res.status(400).json({ message: '缺少参数' });
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    // only members
+    const isMember = Array.isArray(project.members) && project.members.includes(username);
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以置前星标看板' });
+    // ensure it's starred; if not, allow but no effect on render until starred
+    user.stars = Array.isArray(user.stars) ? user.stars : [];
+    const starred = user.stars.some(s => s && s.projectId === projectId && s.boardName === boardName);
+    if (!starred) {
+        // Not starred; still record the pin to be effective once starred later
+    }
+    const key = `${projectId}::${boardName}`;
+    user.pinnedStarBoards = Array.isArray(user.pinnedStarBoards) ? user.pinnedStarBoards : [];
+    const existingIndex = user.pinnedStarBoards.indexOf(key);
+    if (existingIndex !== -1) user.pinnedStarBoards.splice(existingIndex, 1);
+    user.pinnedStarBoards.unshift(key);
+
+    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ message: '已置前', pins: user.pinnedStarBoards.slice() });
+});
+// === End User Starred Boards Pin Order ===
+
 // === User Pinned Projects (server-side persistence) ===
 app.get('/api/user-pins/:username', (req, res) => {
     const { username } = req.params;
@@ -1248,6 +1292,14 @@ app.delete('/api/delete-project', (req, res) => {
             if (Array.isArray(user.pinnedProjects)) {
                 users[username].pinnedProjects = user.pinnedProjects.filter(id => id !== projectId);
             }
+            // 清理项目内的置前看板顺序
+            if (user && user.pinnedBoards && Array.isArray(user.pinnedBoards[projectId])) {
+                delete users[username].pinnedBoards[projectId];
+            }
+            // 清理星标置前顺序中属于该项目的条目
+            if (user && Array.isArray(user.pinnedStarBoards)) {
+                users[username].pinnedStarBoards = user.pinnedStarBoards.filter(k => !String(k).startsWith(projectId + '::'));
+            }
         }
 
         // 从项目列表中删除
@@ -1370,6 +1422,12 @@ app.delete('/api/delete-board', (req, res) => {
                         u.pinnedBoards[projectId] = u.pinnedBoards[projectId].filter(n => n !== boardName);
                         if (u.pinnedBoards[projectId].length !== before) changed = true;
                     }
+                    // 清理星标列表的置前顺序
+                    if (u && Array.isArray(u.pinnedStarBoards)) {
+                        const before2 = u.pinnedStarBoards.length;
+                        u.pinnedStarBoards = u.pinnedStarBoards.filter(k => k !== `${projectId}::${boardName}`);
+                        if (u.pinnedStarBoards.length !== before2) changed = true;
+                    }
                 }
                 if (changed) writeJsonFile(usersFile, users);
             } catch (e) { console.warn('Clean stars on board delete warning:', e && e.message ? e.message : e); }
@@ -1456,6 +1514,12 @@ app.post('/api/rename-board', (req, res) => {
                     const arr = u.pinnedBoards[projectId];
                     const i = arr.indexOf(oldName);
                     if (i !== -1) { arr[i] = sanitizedNew; changed = true; }
+                }
+                // 更新星标置前顺序中的键
+                if (u && Array.isArray(u.pinnedStarBoards)) {
+                    const oldKey = `${projectId}::${oldName}`;
+                    const i2 = u.pinnedStarBoards.indexOf(oldKey);
+                    if (i2 !== -1) { u.pinnedStarBoards[i2] = `${projectId}::${sanitizedNew}`; changed = true; }
                 }
             }
             if (changed) writeJsonFile(usersFile, users);
@@ -1575,6 +1639,12 @@ app.post('/api/move-board', (req, res) => {
                     const before = u.pinnedBoards[fromProjectId].length;
                     u.pinnedBoards[fromProjectId] = u.pinnedBoards[fromProjectId].filter(n => n !== boardName);
                     if (u.pinnedBoards[fromProjectId].length !== before) changed = true;
+                }
+                // 更新星标置前顺序键的项目ID
+                if (u && Array.isArray(u.pinnedStarBoards)) {
+                    const oldKey = `${fromProjectId}::${boardName}`;
+                    const i2 = u.pinnedStarBoards.indexOf(oldKey);
+                    if (i2 !== -1) { u.pinnedStarBoards[i2] = `${toProjectId}::${boardName}`; changed = true; }
                 }
             }
             if (changed) writeJsonFile(usersFile, users);
