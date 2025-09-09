@@ -682,7 +682,21 @@ app.get('/api/user-projects/:username', (req, res) => {
         return res.status(404).json({ message: '用户不存在' });
     }
 
-    const userProjects = user.projects.map(projectId => {
+    const userProjectIds = Array.isArray(user.projects) ? user.projects.slice() : [];
+    const pinned = Array.isArray(user.pinnedProjects) ? user.pinnedProjects.slice() : [];
+    const projectSet = new Set(userProjectIds);
+    const orderedIds = [];
+
+    // Pinned first, in pinned order
+    pinned.forEach(pid => {
+        if (projectSet.has(pid)) orderedIds.push(pid);
+    });
+    // Then the rest in original order
+    userProjectIds.forEach(pid => {
+        if (!orderedIds.includes(pid)) orderedIds.push(pid);
+    });
+
+    const userProjects = orderedIds.map(projectId => {
         const project = projects[projectId];
         if (!project) return null;
 
@@ -690,8 +704,8 @@ app.get('/api/user-projects/:username', (req, res) => {
             id: projectId,
             name: project.name,
             inviteCode: project.inviteCode,
-            memberCount: project.members.length,
-            boardCount: project.boards.length,
+            memberCount: Array.isArray(project.members) ? project.members.length : 0,
+            boardCount: Array.isArray(project.boards) ? project.boards.length : 0,
             created: project.created,
             owner: project.owner
         };
@@ -748,6 +762,47 @@ app.post('/api/user-stars/toggle', (req, res) => {
     return res.json({ starred, stars: user.stars.slice() });
 });
 // === End User Stars ===
+
+// === User Pinned Projects (server-side persistence) ===
+app.get('/api/user-pins/:username', (req, res) => {
+    const { username } = req.params;
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const pins = Array.isArray(user.pinnedProjects) ? user.pinnedProjects.slice() : [];
+    return res.json({ pins });
+});
+
+app.post('/api/user-pins/pin', (req, res) => {
+    const { username, projectId } = req.body || {};
+    if (!username || !projectId) return res.status(400).json({ message: '缺少参数' });
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+
+    // 只有项目成员可以置前
+    const isMember = Array.isArray(project.members) && project.members.includes(username);
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以置前项目' });
+
+    user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
+
+    // 将项目移到 pinnedProjects 的最前
+    const existingIndex = user.pinnedProjects.indexOf(projectId);
+    if (existingIndex !== -1) {
+        user.pinnedProjects.splice(existingIndex, 1);
+    }
+    user.pinnedProjects.unshift(projectId);
+
+    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ message: '已置前', pins: user.pinnedProjects.slice() });
+});
+// === End User Pinned Projects ===
 
 app.post('/api/create-project', (req, res) => {
     const { username, projectName } = req.body;
@@ -1028,6 +1083,10 @@ app.post('/api/remove-project-member', (req, res) => {
     if (user && Array.isArray(user.stars)) {
         users[username].stars = user.stars.filter(s => s && s.projectId !== projectId);
     }
+    // 同时清理该用户在该项目下的置前
+    if (user && Array.isArray(user.pinnedProjects)) {
+        users[username].pinnedProjects = user.pinnedProjects.filter(id => id !== projectId);
+    }
 
     const ok = writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users);
     if (!ok) return res.status(500).json({ message: '保存失败' });
@@ -1133,6 +1192,9 @@ app.delete('/api/delete-project', (req, res) => {
             }
             if (Array.isArray(user.stars)) {
                 users[username].stars = user.stars.filter(s => s && s.projectId !== projectId);
+            }
+            if (Array.isArray(user.pinnedProjects)) {
+                users[username].pinnedProjects = user.pinnedProjects.filter(id => id !== projectId);
             }
         }
 

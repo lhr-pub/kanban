@@ -738,8 +738,13 @@ async function loadUserProjects() {
             info.innerHTML = `邀请码: <span class="invite-code">${project.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(project.inviteCode)}')">复制</button><br>成员: ${project.memberCount}人<br>看板: ${project.boardCount}个<br>创建于: ${new Date(project.created).toLocaleDateString()}`;
             const actions = document.createElement('div');
             actions.className = 'project-card-actions';
-            if (currentUser === (project.owner || '')) {
-                actions.innerHTML = `<button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button><button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>`;
+            {
+                let actionsHtml = `<button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${project.id}')" title="置前">⇧</button>`;
+                if (currentUser === (project.owner || '')) {
+                    actionsHtml += `<button class=\"project-action-btn rename-btn\" onclick=\"event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')\" title=\"重命名项目\">✎</button>`;
+                    actionsHtml += `<button class=\"project-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')\" title=\"删除项目\">✕</button>`;
+                }
+                actions.innerHTML = actionsHtml;
             }
             const ownerEl = document.createElement('div');
             ownerEl.className = 'card-owner';
@@ -750,10 +755,6 @@ async function loadUserProjects() {
             projectCard.appendChild(actions);
             projectCard.appendChild(ownerEl);
 
-            if (currentUser !== (project.owner || '')) {
-                const actionsEl = projectCard.querySelector('.project-card-actions');
-                if (actionsEl) actionsEl.innerHTML = '';
-            }
             plFrag.appendChild(projectCard);
         });
 
@@ -908,15 +909,12 @@ async function createProject() {
                     创建于: ${new Date(newProject.created).toLocaleDateString()}
                 </div>
                 <div class="project-card-actions">
+                    <button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${newProject.id}')" title="置前">⇧</button>
                     <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
                     <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
                 </div>
                 <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
             `;
-            if (currentUser !== (newProject.owner || '')) {
-                const actionsEl = projectCard.querySelector('.project-card-actions');
-                if (actionsEl) actionsEl.innerHTML = '';
-            }
             if (projectsList) {
                 projectsList.insertBefore(projectCard, projectsList.firstChild);
                 renderIconsInDom(projectCard);
@@ -4198,6 +4196,28 @@ function renameProjectFromHome(projectId, currentName) {
     })();
 }
 
+// 置前项目（首页项目卡片按钮）
+async function pinProjectToFront(projectId) {
+    if (!currentUser || !projectId) return;
+    try {
+        const resp = await fetch('/api/user-pins/pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, projectId })
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (resp.ok) {
+            await loadUserProjects();
+            uiToast('已置前', 'success');
+        } else {
+            uiToast(result.message || '置前失败', 'error');
+        }
+    } catch (e) {
+        console.error('Pin project error:', e);
+        uiToast('置前失败', 'error');
+    }
+}
+
 // 删除项目（项目选择页头部按钮）
 function deleteProject() {
     if (!currentProjectId) return;
@@ -5143,6 +5163,10 @@ async function loadUserInvites() {
                         else { uiToast(result.message || '加入项目失败','error'); }
                     } catch (e) { uiToast('加入项目失败','error'); }
                 });
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); joinBtn.click(); }
+                    if (e.key === 'Escape') { e.preventDefault(); closeInvitesModal(); }
+                });
             }
         }
     } catch (e) {
@@ -5226,15 +5250,12 @@ async function acceptInvite(projectId, projectName) {
                     创建于: ${new Date(newProject.created).toLocaleDateString()}
                 </div>
                 <div class="project-card-actions">
+                    <button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${newProject.id}')" title="置前">⇧</button>
                     <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
                     <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
                 </div>
                 <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
             `;
-            if (currentUser !== (newProject.owner || '')) {
-                const actionsEl = projectCard.querySelector('.project-card-actions');
-                if (actionsEl) actionsEl.innerHTML = '';
-            }
             if (projectsList) {
                 projectsList.insertBefore(projectCard, projectsList.firstChild);
                 renderIconsInDom(projectCard);
