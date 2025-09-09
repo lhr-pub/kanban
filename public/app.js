@@ -313,17 +313,16 @@ document.addEventListener('DOMContentLoaded', function() {
         currentBoardNameEl.addEventListener('click', openBoardSwitcher);
         currentBoardNameEl.setAttribute('title', '切换看板');
     }
-    // 看板页面包屑中的项目名：改为“切换项目”（与项目页一致）
+    // 看板页面包屑：左侧“切换”，右侧显示当前项目名用于返回项目
     const currentProjectNameEl2 = document.getElementById('currentProjectName');
     if (currentProjectNameEl2) {
-        currentProjectNameEl2.addEventListener('click', openProjectSwitcher);
-        currentProjectNameEl2.setAttribute('title', '切换项目');
+        currentProjectNameEl2.addEventListener('click', function(e){ e.preventDefault(); goToProjectBoards(); });
+        currentProjectNameEl2.setAttribute('title', '返回项目');
     }
-    // 看板页面左侧增加“返回项目”链接
     const backToProjectLink = document.getElementById('backToProjectLink');
     if (backToProjectLink) {
-        backToProjectLink.addEventListener('click', function(e){ e.preventDefault(); goToProjectBoards(); });
-        backToProjectLink.setAttribute('title', '返回项目');
+        backToProjectLink.addEventListener('click', function(e){ e.preventDefault(); openProjectSwitcher(e); });
+        backToProjectLink.setAttribute('title', '切换项目');
     }
 
     // 忘记密码链接
@@ -3126,6 +3125,8 @@ async function openProjectSwitcher(e) {
     showProjectSwitcherAt(rect, Array.isArray(projects) ? projects : []);
     const titleEl = document.getElementById('projectTitle');
     if (titleEl) titleEl.classList.add('open');
+    const arrowEl = document.getElementById('backToProjectLink');
+    if (arrowEl) arrowEl.classList.add('open');
 }
 
 function showProjectSwitcherAt(rect, projects) {
@@ -3240,6 +3241,8 @@ function hideProjectSwitcher() {
     projectSwitcherOpen = false;
     const titleEl = document.getElementById('projectTitle');
     if (titleEl) titleEl.classList.remove('open');
+    const arrowEl = document.getElementById('backToProjectLink');
+    if (arrowEl) arrowEl.classList.remove('open');
 }
 
 // 内联编辑任务标题

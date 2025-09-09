@@ -82,6 +82,8 @@
     --border:#e5e7eb;
     --bg:#f6f7f9;
     --card-bg:#fff;
+    /* Page-level gutter used by project page containers */
+    --page-gutter: 2rem;
 }
 
 /* 全局样式 */
@@ -1782,6 +1784,34 @@ h1 {
     border-bottom-color: #1d4ed8;
 }
 
+/* Iconic back arrow for board breadcrumb */
+/* Left arrow icon (matches board name caret style but mirrored) */
+.board-breadcrumb .home-arrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: var(--transition);
+    color: #374151 !important; /* match board name color */
+    border-bottom-color: transparent !important; /* avoid underline hue from .home-link */
+}
+.board-breadcrumb .home-arrow:hover { background: var(--gray-100); color: #374151 !important; border-bottom-color: transparent !important; }
+.board-breadcrumb .home-arrow::before {
+    content: '';
+    display: inline-block;
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid currentColor; /* down-facing triangle */
+    opacity: 0.7;
+    transform-origin: center;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.board-breadcrumb .home-arrow:hover::before { opacity: 1; transform: translateY(1px); }
+.board-breadcrumb .home-arrow.open::before { transform: rotate(-90deg); opacity: 1; }
+
 /* Final header/breadcrumb tuning for board page */
 #boardPage .board-breadcrumb {
     font-size: 1.5rem; /* smaller than project page for balance */
@@ -3074,23 +3104,21 @@ body {
 #currentBoardName:hover {
     background: var(--gray-100);
 }
-#currentBoardName::before {  /* 改为 ::before，放在文字前面 */
+#currentBoardName::before {  /* base: right-facing caret; opens to down when switcher is open */
     content: '';
     display: inline-block;
     margin-right: 4px;  /* 右边距，箭头与文字间距 */
     width: 0;
     height: 0;
-    border-top: 5px solid transparent;  /* 右指向箭头 */
+    border-top: 5px solid transparent;  /* right-pointing triangle */
     border-bottom: 5px solid transparent;
     border-left: 6px solid currentColor;
     opacity: 0.7;
     transform-origin: center;
     transition: transform 0.2s ease, opacity 0.2s ease;
 }
-#currentBoardName.open::before {
-    transform: rotate(90deg);  /* 旋转 90° 变为下指向 */
-    opacity: 0.9;
-}
+#currentBoardName:hover::before { opacity: 1; transform: translateX(1px); }
+#currentBoardName.open::before { transform: rotate(90deg); opacity: 1; }
 .quick-board-card:hover .board-icon {
     background: rgba(59,130,246,0.14);
     border-color: rgba(59,130,246,0.28);
@@ -3118,8 +3146,8 @@ body {
 }
 
 /* Match board header height and top alignment with homepage */
-#boardPage .header { padding: 1rem 0; margin-top: 0; }
-#boardPage .header > .container { max-width: 1400px; margin: 0 auto; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; }
+#boardPage .header { padding: 0; margin-top: 0; }
+#boardPage .header > .container { max-width: 1400px; margin: 0 auto; padding: 2rem 2rem 1rem; display: flex; align-items: center; justify-content: space-between; }
 /* #boardPage .board-header-left { display: flex; align-items: center; } */
 #boardPage .board-breadcrumb { margin: 0; }
 
@@ -3241,13 +3269,10 @@ body {
 #boardPage .header {
     background: transparent;
     box-shadow: none;
-    padding: 0.5rem 1rem;
+    padding: 0; /* rely on inner container for spacing */
 }
 
-.header .container {
-    padding: 0.5rem 0;
-    max-width: 100%;
-}
+/* Removed generic .header .container overrides to keep page headers aligned via page-specific rules */
 
 .header-actions button,
 .header button,
@@ -3657,23 +3682,23 @@ body {
 /* lower title a bit more */
 .card .card-title { margin-top: 6px; }
 
-/* === Board header spacing and title width (align with project page) === */
 #boardPage .header {
-    padding-left: 0;
-    padding-right: 0;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+    margin-top: 0;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid #e5e7eb;
 }
 #boardPage .header > .container {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0 8rem; /* leave space on both sides like project page */
+    padding: 2rem 2rem 1rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
-#boardPage .board-header-left {
-    flex: 0 1 50%; /* do not span full width */
-    min-width: 0;
-}
+#boardPage .board-header-left { min-width: 0; }
 #boardPage .board-breadcrumb { margin: 0; text-align: left; /* keep title left */ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* prevent title from taking too much width */ }
 
 /* Board switcher dropdown */
@@ -4471,4 +4496,27 @@ body {
     height: 200px;
     color: var(--gray-500);
     font-size: 14px;
+}
+
+/* SECTION: Final header alignment overrides (stability) */
+/* Ensure board page header aligns exactly with project/board-select headers */
+#boardPage .header {
+    margin-top: 0 !important;
+    margin-bottom: 2rem !important;
+    border-bottom: 2px solid #e5e7eb !important;
+    padding: 0 !important; /* rely on inner container */
+}
+#boardPage .header > .container {
+    max-width: 1400px !important;
+    margin: 0 auto !important;
+    /* header container gutter 2rem (same as project page header) */
+    padding: 2rem 2rem 1rem !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Match project page container width at desktop breakpoint */
+@media (min-width: 1024px) {
+  #boardPage .header > .container { max-width: 1200px !important; }
 }
