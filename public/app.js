@@ -799,7 +799,8 @@ async function loadUserProjects() {
                 const canManage = currentUser && (currentUser === (project.owner || '') || currentUser === owner);
                 actions.innerHTML = `
                         <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${project.id}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${project.id}', '${escapeJs(boardName)}', '${escapeJs(project.name)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                        ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('home','${project.id}','${escapeJs(boardName)}', this)" title="更多操作">⋮</button>` : ''}`;
+                        ${canManage ? `<button class=\"board-action-btn more-btn\" onclick=\"event.stopPropagation(); openBoardActionsMenu('home','${project.id}','${escapeJs(boardName)}', this)\" title=\"更多操作\">…</button>` : ''}
+                        ${canManage ? `<button class=\"board-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')\" title=\"删除看板\">✕</button>` : ''}`;
 
                 boardCard.appendChild(icon);
                 boardCard.appendChild(details);
@@ -1154,7 +1155,8 @@ async function loadProjectBoards() {
             actions.innerHTML = `
                 <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')" title="置前">⇧</button>
                 <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)" title="更多操作">⋮</button>` : ''}
+                ${canManage ? `<button class=\"board-action-btn more-btn\" onclick=\"event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)\" title=\"更多操作\">…</button>` : ''}
+                ${canManage ? `<button class=\"board-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')\" title=\"删除看板\">✕</button>` : ''}
             `;
 
             boardCard.appendChild(icon);
@@ -1172,7 +1174,10 @@ async function loadProjectBoards() {
 
             const header = document.createElement('div');
             header.className = 'archived-boards-header';
-            header.innerHTML = `<div class=\"archived-left\"><h3 id=\"archivedHeaderTitle\">归档的看板 <span class=\"count\" id=\"archivedBoardsCount\">0</span></h3><input id=\"archivedBoardsSearch\" type=\"text\" placeholder=\"搜索归档看板...\"><button id=\"toggleArchivedBtn\" class=\"btn-secondary\" aria-expanded=\"false\">展开</button></div>`;
+            const savedQ = (typeof window.boardArchivedSearch === 'string') ? window.boardArchivedSearch : '';
+            const allInitial = (window.currentArchivedBoards || []).slice();
+            const initialBoards = savedQ ? allInitial.filter(name => name.toLowerCase().includes(savedQ.toLowerCase())) : allInitial;
+            header.innerHTML = `<div class=\"archived-left\"><h3 id=\"archivedHeaderTitle\">归档的看板 <span class=\"count\" id=\"archivedBoardsCount\">${initialBoards.length}</span></h3><input id=\"archivedBoardsSearch\" type=\"text\" placeholder=\"搜索归档看板...\" value=\"${escapeHtml(savedQ)}\"><button id=\"toggleArchivedBtn\" class=\"btn-secondary\" aria-expanded=\"false\">展开</button></div>`;
             archivedWrap.appendChild(header);
 
             const listContainer = document.createElement('div');
@@ -1215,6 +1220,8 @@ async function loadProjectBoards() {
                 });
             }
 
+            // 初始数量已在 header 模板中写入，无需额外初始化
+
             const toggleBtn = header.querySelector('#toggleArchivedBtn');
             toggleBtn.onclick = () => {
                 const isHidden = listContainer.classList.contains('hidden');
@@ -1223,10 +1230,12 @@ async function loadProjectBoards() {
                     toggleBtn.textContent = '收起';
                     toggleBtn.setAttribute('aria-expanded','true');
                     renderArchivedList();
+                    try { window.boardArchivedExpanded = true; } catch(_){}
                 } else {
                     listContainer.classList.add('hidden');
                     toggleBtn.textContent = '展开';
                     toggleBtn.setAttribute('aria-expanded','false');
+                    try { window.boardArchivedExpanded = false; } catch(_){}
                 }
             };
             const title = header.querySelector('#archivedHeaderTitle');
@@ -1237,8 +1246,30 @@ async function loadProjectBoards() {
             const searchInput = header.querySelector('#archivedBoardsSearch');
             if (searchInput && !searchInput._bound) {
                 searchInput._bound = true;
-                searchInput.addEventListener('input', () => { if (!listContainer.classList.contains('hidden')) renderArchivedList(); });
+                searchInput.addEventListener('input', () => {
+                    // Always update count immediately
+                    try {
+                        const countEl = document.getElementById('archivedBoardsCount');
+                        const q = (searchInput && searchInput.value ? searchInput.value.trim().toLowerCase() : '');
+                        try { window.boardArchivedSearch = searchInput.value || ''; } catch(_){}
+                        const all = (window.currentArchivedBoards || []).slice();
+                        const boards = q ? all.filter(name => name.toLowerCase().includes(q)) : all;
+                        if (countEl) countEl.textContent = String(boards.length);
+                    } catch(_){ }
+                    // Only render list content when expanded
+                    if (!listContainer.classList.contains('hidden')) renderArchivedList();
+                });
             }
+
+            // Respect persisted expanded state
+            try {
+                if (window.boardArchivedExpanded) {
+                    listContainer.classList.remove('hidden');
+                    const toggle = header.querySelector('#toggleArchivedBtn');
+                    if (toggle) { toggle.textContent = '收起'; toggle.setAttribute('aria-expanded','true'); }
+                    renderArchivedList();
+                }
+            } catch(_){ }
         }
 
         boardList.replaceChildren(frag);
@@ -1336,7 +1367,8 @@ async function createBoard() {
                 <div class="board-card-actions">
                     <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')" title="置前">⇧</button>
                     <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                    ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)" title="更多操作">⋮</button>` : ''}
+                    ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)" title="更多操作">…</button>` : ''}
+                    ${canManage ? `<button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
                 </div>
             `;
             if (boardList) {
@@ -6185,7 +6217,6 @@ function openBoardActionsMenu(scope, projectId, boardName, anchor){
         <button data-act="rename">重命名</button>
         <button data-act="move">移动到其他项目</button>
         <button data-act="archive">归档看板</button>
-        <button data-act="delete" class="danger">删除看板</button>
     `;
     Object.assign(menu.style, {
         position: 'fixed',
@@ -6208,12 +6239,10 @@ function openBoardActionsMenu(scope, projectId, boardName, anchor){
             if (act === 'rename') return promptRenameBoardFromHome(projectId, boardName);
             if (act === 'move') return promptMoveBoardFromHome(projectId, boardName);
             if (act === 'archive') return archiveBoardFromHome(projectId, boardName);
-            if (act === 'delete') return deleteBoardFromHome(boardName, projectId);
         } else {
             if (act === 'rename') return promptRenameBoard(boardName);
             if (act === 'move') return promptMoveBoard(boardName);
             if (act === 'archive') return archiveBoard(boardName);
-            if (act === 'delete') return deleteBoard(boardName);
         }
     });
 }
@@ -6815,6 +6844,15 @@ async function unarchiveBoard(boardName){
     const ok = await uiConfirm(`还原看板 "${boardName}" 到项目列表？`, '还原看板');
     if (!ok) return;
     try {
+        // Preserve archived list UI state (expanded/search) before request
+        try {
+            const listEl = document.querySelector('.archived-boards-list');
+            if (listEl) {
+                window.boardArchivedExpanded = !listEl.classList.contains('hidden');
+            }
+            const qEl = document.getElementById('archivedBoardsSearch');
+            if (qEl) window.boardArchivedSearch = qEl.value || '';
+        } catch(_){ }
         const resp = await fetch('/api/unarchive-board', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

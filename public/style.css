@@ -3913,8 +3913,8 @@ body {
 #archivePage .archive-column { padding: 16px; border-radius: 12px; border: 1px solid var(--gray-200); background: #fff; box-shadow: var(--shadow-sm); }
 #archivePage .archive-column h3 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 10px 0; padding-bottom: 8px; border-bottom: 1px solid var(--gray-200); color: #1f2937; }
 #archivePage .archive-column h3 .count { background: #eef2ff; color: #1e40af; border: 1px solid #dbeafe; }
-#archivedCards.cards { display: flex; flex-direction: column; gap: 10px; }
-#archivedCards .card { border: 1px solid var(--gray-200); border-radius: 10px; padding: 12px 14px; box-shadow: var(--shadow-sm); transition: border-color .12s, box-shadow .12s, transform .12s; }
+#archivedCards.cards { display: flex; flex-direction: column; gap: 0.75rem; }
+#archivedCards .card { opacity: 1; background: #fff; border: 1px solid var(--gray-200); border-radius: var(--border-radius-lg); padding: 1rem; box-shadow: var(--shadow-sm); transition: border-color .12s, box-shadow .12s, transform .12s; }
 #archivedCards .card:hover { border-color: var(--primary-light); box-shadow: var(--shadow-md); transform: translateY(-1px); }
 #archivedCards .restore-chip { background: #eef2ff; border-color: #dbeafe; color: #1e40af; }
 #archivedCards .restore-chip:hover { background: #e0e7ff; border-color: #c7d2fe; color: #1e3a8a; box-shadow: var(--shadow-sm); }
@@ -3949,8 +3949,8 @@ body {
 
 /* Center archive layout and prevent header button wrapping */
 #archivePage .header .header-actions button { white-space: nowrap; display: inline-flex; align-items: center; }
-#archivePage .archive-container { max-width: 1200px; margin: 0 auto; padding: 24px 2rem; display: flex; justify-content: center; }
-#archivePage .archive-column { width: min(760px, 100%); }
+#archivePage .archive-container { max-width: none; margin: 0; padding: 1.5rem 2rem; display: block; }
+#archivePage .archive-column { width: 100%; min-height: 500px; }
 
 /* inline actions in archived cards */
 .actions-inline { display: inline-flex; gap: 8px; }
@@ -4385,7 +4385,8 @@ body {
 /* Archived boards: grid layout */
 .archived-boards-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 @media (min-width: 900px) { .archived-boards-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (min-width: 1200px) { .archived-boards-list { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* 固定最大为三栏，避免在更宽屏幕出现四栏 */
+@media (min-width: 1200px) { .archived-boards-list { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .archived-boards-list .quick-board-card { min-height: 72px; }
 
 .archived-left { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
