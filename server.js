@@ -682,14 +682,7 @@ app.get('/api/user-projects/:username', (req, res) => {
         return res.status(404).json({ message: '用户不存在' });
     }
 
-    const membership = (Array.isArray(user.projects) ? user.projects : []).slice();
-    const pinned = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
-    // Reorder: pinned first in pinned array order, then the rest in membership order
-    const pinnedInMembership = pinned.filter(id => membership.includes(id));
-    const rest = membership.filter(id => !pinnedInMembership.includes(id));
-    const orderedIds = [...pinnedInMembership, ...rest];
-
-    const userProjects = orderedIds.map(projectId => {
+    const userProjects = user.projects.map(projectId => {
         const project = projects[projectId];
         if (!project) return null;
 
@@ -706,45 +699,6 @@ app.get('/api/user-projects/:username', (req, res) => {
 
     res.json(userProjects);
 });
-
-// === User pinned projects (server-side) ===
-app.get('/api/user-pins/:username', (req, res) => {
-    const { username } = req.params;
-    const usersFile = path.join(dataDir, 'users.json');
-    const users = readJsonFile(usersFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
-    user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
-    return res.json({ pinned: user.pinnedProjects.slice() });
-});
-
-app.post('/api/user-pins/pin', (req, res) => {
-    const { username, projectId } = req.body || {};
-    if (!username || !projectId) return res.status(400).json({ message: '缺少参数' });
-
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-
-    // Must be member
-    const isMember = Array.isArray(project.members) && project.members.includes(username);
-    if (!isMember) return res.status(403).json({ message: '只有项目成员可以置前' });
-
-    user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
-    const idx = user.pinnedProjects.indexOf(projectId);
-    if (idx !== -1) user.pinnedProjects.splice(idx,1);
-    user.pinnedProjects.unshift(projectId);
-
-    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ pinned: user.pinnedProjects.slice() });
-});
-// === End user pinned projects ===
 
 // === User Stars (server-side persistence) ===
 app.get('/api/user-stars/:username', (req, res) => {
