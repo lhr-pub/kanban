@@ -661,8 +661,11 @@ async function loadUserProjects() {
         // keep homepage scroll while re-rendering
         const restoreHomeScroll = () => { try { window.scrollTo({ top: prevScrollY }); } catch(e) {} };
 
+        // 应用置前排序
+        const orderedProjects = applyPinnedProjectOrdering(projects);
+
         // 并发获取所有项目的看板数据，并批量渲染，避免逐个等待导致卡顿
-        const projectFetches = projects.map(project => (async () => {
+        const projectFetches = orderedProjects.map(project => (async () => {
             try {
                 let boardsData = { boards: [], boardOwners: {} };
                 if (project.boardCount > 0) {
@@ -729,6 +732,7 @@ async function loadUserProjects() {
             const projectCard = document.createElement('div');
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(project.id, project.name);
+            projectCard.setAttribute('data-project-id', project.id);
 
             // build DOM incrementally to avoid innerHTML measuring/reflow
             const h3 = document.createElement('h3');
@@ -739,7 +743,7 @@ async function loadUserProjects() {
             const actions = document.createElement('div');
             actions.className = 'project-card-actions';
             if (currentUser === (project.owner || '')) {
-                actions.innerHTML = `<button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button><button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>`;
+                actions.innerHTML = `<button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${project.id}')" title="置前">⇧</button><button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button><button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>`;
             }
             const ownerEl = document.createElement('div');
             ownerEl.className = 'card-owner';
@@ -783,188 +787,34 @@ async function loadUserProjects() {
     }
 }
 
-// Tab切换功能已移除，现在使用单页面布局
-
-// 显示/隐藏创建项目表单
-function showCreateProjectForm() {
-    document.getElementById('createProjectForm').classList.remove('hidden');
-    document.getElementById('newProjectName').focus();
+// === Pinned projects helpers ===
+function getPinnedProjectsKey(){
+    return `kanbanPinnedProjects:${currentUser || ''}`;
 }
-
-function hideCreateProjectForm() {
-    document.getElementById('createProjectForm').classList.add('hidden');
-    document.getElementById('newProjectName').value = '';
+function loadPinnedProjects(){
+    try { return JSON.parse(localStorage.getItem(getPinnedProjectsKey()) || '[]') || []; } catch(e){ return []; }
 }
-
-// 显示/隐藏加入项目表单
-function showJoinProjectForm() {
-    document.getElementById('joinProjectForm').classList.remove('hidden');
-    document.getElementById('inviteCode').focus();
+function savePinnedProjects(list){
+    try { localStorage.setItem(getPinnedProjectsKey(), JSON.stringify(list)); } catch(e) {}
 }
-
-function hideJoinProjectForm() {
-    document.getElementById('joinProjectForm').classList.add('hidden');
-    document.getElementById('inviteCode').value = '';
+function applyPinnedProjectOrdering(projects){
+    const pinned = loadPinnedProjects();
+    if (!Array.isArray(projects) || !pinned.length) return projects;
+    const map = new Map(projects.map(p => [p.id, p]));
+    const ordered = [];
+    pinned.forEach(id => { const p = map.get(id); if (p) { ordered.push(p); map.delete(id); } });
+    map.forEach(p => ordered.push(p));
+    return ordered;
 }
-
-// 选择项目
-function selectProject(projectId, projectName) {
-    currentProjectId = projectId;
-    currentProjectName = projectName;
-    document.getElementById('projectTitle').textContent = projectName;
-    previousPage = 'project'; // 从项目页面进入看板选择
-    showBoardSelectPage();
-}
-
-// 新增：重命名项目
-async function renameProject() {
-    const input = await uiPrompt('输入新的项目名称', currentProjectName || '', '重命名项目');
-    if (input === null) return;
-    const newName = input.trim();
-    if (!newName) { uiToast('新名称不能为空','error'); return; }
-    if (newName === currentProjectName) return;
-
-    fetch('/api/rename-project', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: currentProjectId, newName, actor: currentUser })
-    }).then(async (response) => {
-        const result = await response.json().catch(() => ({}));
-        if (response.ok) {
-            currentProjectName = newName;
-            localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
-            const projectTitle = document.getElementById('projectTitle');
-            if (projectTitle) projectTitle.textContent = newName;
-            updateBoardHeader();
-            if (!projectPage.classList.contains('hidden')) {
-                loadUserProjects();
-            }
-            if (!boardSelectPage.classList.contains('hidden')) {
-                loadProjectBoards();
-            }
-            uiToast('项目重命名成功','success');
-        } else {
-            uiToast(result.message || '项目重命名失败','error');
-        }
-    }).catch((error) => {
-        console.error('Rename project error:', error);
-        uiToast('项目重命名失败','error');
-    });
-}
-
-// 创建项目
-async function createProject() {
-    const projectName = document.getElementById('newProjectName').value.trim();
-    if (!projectName) {
-        uiToast('请输入项目名称','error');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/create-project', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                username: currentUser,
-                projectName
-            })
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            hideCreateProjectForm();
-
-            const projectsList = document.getElementById('projectsList');
-            const quickAccessBoards = document.getElementById('quickAccessBoards');
-            if (projectsList && projectsList.firstElementChild && projectsList.firstElementChild.classList.contains('empty-state')) {
-                projectsList.innerHTML = '';
-            }
-            if (quickAccessBoards && quickAccessBoards.firstElementChild && quickAccessBoards.firstElementChild.classList.contains('empty-state')) {
-                quickAccessBoards.innerHTML = '';
-            }
-
-            const newProject = {
-                id: result.projectId,
-                name: projectName,
-                inviteCode: result.inviteCode,
-                memberCount: 1,
-                boardCount: 0,
-                created: new Date().toISOString(),
-                owner: currentUser
-            };
-
-            const projectCard = document.createElement('div');
-            projectCard.className = 'project-card project-card-with-actions';
-            projectCard.onclick = () => selectProject(newProject.id, newProject.name);
-            projectCard.innerHTML = `
-                <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(newProject.name)}</h3>
-                <div class="project-info">
-                    邀请码: <span class="invite-code">${newProject.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(newProject.inviteCode)}')">复制</button><br>
-                    成员: ${newProject.memberCount}人<br>
-                    看板: ${newProject.boardCount}个<br>
-                    创建于: ${new Date(newProject.created).toLocaleDateString()}
-                </div>
-                <div class="project-card-actions">
-                    <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
-                    <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
-                </div>
-                <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
-            `;
-            if (currentUser !== (newProject.owner || '')) {
-                const actionsEl = projectCard.querySelector('.project-card-actions');
-                if (actionsEl) actionsEl.innerHTML = '';
-            }
-            if (projectsList) {
-                projectsList.insertBefore(projectCard, projectsList.firstChild);
-                renderIconsInDom(projectCard);
-            }
-
-            uiToast(`项目创建成功！邀请码：${result.inviteCode}`,'success');
-        } else {
-            uiToast(result.message || '创建项目失败','error');
-        }
-    } catch (error) {
-        console.error('Create project error:', error);
-        uiToast('创建项目失败','error');
-    }
-}
-
-// 加入项目
-async function joinProject() {
-    const inviteCode = document.getElementById('inviteCode').value.trim().toUpperCase();
-    if (!inviteCode || inviteCode.length !== 6) {
-        uiToast('请输入6位邀请码','error');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/join-project', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                username: currentUser,
-                inviteCode
-            })
-        });
-
-        const result = await response.json();
-
-        if (response.ok) {
-            hideJoinProjectForm();
-            loadUserProjects();
-            uiToast('已提交申请，等待项目所有者审批','success');
-        } else {
-            uiToast(result.message || '加入项目失败','error');
-        }
-    } catch (error) {
-        console.error('Join project error:', error);
-        uiToast('加入项目失败','error');
-    }
+function pinProjectToFront(projectId){
+    if (!projectId) return;
+    const list = loadPinnedProjects();
+    const idx = list.indexOf(projectId);
+    if (idx !== -1) list.splice(idx,1);
+    list.unshift(projectId);
+    savePinnedProjects(list);
+    // 重新渲染以应用排序
+    try { loadUserProjects(); } catch(e) {}
 }
 
 // 加载项目成员信息
@@ -1941,6 +1791,10 @@ function createCardElement(card, status) {
         ? `<div class="card-actions-row"><div class="actions-inline"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button></div></div>`
         : '';
 
+    const topBtn = (status !== 'archived')
+        ? `<button class="card-quick-top" onclick="event.stopPropagation(); moveCardToFront('${card.id}')" title="置顶" aria-label="置顶"></button>`
+        : '';
+
     const badges = `${descIcon}${commentsBadge}${deadlineHtml}${assigneeHtml}`;
 
     cardElement.innerHTML = `
@@ -1950,11 +1804,12 @@ function createCardElement(card, status) {
         ${restoreChip}
         ${archiveBtn}
         ${deleteBtn}
+        ${topBtn}
         ${moreBtn}
     `;
 
     cardElement.addEventListener('click', (e) => {
-        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.restore-chip')) return;
+        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.card-quick-top') || e.target.closest('.restore-chip')) return;
         if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
         // If inline editors are open within this card, keep editing instead of opening details
         const inlineEditor = cardElement.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
@@ -5564,6 +5419,7 @@ document.addEventListener('keyup', function(e){
         try { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}
     }
 }, true);
+
 // 为添加任务输入框绑定回车键事件
 ['todo', 'doing', 'done'].forEach(status => {
     const titleInput = document.getElementById(`new${status.charAt(0).toUpperCase() + status.slice(1)}Title`);
@@ -5581,6 +5437,7 @@ document.addEventListener('keyup', function(e){
         });
     }
 });
+
 // 为创建项目输入框绑定回车/ESC事件
 const newProjectNameEl = document.getElementById('newProjectName');
 if (newProjectNameEl) {
@@ -5590,6 +5447,7 @@ if (newProjectNameEl) {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){}; hideCreateProjectForm(); }
     });
 }
+
 // 为加入项目输入框绑定回车/ESC事件
 const inviteCodeEl = document.getElementById('inviteCode');
 if (inviteCodeEl) {
@@ -5599,6 +5457,7 @@ if (inviteCodeEl) {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){}; hideJoinProjectForm(); }
     });
 }
+
 // ... existing code ...
 const joinBtn = document.getElementById('inviteCodeJoinBtn');
 const input = document.getElementById('inviteCodeInput');

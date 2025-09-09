@@ -1574,6 +1574,8 @@ h1 {
     cursor: pointer;
     transition: var(--transition);
 }
+.project-action-btn.pin-btn { color: #1e40af; border-color: rgba(30,64,175,0.25); }
+.project-action-btn.pin-btn:hover { background: rgba(30,64,175,0.08); }
 .project-action-btn:hover {
     background: #fff;
     color: #374151;
@@ -3784,7 +3786,8 @@ body {
 
 /* === Final overrides: unify quick icons alignment and hover visuals (refined) === */
 .card-quick,
-.card-quick-archive {
+.card-quick-archive,
+.card-quick-top {
     position: absolute;
     top: 6px; /* align to original edit button baseline */
     width: 24px;
@@ -3800,7 +3803,8 @@ body {
     color: #64748b; /* neutral icon */
 }
 .card:hover .card-quick,
-.card:hover .card-quick-archive { opacity: 1; }
+.card:hover .card-quick-archive,
+.card:hover .card-quick-top { opacity: 1; }
 
 /* Edit (pencil) */
 .card-quick {
@@ -3820,21 +3824,36 @@ body {
     background-size: 16px 16px;
 }
 
+/* Top (pin) */
+.card-quick-top {
+    right: 66px; /* 6px gap from archive */
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M13 3l7 7-1.41 1.41L14 7.83V20h-2V7.83l-4.59 4.58L6 10l7-7z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 16px 16px;
+}
+
 /* Hover/Focus visuals: soft blue, clear on white backgrounds */
 .card-quick:hover,
-.card-quick-archive:hover { background-color: #eef2ff; border-color: #dbeafe; box-shadow: 0 2px 6px rgba(0,0,0,0.12); color: #1e40af; }
+.card-quick-archive:hover,
+.card-quick-top:hover { background-color: #eef2ff; border-color: #dbeafe; box-shadow: 0 2px 6px rgba(0,0,0,0.12); color: #1e40af; }
 .card-quick:focus-visible,
-.card-quick-archive:focus-visible { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
+.card-quick-archive:focus-visible,
+.card-quick-top:focus-visible { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
 .card-quick:focus,
-.card-quick-archive:focus { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
+.card-quick-archive:focus,
+.card-quick-top:focus { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
 
 @media (prefers-color-scheme: dark) {
     .card-quick,
-    .card-quick-archive { color: #cbd5e1; }
+    .card-quick-archive,
+    .card-quick-top { color: #cbd5e1; }
     .card-quick:hover,
-    .card-quick-archive:hover { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #93c5fd; }
+    .card-quick-archive:hover,
+    .card-quick-top:hover { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #93c5fd; }
     .card-quick:focus-visible,
-    .card-quick-archive:focus-visible { background-color: rgba(255,255,255,0.10); border-color: var(--gray-300); box-shadow: 0 0 0 3px rgba(99,102,241,0.28); color: #bfdbfe; }
+    .card-quick-archive:focus-visible,
+    .card-quick-top:focus-visible { background-color: rgba(255,255,255,0.10); border-color: var(--gray-300); box-shadow: 0 0 0 3px rgba(99,102,241,0.28); color: #bfdbfe; }
 }
 
 /* Fix legacy mask and enforce hover/focus for quick actions */
