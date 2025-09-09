@@ -113,7 +113,9 @@
         <div class="container">
             <header class="board-select-header">
                 <h1 class="project-breadcrumb">
-                    <span class="home-link" onclick="showProjectPage()">首页</span> / <span id="projectTitle">项目名称</span>
+                    <span id="projectHomeLink" class="home-link" title="返回首页">首页</span>
+                    <span id="projectCaret" class="crumb-caret" aria-label="切换项目" title="切换项目"></span>
+                    <span id="projectTitle" class="project-link" title="切换项目">项目名称</span>
                 </h1>
                 <div class="header-actions">
                     <button id="manageMembersBtn" class="btn-secondary">管理成员</button>

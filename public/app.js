@@ -335,6 +335,11 @@ document.addEventListener('DOMContentLoaded', function() {
     if (currentBoardNameEl2) {
         currentBoardNameEl2.addEventListener('click', openBoardSwitcher);
     }
+    // 项目页面面包屑（首页/项目）
+    const projectHomeLink = document.getElementById('projectHomeLink');
+    if (projectHomeLink) {
+        projectHomeLink.addEventListener('click', function(e){ e.preventDefault(); showProjectPage(); });
+    }
 
     // 忘记密码链接
     const forgotLink = document.getElementById('forgotPasswordLink');

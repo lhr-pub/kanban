@@ -1813,7 +1813,7 @@ h1 {
 .board-breadcrumb .home-arrow.open::before { transform: rotate(-90deg); opacity: 1; }
 
 /* Generic breadcrumb caret (used for projectCaret and boardCaret) */
-.board-breadcrumb .crumb-caret {
+.board-breadcrumb .crumb-caret, .project-breadcrumb .crumb-caret {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -1822,8 +1822,8 @@ h1 {
     transition: var(--transition);
     color: #374151; /* match text color */
 }
-.board-breadcrumb .crumb-caret:hover { background: var(--gray-100); }
-.board-breadcrumb .crumb-caret::before {
+.board-breadcrumb .crumb-caret:hover, .project-breadcrumb .crumb-caret:hover { background: var(--gray-100); }
+.board-breadcrumb .crumb-caret::before, .project-breadcrumb .crumb-caret::before {
     content: '';
     display: inline-block;
     width: 0; height: 0;
@@ -1834,8 +1834,8 @@ h1 {
     transform-origin: center;
     transition: transform 0.2s ease, opacity 0.2s ease;
 }
-.board-breadcrumb .crumb-caret:hover::before { opacity: 1; transform: translateX(1px); }
-.board-breadcrumb .crumb-caret.open::before { transform: rotate(90deg); opacity: 1; }
+.board-breadcrumb .crumb-caret:hover::before, .project-breadcrumb .crumb-caret:hover::before { opacity: 1; transform: translateX(1px); }
+.board-breadcrumb .crumb-caret.open::before, .project-breadcrumb .crumb-caret.open::before { transform: rotate(90deg); opacity: 1; }
 
 /* Final header/breadcrumb tuning for board page */
 #boardPage .board-breadcrumb {
