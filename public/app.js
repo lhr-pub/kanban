@@ -740,10 +740,17 @@ async function loadUserProjects() {
                     const boardsResponse = await fetch(`/api/project-boards/${project.id}`);
                     boardsData = await boardsResponse.json();
                 }
-                return { project, boardsData };
+                // fetch pinned boards order for this user/project to reorder cards
+                let pins = [];
+                try {
+                    const pinsResp = await fetch(`/api/user-board-pins/${currentUser}/${project.id}`);
+                    const pinsJson = await pinsResp.json().catch(()=>({pins:[]}));
+                    if (pinsResp.ok && pinsJson && Array.isArray(pinsJson.pins)) pins = pinsJson.pins;
+                } catch(e) {}
+                return { project, boardsData, pins };
             } catch (error) {
                 console.error(`Error loading boards for project ${project.id}:`, error);
-                return { project, boardsData: { boards: [], boardOwners: {} } };
+                return { project, boardsData: { boards: [], boardOwners: {} }, pins: [] };
             }
         })());
 
@@ -754,10 +761,18 @@ async function loadUserProjects() {
         const qabFrag = document.createDocumentFragment();
         const plFrag = document.createDocumentFragment();
 
-        results.forEach(({ project, boardsData }) => {
+        results.forEach(({ project, boardsData, pins }) => {
             // 添加快速访问看板
             const archivedSet = new Set(Array.isArray(boardsData.archivedBoards) ? boardsData.archivedBoards : []);
-            (boardsData.boards || []).filter(n => !archivedSet.has(n)).forEach(boardName => {
+            // reorder boards by user pins first
+            let boardsList = Array.isArray(boardsData.boards) ? boardsData.boards.slice() : [];
+            if (Array.isArray(pins) && pins.length) {
+                const set = new Set(boardsList);
+                const ahead = pins.filter(n => set.has(n));
+                const rest = boardsList.filter(n => !ahead.includes(n));
+                boardsList = ahead.concat(rest);
+            }
+            boardsList.filter(n => !archivedSet.has(n)).forEach(boardName => {
                 if (token !== userProjectsLoadToken) return;
                 const boardCard = document.createElement('div');
                 boardCard.className = 'quick-board-card board-card-with-actions';
@@ -782,6 +797,7 @@ async function loadUserProjects() {
                 const actions = document.createElement('div');
                 actions.className = 'board-card-actions';
                 actions.innerHTML = `
+                        <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${project.id}', '${escapeJs(boardName)}')" title="置前">⇧</button>
                         <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${project.id}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${project.id}', '${escapeJs(boardName)}', '${escapeJs(project.name)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                         <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
                         <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
@@ -1108,7 +1124,16 @@ async function loadProjectBoards() {
             return;
         }
 
-        data.boards.forEach(boardName => {
+        // Reorder boards by user's pinned order
+        let pins = [];
+        try {
+            const pinsResp = await fetch(`/api/user-board-pins/${currentUser}/${currentProjectId}`);
+            const pinsJson = await pinsResp.json().catch(()=>({pins:[]}));
+            if (pinsResp.ok && pinsJson && Array.isArray(pinsJson.pins)) pins = pinsJson.pins;
+        } catch(e) {}
+        const orderedBoards = orderBoardsByPins(data.boards, pins);
+
+        orderedBoards.forEach(boardName => {
             const boardCard = document.createElement('div');
             boardCard.className = 'quick-board-card board-card-with-actions';
             boardCard.onclick = () => selectBoard(boardName);
@@ -1130,6 +1155,7 @@ async function loadProjectBoards() {
             const actions = document.createElement('div');
             actions.className = 'board-card-actions';
             actions.innerHTML = `
+                <button class=\"board-action-btn pin-btn\" onclick=\"event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')\" title=\"置前\">⇧</button>
                 <button class=\"board-action-btn star-btn ${isStar ? 'active' : ''}\" data-project-id=\"${currentProjectId}\" data-board-name=\"${escapeHtml(boardName)}\" onclick=\"event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)\" title=\"${isStar ? '取消星标' : '加星'}\">★</button>
                 ${canManage ? `<button class=\"board-action-btn rename-btn\" onclick=\"event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')\" title=\"重命名\">✎</button>
                 <button class=\"board-action-btn move-btn\" onclick=\"event.stopPropagation(); promptMoveBoard('${escapeJs(boardName)}')\" title=\"移动到其他项目\">⇄</button>
@@ -1314,6 +1340,7 @@ async function createBoard() {
                 </div>
                 ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
                 <div class="board-card-actions">
+                    <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')" title="置前">⇧</button>
                     <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                     ${canManage ? `<button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoard('${escapeJs(boardName)}')" title="重命名">✎</button>
                     <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoard('${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
@@ -4492,6 +4519,46 @@ async function pinProjectToFront(projectId) {
     }
 }
 
+// === User pinned boards helpers ===
+async function fetchUserBoardPins(projectId){
+    if (!currentUser || !projectId) return [];
+    try {
+        const resp = await fetch(`/api/user-board-pins/${currentUser}/${projectId}`);
+        const data = await resp.json().catch(()=>({pins:[]}));
+        if (resp.ok && data && Array.isArray(data.pins)) return data.pins;
+    } catch(e) {}
+    return [];
+}
+function orderBoardsByPins(boards, pins){
+    const list = Array.isArray(boards) ? boards.slice() : [];
+    if (!Array.isArray(pins) || pins.length === 0) return list;
+    const set = new Set(list);
+    const ahead = pins.filter(n => set.has(n));
+    const rest = list.filter(n => !ahead.includes(n));
+    return ahead.concat(rest);
+}
+async function pinBoardToFront(projectId, boardName){
+    if (!currentUser || !projectId || !boardName) return;
+    try {
+        const resp = await fetch('/api/user-board-pins/pin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, projectId, boardName })
+        });
+        const result = await resp.json().catch(()=>({}));
+        if (resp.ok) {
+            // Refresh both homepage and project boards if visible
+            try { if (!projectPage.classList.contains('hidden')) loadUserProjects(); } catch(e){}
+            try { if (!boardSelectPage.classList.contains('hidden') && String(currentProjectId) === String(projectId)) loadProjectBoards(); } catch(e){}
+            uiToast('已置前','success');
+        } else {
+            uiToast(result.message || '置前失败','error');
+        }
+    } catch(e) {
+        uiToast('置前失败','error');
+    }
+}
+
 // 删除项目（项目选择页头部按钮）
 function deleteProject() {
     if (!currentProjectId) return;
@@ -6010,6 +6077,7 @@ function renderStarredBoards(){
                 <span class="board-project">${escapeHtml(item.projectName || '')}</span>
             </div>
             <div class="board-card-actions">
+                <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${item.projectId}', '${escapeJs(item.boardName)}')" title="置前">⇧</button>
                 <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${item.projectId}" data-board-name="${escapeHtml(item.boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${item.projectId}', '${escapeJs(item.boardName)}', '${escapeJs(item.projectName || '')}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
             </div>
         `;
@@ -6164,6 +6232,7 @@ async function renderStarredBoards(){
                 <span class="board-project">${escapeHtml(item.projectName || '')}</span>
             </div>
             <div class="board-card-actions">
+                <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${item.projectId}', '${escapeJs(item.boardName)}')" title="置前">⇧</button>
                 <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${item.projectId}" data-board-name="${escapeHtml(item.boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${item.projectId}', '${escapeJs(item.boardName)}', '${escapeJs(item.projectName || '')}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
             </div>
         `;

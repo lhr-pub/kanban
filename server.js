@@ -763,6 +763,58 @@ app.post('/api/user-stars/toggle', (req, res) => {
 });
 // === End User Stars ===
 
+// === User Pinned Boards (per project, server-side persistence) ===
+// Get pinned boards for a user within a project
+app.get('/api/user-board-pins/:username/:projectId', (req, res) => {
+    const { username, projectId } = req.params;
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    const isMember = Array.isArray(project.members) && project.members.includes(username);
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以查看置前顺序' });
+    const pinsMap = user.pinnedBoards && typeof user.pinnedBoards === 'object' ? user.pinnedBoards : {};
+    const pins = Array.isArray(pinsMap[projectId]) ? pinsMap[projectId].slice() : [];
+    return res.json({ pins });
+});
+
+// Pin a board to front for a user within a project
+app.post('/api/user-board-pins/pin', (req, res) => {
+    const { username, projectId, boardName } = req.body || {};
+    if (!username || !projectId || !boardName) return res.status(400).json({ message: '缺少参数' });
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const project = projects[projectId];
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+
+    // 只有项目成员可以置前
+    const isMember = Array.isArray(project.members) && project.members.includes(username);
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以置前看板' });
+
+    // 必须存在该看板（未归档或已归档均可置前，最终按渲染处过滤）
+    const exists = (Array.isArray(project.boards) && project.boards.includes(boardName)) || (Array.isArray(project.archivedBoards) && project.archivedBoards.includes(boardName));
+    if (!exists) return res.status(404).json({ message: '看板不存在' });
+
+    if (!user.pinnedBoards || typeof user.pinnedBoards !== 'object') user.pinnedBoards = {};
+    const arr = Array.isArray(user.pinnedBoards[projectId]) ? user.pinnedBoards[projectId] : [];
+    const idx = arr.indexOf(boardName);
+    if (idx !== -1) arr.splice(idx, 1);
+    arr.unshift(boardName);
+    user.pinnedBoards[projectId] = arr;
+
+    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ message: '已置前', pins: arr.slice() });
+});
+// === End User Pinned Boards ===
+
 // === User Pinned Projects (server-side persistence) ===
 app.get('/api/user-pins/:username', (req, res) => {
     const { username } = req.params;
@@ -1312,6 +1364,12 @@ app.delete('/api/delete-board', (req, res) => {
                     if (!u || !Array.isArray(u.stars)) continue;
                     const next = u.stars.filter(s => !(s && s.projectId === projectId && s.boardName === boardName));
                     if (next.length !== u.stars.length) { u.stars = next; changed = true; }
+                    // 同步清理置前的看板
+                    if (u && u.pinnedBoards && Array.isArray(u.pinnedBoards[projectId])) {
+                        const before = u.pinnedBoards[projectId].length;
+                        u.pinnedBoards[projectId] = u.pinnedBoards[projectId].filter(n => n !== boardName);
+                        if (u.pinnedBoards[projectId].length !== before) changed = true;
+                    }
                 }
                 if (changed) writeJsonFile(usersFile, users);
             } catch (e) { console.warn('Clean stars on board delete warning:', e && e.message ? e.message : e); }
@@ -1393,6 +1451,12 @@ app.post('/api/rename-board', (req, res) => {
             for (const [uname, u] of Object.entries(users)) {
                 if (!u || !Array.isArray(u.stars)) continue;
                 u.stars.forEach(s => { if (s && s.projectId === projectId && s.boardName === oldName) { s.boardName = sanitizedNew; changed = true; } });
+                // 同步更新置前列表中的看板名称
+                if (u && u.pinnedBoards && Array.isArray(u.pinnedBoards[projectId])) {
+                    const arr = u.pinnedBoards[projectId];
+                    const i = arr.indexOf(oldName);
+                    if (i !== -1) { arr[i] = sanitizedNew; changed = true; }
+                }
             }
             if (changed) writeJsonFile(usersFile, users);
         } catch (e) { console.warn('Update stars boardName warning:', e && e.message ? e.message : e); }
@@ -1506,6 +1570,12 @@ app.post('/api/move-board', (req, res) => {
                         changed = true;
                     }
                 });
+                // 同步清理源项目中的置前条目
+                if (u && u.pinnedBoards && Array.isArray(u.pinnedBoards[fromProjectId])) {
+                    const before = u.pinnedBoards[fromProjectId].length;
+                    u.pinnedBoards[fromProjectId] = u.pinnedBoards[fromProjectId].filter(n => n !== boardName);
+                    if (u.pinnedBoards[fromProjectId].length !== before) changed = true;
+                }
             }
             if (changed) writeJsonFile(usersFile, users);
         } catch (e) { console.warn('Update stars on move warning:', e && e.message ? e.message : e); }
