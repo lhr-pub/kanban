@@ -313,16 +313,27 @@ document.addEventListener('DOMContentLoaded', function() {
         currentBoardNameEl.addEventListener('click', openBoardSwitcher);
         currentBoardNameEl.setAttribute('title', '切换看板');
     }
-    // 看板页面包屑：左侧“切换”，右侧显示当前项目名用于返回项目
+    // 看板页面包屑
+    const breadcrumbHome = document.getElementById('breadcrumbHome');
+    if (breadcrumbHome) {
+        breadcrumbHome.addEventListener('click', function(e){ e.preventDefault(); showProjectPage(); });
+    }
+    const projectCaret = document.getElementById('projectCaret');
+    if (projectCaret) {
+        projectCaret.addEventListener('click', function(e){ e.preventDefault(); openProjectSwitcher(e); });
+    }
     const currentProjectNameEl2 = document.getElementById('currentProjectName');
     if (currentProjectNameEl2) {
         currentProjectNameEl2.addEventListener('click', function(e){ e.preventDefault(); goToProjectBoards(); });
         currentProjectNameEl2.setAttribute('title', '返回项目');
     }
-    const backToProjectLink = document.getElementById('backToProjectLink');
-    if (backToProjectLink) {
-        backToProjectLink.addEventListener('click', function(e){ e.preventDefault(); openProjectSwitcher(e); });
-        backToProjectLink.setAttribute('title', '切换项目');
+    const boardCaret = document.getElementById('boardCaret');
+    if (boardCaret) {
+        boardCaret.addEventListener('click', function(e){ e.preventDefault(); openBoardSwitcher(e); });
+    }
+    const currentBoardNameEl2 = document.getElementById('currentBoardName');
+    if (currentBoardNameEl2) {
+        currentBoardNameEl2.addEventListener('click', openBoardSwitcher);
     }
 
     // 忘记密码链接
@@ -3125,6 +3136,8 @@ async function openProjectSwitcher(e) {
     showProjectSwitcherAt(rect, Array.isArray(projects) ? projects : []);
     const titleEl = document.getElementById('projectTitle');
     if (titleEl) titleEl.classList.add('open');
+    const caret = document.getElementById('projectCaret');
+    if (caret) caret.classList.add('open');
     const arrowEl = document.getElementById('backToProjectLink');
     if (arrowEl) arrowEl.classList.add('open');
 }
@@ -3241,6 +3254,8 @@ function hideProjectSwitcher() {
     projectSwitcherOpen = false;
     const titleEl = document.getElementById('projectTitle');
     if (titleEl) titleEl.classList.remove('open');
+    const caret = document.getElementById('projectCaret');
+    if (caret) caret.classList.remove('open');
     const arrowEl = document.getElementById('backToProjectLink');
     if (arrowEl) arrowEl.classList.remove('open');
 }
@@ -4765,6 +4780,8 @@ async function openBoardSwitcher(e) {
     showBoardSwitcherAt(rect, boards);
     const titleEl = document.getElementById('currentBoardName');
     if (titleEl) titleEl.classList.add('open');
+    const caretEl = document.getElementById('boardCaret');
+    if (caretEl) caretEl.classList.add('open');
 }
 
 function showBoardSwitcherAt(rect, boards) {
@@ -4916,6 +4933,8 @@ function hideBoardSwitcher() {
     boardSwitcherOpen = false;
     const titleEl = document.getElementById('currentBoardName');
     if (titleEl) titleEl.classList.remove('open');
+    const caretEl = document.getElementById('boardCaret');
+    if (caretEl) caretEl.classList.remove('open');
 }
 
 // === In-app dialog & toast helpers ===

@@ -1812,6 +1812,31 @@ h1 {
 .board-breadcrumb .home-arrow:hover::before { opacity: 1; transform: translateY(1px); }
 .board-breadcrumb .home-arrow.open::before { transform: rotate(-90deg); opacity: 1; }
 
+/* Generic breadcrumb caret (used for projectCaret and boardCaret) */
+.board-breadcrumb .crumb-caret {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    transition: var(--transition);
+    color: #374151; /* match text color */
+}
+.board-breadcrumb .crumb-caret:hover { background: var(--gray-100); }
+.board-breadcrumb .crumb-caret::before {
+    content: '';
+    display: inline-block;
+    width: 0; height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 6px solid currentColor; /* right-facing */
+    opacity: 0.7;
+    transform-origin: center;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.board-breadcrumb .crumb-caret:hover::before { opacity: 1; transform: translateX(1px); }
+.board-breadcrumb .crumb-caret.open::before { transform: rotate(90deg); opacity: 1; }
+
 /* Final header/breadcrumb tuning for board page */
 #boardPage .board-breadcrumb {
     font-size: 1.5rem; /* smaller than project page for balance */
@@ -3104,21 +3129,10 @@ body {
 #currentBoardName:hover {
     background: var(--gray-100);
 }
-#currentBoardName::before {  /* base: right-facing caret; opens to down when switcher is open */
-    content: '';
-    display: inline-block;
-    margin-right: 4px;  /* 右边距，箭头与文字间距 */
-    width: 0;
-    height: 0;
-    border-top: 5px solid transparent;  /* right-pointing triangle */
-    border-bottom: 5px solid transparent;
-    border-left: 6px solid currentColor;
-    opacity: 0.7;
-    transform-origin: center;
-    transition: transform 0.2s ease, opacity 0.2s ease;
+#currentBoardName::before {  /* hide built-in caret; use separate #boardCaret */
+    content: none !important;
+    display: none !important;
 }
-#currentBoardName:hover::before { opacity: 1; transform: translateX(1px); }
-#currentBoardName.open::before { transform: rotate(90deg); opacity: 1; }
 .quick-board-card:hover .board-icon {
     background: rgba(59,130,246,0.14);
     border-color: rgba(59,130,246,0.28);
