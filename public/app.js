@@ -36,6 +36,13 @@ let pendingWindowScroll = null;
 let wsReconnectTimer = null;
 let suppressAutoReconnect = false;
 
+// Project switcher state
+let projectSwitcherMenu = null;
+let projectSwitcherOpen = false;
+let projectSwitcherBodyClickHandler = null;
+let projectSwitcherKeyHandler = null;
+let projectSwitcherFocusInHandler = null;
+
 // First-visit and dirtiness tracking for homepage (projects list)
 let homeLoadedOnce = false;
 let homeDirty = false;
@@ -257,6 +264,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('logoutFromBoard').addEventListener('click', logout);
     const manageBtn = document.getElementById('manageMembersBtn');
     if (manageBtn) manageBtn.addEventListener('click', openMembersModal);
+    // Project title switcher (switch projects)
+    const projTitleEl = document.getElementById('projectTitle');
+    if (projTitleEl) {
+        projTitleEl.addEventListener('click', openProjectSwitcher);
+        projTitleEl.setAttribute('title', '切换项目');
+    }
 
     // 看板页面事件
     document.getElementById('logoutBtn').addEventListener('click', logout);
@@ -387,8 +400,9 @@ document.addEventListener('DOMContentLoaded', function() {
 // 页面显示函数前添加清理浮层的工具函数
 function cleanupTransientOverlays() {
     try { hideBoardSwitcher(); } catch (_) {}
+    try { hideProjectSwitcher(); } catch (_) {}
     try {
-        document.querySelectorAll('.assignee-dropdown, .board-switcher-menu').forEach(el => el.remove());
+        document.querySelectorAll('.assignee-dropdown, .board-switcher-menu, .project-switcher-menu').forEach(el => el.remove());
     } catch (_) {}
 }
 
@@ -3031,6 +3045,136 @@ function logout() {
     submitBtn.textContent = '登录';
     switchText.textContent = '还没有账号？';
     switchMode.textContent = '注册';
+}
+
+// === Project switcher (like board switcher) ===
+async function openProjectSwitcher(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (projectSwitcherOpen) { hideProjectSwitcher(); return; }
+    try { hideBoardSwitcher(); } catch (_) {}
+    const anchor = e.currentTarget || document.getElementById('projectTitle');
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    let projects = [];
+    try {
+        const resp = await fetch(`/api/user-projects/${currentUser}`);
+        projects = await resp.json();
+    } catch (_) { projects = []; }
+    showProjectSwitcherAt(rect, Array.isArray(projects) ? projects : []);
+    const titleEl = document.getElementById('projectTitle');
+    if (titleEl) titleEl.classList.add('open');
+}
+
+function showProjectSwitcherAt(rect, projects) {
+    hideProjectSwitcher();
+    const menu = document.createElement('div');
+    menu.className = 'board-switcher-menu project-switcher-menu';
+    menu.style.left = Math.round(rect.left) + 'px';
+    menu.style.top = Math.round(rect.bottom + 6) + 'px';
+
+    // Header with search and create
+    const header = document.createElement('div');
+    header.className = 'board-switcher-header';
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'board-switcher-search';
+    search.placeholder = '搜索项目...';
+    const createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.className = 'board-switcher-create';
+    createBtn.textContent = '创建新项目';
+    createBtn.onclick = async (ev) => {
+        ev.stopPropagation();
+        try {
+            const name = await uiPrompt('输入新的项目名称', '', '创建项目');
+            if (!name) return;
+            const rs = await fetch('/api/create-project', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: currentUser, projectName: name.trim() })
+            });
+            const rj = await rs.json().catch(()=>({}));
+            if (rs.ok && rj && rj.projectId) {
+                try { loadUserProjects(); } catch(_){}
+                hideProjectSwitcher();
+                selectProject(rj.projectId, name.trim());
+                uiToast('项目创建成功','success');
+            } else {
+                uiToast(rj.message || '创建失败','error');
+            }
+        } catch(_) { uiToast('创建失败','error'); }
+    };
+    header.appendChild(search);
+    header.appendChild(createBtn);
+    menu.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'board-switcher-list';
+
+    function renderList(filterText) {
+        list.innerHTML = '';
+        const ft = (filterText || '').toLowerCase();
+        const filtered = (projects || []).filter(p => (p.name||'').toLowerCase().includes(ft));
+        filtered.forEach(p => {
+            const item = document.createElement('div');
+            item.className = 'board-switcher-item' + ((String(p.id) === String(currentProjectId)) ? ' active' : '');
+            const label = document.createElement('span');
+            label.className = 'board-switcher-label';
+            label.textContent = p.name || '';
+            item.onclick = (ev) => {
+                ev.stopPropagation();
+                hideProjectSwitcher();
+                if (String(p.id) !== String(currentProjectId)) {
+                    selectProject(p.id, p.name);
+                }
+            };
+            item.appendChild(label);
+            list.appendChild(item);
+        });
+        if (!filtered.length) {
+            const empty = document.createElement('div');
+            empty.className = 'board-switcher-empty';
+            empty.textContent = '没有匹配的项目';
+            list.appendChild(empty);
+        }
+    }
+
+    renderList('');
+    search.addEventListener('input', () => renderList(search.value));
+
+    menu.appendChild(list);
+    document.body.appendChild(menu);
+    projectSwitcherMenu = menu;
+    projectSwitcherOpen = true;
+
+    setTimeout(() => {
+        projectSwitcherBodyClickHandler = (ev) => {
+            if (!projectSwitcherMenu) return;
+            if (!projectSwitcherMenu.contains(ev.target)) { hideProjectSwitcher(); }
+        };
+        projectSwitcherKeyHandler = (ev) => { if (ev.key === 'Escape') hideProjectSwitcher(); };
+        projectSwitcherFocusInHandler = (ev) => {
+            if (!projectSwitcherMenu) return;
+            if (!projectSwitcherMenu.contains(ev.target)) { hideProjectSwitcher(); }
+        };
+        document.addEventListener('click', projectSwitcherBodyClickHandler);
+        document.addEventListener('keydown', projectSwitcherKeyHandler);
+        document.addEventListener('focusin', projectSwitcherFocusInHandler);
+        try { search.focus(); } catch(_){}
+    }, 0);
+}
+
+function hideProjectSwitcher() {
+    if (projectSwitcherBodyClickHandler) { document.removeEventListener('click', projectSwitcherBodyClickHandler); projectSwitcherBodyClickHandler = null; }
+    if (projectSwitcherKeyHandler) { document.removeEventListener('keydown', projectSwitcherKeyHandler); projectSwitcherKeyHandler = null; }
+    if (projectSwitcherFocusInHandler) { document.removeEventListener('focusin', projectSwitcherFocusInHandler); projectSwitcherFocusInHandler = null; }
+    if (projectSwitcherMenu && projectSwitcherMenu.parentNode) {
+        projectSwitcherMenu.parentNode.removeChild(projectSwitcherMenu);
+    }
+    projectSwitcherMenu = null;
+    projectSwitcherOpen = false;
+    const titleEl = document.getElementById('projectTitle');
+    if (titleEl) titleEl.classList.remove('open');
 }
 
 // 内联编辑任务标题
