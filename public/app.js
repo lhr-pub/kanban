@@ -319,6 +319,12 @@ document.addEventListener('DOMContentLoaded', function() {
         currentProjectNameEl2.addEventListener('click', openProjectSwitcher);
         currentProjectNameEl2.setAttribute('title', '切换项目');
     }
+    // 看板页面左侧增加“返回项目”链接
+    const backToProjectLink = document.getElementById('backToProjectLink');
+    if (backToProjectLink) {
+        backToProjectLink.addEventListener('click', function(e){ e.preventDefault(); goToProjectBoards(); });
+        backToProjectLink.setAttribute('title', '返回项目');
+    }
 
     // 忘记密码链接
     const forgotLink = document.getElementById('forgotPasswordLink');
