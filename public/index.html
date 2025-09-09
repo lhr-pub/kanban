@@ -123,18 +123,18 @@
             </header>
 
             <div class="board-select-tools">
+                <div class="project-info">
+                    <div class="project-info-inline">
+                        <p><strong>邀请码：</strong><span id="projectInviteCode" class="invite-code">------</span> <button
+                                class="btn-secondary" onclick="copyProjectInviteCode()">复制</button></p>
+                        <p><strong>项目成员：</strong><span id="projectMembers">loading...</span></p>
+                    </div>
+                </div>
                 <div class="board-section">
                     <h2>创建新看板</h2>
                     <div class="create-board-form">
                         <input type="text" id="newBoardName" placeholder="看板名称 (如: 开发看板)" required>
                         <button onclick="createBoard()">创建看板</button>
-                    </div>
-                </div>
-                <div class="board-section">
-                    <h2>项目信息</h2>
-                    <div class="project-info-inline">
-                        <p><strong>邀请码：</strong><span id="projectInviteCode" class="invite-code">------</span> <button class="btn-secondary" onclick="copyProjectInviteCode()">复制</button></p>
-                        <p><strong>项目成员：</strong><span id="projectMembers">loading...</span></p>
                     </div>
                 </div>
             </div>
@@ -155,7 +155,7 @@
             <div class="container">
                 <div class="board-header-left">
                     <h1 class="board-breadcrumb">
-                        <span id="backToProjectLink" class="home-link">返回项目</span> /
+                        <span id="backToProjectLink" class="home-link">项目</span> /
                         <span id="currentProjectName" class="project-link" title="切换项目">项目名</span> /
                         <span id="currentBoardName">看板名</span>
                     </h1>

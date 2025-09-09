@@ -811,7 +811,7 @@ async function loadUserProjects() {
                 const canManage = currentUser && (currentUser === (project.owner || '') || currentUser === owner);
                 actions.innerHTML = `
                         <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${project.id}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${project.id}', '${escapeJs(boardName)}', '${escapeJs(project.name)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                        ${canManage ? `<button class=\"board-action-btn more-btn\" onclick=\"event.stopPropagation(); openBoardActionsMenu('home','${project.id}','${escapeJs(boardName)}', this)\" title=\"更多操作\">…</button>` : ''}
+                        ${canManage ? `<button class=\"board-action-btn more-btn\" onclick=\"event.stopPropagation(); openBoardActionsMenu('home','${project.id}','${escapeJs(boardName)}', this)\" title=\"更多操作\">⋮</button>` : ''}
                         ${canManage ? `<button class=\"board-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')\" title=\"删除看板\">✕</button>` : ''}`;
 
                 boardCard.appendChild(icon);
@@ -1167,7 +1167,7 @@ async function loadProjectBoards() {
             actions.innerHTML = `
                 <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')" title="置前">⇧</button>
                 <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                ${canManage ? `<button class=\"board-action-btn more-btn\" onclick=\"event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)\" title=\"更多操作\">…</button>` : ''}
+                ${canManage ? `<button class=\"board-action-btn more-btn\" onclick=\"event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)\" title=\"更多操作\">⋮</button>` : ''}
                 ${canManage ? `<button class=\"board-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')\" title=\"删除看板\">✕</button>` : ''}
             `;
 
@@ -1379,7 +1379,7 @@ async function createBoard() {
                 <div class="board-card-actions">
                     <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')" title="置前">⇧</button>
                     <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
-                    ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)" title="更多操作">…</button>` : ''}
+                    ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)" title="更多操作">⋮</button>` : ''}
                     ${canManage ? `<button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
                 </div>
             `;

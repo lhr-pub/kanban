@@ -1672,9 +1672,9 @@ h1 {
 
 .project-info {
     background: #f8fafc;
-    padding: 1rem;
+    padding: 2rem;
     border-radius: 6px;
-    margin-bottom: 2rem;
+    /* margin-bottom: 2rem; */
 }
 
 .project-info p {
@@ -1750,6 +1750,15 @@ h1 {
 .board-breadcrumb .home-link:hover {
     color: #1d4ed8;
     border-bottom-color: #1d4ed8;
+}
+
+/* Final header/breadcrumb tuning for board page */
+#boardPage .board-breadcrumb {
+    font-size: 1.5rem; /* smaller than project page for balance */
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .logout-btn {
