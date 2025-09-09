@@ -17,6 +17,13 @@ let pendingFocusCaretIndex = null;
 let initialBoardRendered = false;
 let initialBoardTimeout = null;
 
+// Snapshot & WS join tracking to reduce flicker and redundant loads
+let lastLoadedBoardKey = null;
+let lastJoinedBoardKey = null;
+let lastFetchBoardKey = null;
+let lastFetchTime = 0;
+let ignoreFirstBoardUpdate = false;
+
 // Board switcher state
 let boardSwitcherMenu = null;
 let boardSwitcherOpen = false;
@@ -452,18 +459,17 @@ function showBoard(replaceHistory) {
     updateHistory('board', !!replaceHistory);
 
     updateBoardHeader();
-    // 初次加载改为等待 WebSocket 的 board-update 再渲染，避免 fetch 渲染 + WS 渲染导致闪烁
-    const cont = document.getElementById('listsContainer');
-    if (cont) cont.innerHTML = '<div class="board-loading">加载中…</div>';
-    initialBoardRendered = false;
-    if (initialBoardTimeout) { try{ clearTimeout(initialBoardTimeout); }catch(_){} initialBoardTimeout = null; }
-    // Fallback: 若 2000ms 内未收到 WS 更新，则拉取一次数据渲染
-    initialBoardTimeout = setTimeout(() => {
-        if (!initialBoardRendered) {
-            loadBoardData();
-        }
-    }, 2000);
-    connectWebSocket();
+    const desiredKey = `${currentProjectId}|${currentBoardName}`;
+    if (lastLoadedBoardKey === desiredKey) {
+        // 同一个看板：直接渲染并确保 WS 已加入，不再重复拉取
+        connectWebSocket();
+        renderBoard();
+    } else {
+        // 先拉取渲染；为避免与 JOIN 后的首次 WS 更新重复渲染，忽略下一条 board-update
+        ignoreFirstBoardUpdate = true;
+        loadBoardData();
+        connectWebSocket();
+    }
 
     // 加载项目成员信息（如果还未加载）
     if (!window.currentProjectMembers) {
@@ -637,8 +643,8 @@ async function loadUserProjects() {
             if (token !== userProjectsLoadToken) return;
             const qab = document.getElementById('quickAccessBoards');
             const pl = document.getElementById('projectsList');
-            if (qab) qab.innerHTML = '<div class="empty-state">还没有加入任何项目，请先创建或加入一个项目！</div>';
-            if (pl) pl.innerHTML = '<div class="empty-state">还没有项目，创建第一个项目开始协作吧！</div>';
+            if (qab) qab.replaceChildren((() => { const d = document.createElement('div'); d.className='empty-state'; d.textContent='还没有加入任何项目，请先创建或加入一个项目！'; return d; })());
+            if (pl) pl.replaceChildren((() => { const d = document.createElement('div'); d.className='empty-state'; d.textContent='还没有项目，创建第一个项目开始协作吧！'; return d; })());
             renderStarredBoards();
             // restore scroll after empty render
             try { setTimeout(()=> window.scrollTo({ top: prevScrollY }), 0); } catch(e) {}
@@ -648,10 +654,10 @@ async function loadUserProjects() {
         const quickAccessBoards = document.getElementById('quickAccessBoards');
         const projectsList = document.getElementById('projectsList');
 
-        // 清空现有内容，避免重复
+        // 不立即清空，先离线构建，最后一次性替换，避免闪烁
         if (token !== userProjectsLoadToken) return;
-        if (quickAccessBoards) quickAccessBoards.innerHTML = '';
-        if (projectsList) projectsList.innerHTML = '';
+        if (quickAccessBoards) quickAccessBoards.setAttribute('aria-busy', 'true');
+        if (projectsList) projectsList.setAttribute('aria-busy', 'true');
         // keep homepage scroll while re-rendering
         const restoreHomeScroll = () => { try { window.scrollTo({ top: prevScrollY }); } catch(e) {} };
 
@@ -695,21 +701,26 @@ async function loadUserProjects() {
                 const owner = (boardsData.boardOwners && boardsData.boardOwners[boardName]) || '';
                 const isStar = isBoardStarred(project.id, boardName);
 
-                boardCard.innerHTML = `
-                    <span class="board-icon" data-icon="boards"></span>
-                    <div class="board-details">
-                        <h4>${escapeHtml(boardName)}</h4>
-                        <span class="board-project">${escapeHtml(project.name)}</span>
-                    </div>
-                    ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
-                    <div class="board-card-actions">
+                const icon = document.createElement('span');
+                icon.className = 'board-icon';
+                icon.setAttribute('data-icon', 'boards');
+                const details = document.createElement('div');
+                details.className = 'board-details';
+                details.innerHTML = `<h4>${escapeHtml(boardName)}</h4><span class="board-project">${escapeHtml(project.name)}</span>`;
+                const ownerEl = owner ? (()=>{ const d=document.createElement('div'); d.className='card-owner'; d.textContent=`创建者：${owner}`; return d; })() : null;
+                const actions = document.createElement('div');
+                actions.className = 'board-card-actions';
+                actions.innerHTML = `
                         <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${project.id}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${project.id}', '${escapeJs(boardName)}', '${escapeJs(project.name)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                         <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
                         <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
                         <button class="board-action-btn archive-btn" onclick="event.stopPropagation(); archiveBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="归档看板">📁</button>
-                        <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>
-                    </div>
-                `;
+                        <button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')" title="删除看板">✕</button>`;
+
+                boardCard.appendChild(icon);
+                boardCard.appendChild(details);
+                if (ownerEl) boardCard.appendChild(ownerEl);
+                boardCard.appendChild(actions);
                 qabFrag.appendChild(boardCard);
             });
 
@@ -719,19 +730,26 @@ async function loadUserProjects() {
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(project.id, project.name);
 
-            projectCard.innerHTML = `
-                <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(project.name)}</h3>
-                <div class="project-info">
-                    邀请码: <span class="invite-code">${project.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(project.inviteCode)}')">复制</button><br>
-                    成员: ${project.memberCount}人<br>
-                    看板: ${project.boardCount}个<br>
-                    创建于: ${new Date(project.created).toLocaleDateString()}
-                </div>
-                <div class="project-card-actions">
-                    ${currentUser === (project.owner || '') ? `<button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button><button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>` : ''}
-                </div>
-                <div class="card-owner">所有者：${escapeHtml(project.owner || '')}</div>
-            `;
+            // build DOM incrementally to avoid innerHTML measuring/reflow
+            const h3 = document.createElement('h3');
+            h3.innerHTML = `<span class="project-icon" data-icon="folder"></span>${escapeHtml(project.name)}`;
+            const info = document.createElement('div');
+            info.className = 'project-info';
+            info.innerHTML = `邀请码: <span class="invite-code">${project.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(project.inviteCode)}')">复制</button><br>成员: ${project.memberCount}人<br>看板: ${project.boardCount}个<br>创建于: ${new Date(project.created).toLocaleDateString()}`;
+            const actions = document.createElement('div');
+            actions.className = 'project-card-actions';
+            if (currentUser === (project.owner || '')) {
+                actions.innerHTML = `<button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="重命名项目">✎</button><button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')" title="删除项目">✕</button>`;
+            }
+            const ownerEl = document.createElement('div');
+            ownerEl.className = 'card-owner';
+            ownerEl.textContent = `所有者：${project.owner || ''}`;
+
+            projectCard.appendChild(h3);
+            projectCard.appendChild(info);
+            projectCard.appendChild(actions);
+            projectCard.appendChild(ownerEl);
+
             if (currentUser !== (project.owner || '')) {
                 const actionsEl = projectCard.querySelector('.project-card-actions');
                 if (actionsEl) actionsEl.innerHTML = '';
@@ -741,11 +759,13 @@ async function loadUserProjects() {
 
         if (token !== userProjectsLoadToken) return;
         if (quickAccessBoards) {
-            quickAccessBoards.appendChild(qabFrag);
+            quickAccessBoards.replaceChildren(qabFrag);
+            quickAccessBoards.removeAttribute('aria-busy');
             renderIconsInDom(quickAccessBoards);
         }
         if (projectsList) {
-            projectsList.appendChild(plFrag);
+            projectsList.replaceChildren(plFrag);
+            projectsList.removeAttribute('aria-busy');
             renderIconsInDom(projectsList);
         }
         ensureStarNames(projects);
@@ -1274,12 +1294,16 @@ function connectWebSocket() {
 
     socket.onopen = function() {
         console.log('WebSocket connected');
-        socket.send(JSON.stringify({
-            type: 'join',
-            user: currentUser,
-            projectId: currentProjectId,
-            boardName: currentBoardName
-        }));
+        const key = `${currentProjectId}|${currentBoardName}`;
+        if (lastJoinedBoardKey !== key) {
+            socket.send(JSON.stringify({
+                type: 'join',
+                user: currentUser,
+                projectId: currentProjectId,
+                boardName: currentBoardName
+            }));
+            lastJoinedBoardKey = key;
+        }
     };
 
     socket.onmessage = function(event) {
@@ -1303,6 +1327,8 @@ function handleWebSocketMessage(data) {
     switch (data.type) {
         case 'board-update':
             if (data.projectId === currentProjectId && data.boardName === currentBoardName) {
+                // Suppress the first WS update right after an initial fetch-render to avoid double render
+                if (ignoreFirstBoardUpdate) { ignoreFirstBoardUpdate = false; lastLoadedBoardKey = `${currentProjectId}|${currentBoardName}`; break; }
                 boardData = data.board;
                 if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
                     clientLists = boardData.lists;
@@ -1461,9 +1487,17 @@ function handleWebSocketMessage(data) {
 // 加载看板数据
 async function loadBoardData() {
     try {
+        const now = Date.now();
+        const key = `${currentProjectId}|${currentBoardName}`;
+        // Prevent redundant fetches when the same board is opened repeatedly within 500ms
+        if (lastFetchBoardKey === key && now - lastFetchTime < 500) return;
+        lastFetchBoardKey = key;
+        lastFetchTime = now;
+
         const response = await fetch(`/api/board/${currentProjectId}/${encodeURIComponent(currentBoardName)}`);
         if (response.ok) {
             boardData = await response.json();
+            lastLoadedBoardKey = key;
             renderBoard();
         }
     } catch (error) {
