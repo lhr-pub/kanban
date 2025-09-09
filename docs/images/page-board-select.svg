@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="560" viewBox="0 0 940 560">
+  <style>
+    .panel { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:12; }
+    .title { font:700 18px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .muted { font:12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .chip { fill:#f9fafb; stroke:#e5e7eb; stroke-width:1.5; rx:10; }
+    .h2 { font:700 16px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+  </style>
+
+  <rect class="panel" x="40" y="32" width="860" height="496"/>
+  <text class="title" x="64" y="64">项目看板页（选择看板）</text>
+  <text class="muted" x="64" y="84">标题：首页 / 项目名称（可点击切换项目）</text>
+  <text class="muted" x="64" y="104">项目信息：邀请码 · 成员列表</text>
+
+  <text class="h2" x="64" y="140">🧩 看板列表</text>
+  <rect class="chip" x="64" y="154" width="260" height="72"/>
+  <rect class="chip" x="336" y="154" width="260" height="72"/>
+  <rect class="chip" x="608" y="154" width="260" height="72"/>
+  <text class="muted" x="64" y="240">卡片操作：置前(⇧) · 加星(★) · 更多(…) · 删除(✕)</text>
+
+  <text class="h2" x="64" y="280">📁 归档的看板（可展开/搜索）</text>
+  <rect class="chip" x="64" y="294" width="836" height="48"/>
+  <text class="muted" x="74" y="322">展开后：三栏栅格；卡片含 还原(↩︎)/删除(✕)</text>
+</svg>
+

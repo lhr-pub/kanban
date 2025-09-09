@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="520" viewBox="0 0 980 520">
+  <style>
+    .swim { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:10; }
+    .head { font:700 16px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .evt  { font:13px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .muted{ font:12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .line { stroke:#9ca3af; stroke-width:2; }
+    .arrow{ marker-end:url(#arrow); }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+    </marker>
+  </defs>
+
+  <!-- Lanes -->
+  <rect class="swim" x="40"  y="40"  width="260" height="420"/>
+  <rect class="swim" x="360" y="40"  width="260" height="420"/>
+  <rect class="swim" x="680" y="40"  width="260" height="420"/>
+  <text class="head" x="52"  y="68">申请者（客户端）</text>
+  <text class="head" x="372" y="68">Express API</text>
+  <text class="head" x="692" y="68">项目数据</text>
+
+  <!-- Request to join via invite code -->
+  <text class="evt" x="60" y="112">输入邀请码 → 提交申请</text>
+  <line class="line arrow" x1="300" y1="120" x2="360" y2="120"/>
+  <text class="evt" x="372" y="116">POST /api/join-project</text>
+  <text class="muted" x="692" y="116">projects.json.pendingRequests += user</text>
+  <line class="line arrow" x1="620" y1="120" x2="680" y2="120"/>
+  <text class="muted" x="372" y="140">ws.broadcast("join-request") 给项目看板参与者</text>
+
+  <!-- Owner approves in members/invites modal -->
+  <text class="evt" x="372" y="204">POST /api/approve-join（或对应端点）</text>
+  <text class="muted" x="692" y="204">members += user；pendingRequests 删除</text>
+  <line class="line arrow" x1="620" y1="208" x2="680" y2="208"/>
+  <text class="muted" x="372" y="232">ws.broadcast("member-added")</text>
+
+  <!-- Effects -->
+  <text class="evt" x="60" y="292">申请者：刷新首页项目列表，出现新项目</text>
+  <text class="evt" x="60" y="320">所有者：邀请/申请弹窗数量减少</text>
+  <text class="muted" x="372" y="352">（若拒绝，则仅移除 pendingRequests 并广播）</text>
+</svg>
+

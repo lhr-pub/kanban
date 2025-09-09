@@ -38,7 +38,337 @@
    - 置前按钮（⇧）：仅在“项目看板列表”页显示，用于将该看板在本项目中置前排序。
    - “更多(…)”操作按钮：合并“重命名/移动/归档”为一个菜单；“删除(✕)”按钮保持独立，始终位于操作区最右侧。
    - 打开“更多(…)”菜单时，卡片的操作区不会消失，便于连续操作（焦点在菜单内时保持可见）。
- - 归档看板区：三栏栅格，计数在首次渲染即正确；从归档区“还原”看板后保持展开状态与当前搜索，不会自动收起。
+- 归档看板区：三栏栅格，计数在首次渲染即正确；从归档区“还原”看板后保持展开状态与当前搜索，不会自动收起。
+
+#### 看板卡片操作区示意
+
+![看板卡片操作区示意](docs/images/board-card-actions.svg)
+
+## 🧩 设计图（Architecture & Pages）
+
+### 架构图
+
+![系统架构图](docs/images/architecture.svg)
+
+### 页面线框图（Wireframes）
+
+- 登录页（邮箱验证登录、忘记/重置密码）
+
+  ![登录页](docs/images/page-login.svg)
+
+- 工作台 / 首页（星标看板、项目管理、所有看板）
+
+  ![首页](docs/images/page-home.svg)
+
+- 项目看板页（看板列表、归档看板区展开/搜索）
+
+  ![项目看板页](docs/images/page-board-select.svg)
+
+- 看板页（列表/卡片、内联编辑、导入/导出、归档管理）
+
+  ![看板页](docs/images/page-board.svg)
+
+- 归档页（归档任务搜索、清空归档）
+
+  ![归档页](docs/images/page-archive.svg)
+
+- 管理员页（用户列表、属性修改、删除用户限制）
+
+![管理员页](docs/images/page-admin.svg)
+
+### 时序图（Sequence Diagrams）
+
+- 看板重命名/移动/删除 端到端流程（REST + 文件存储 + WS 广播）
+
+  ![看板重命名/移动/删除](docs/images/seq-board-ops.svg)
+
+- 邀请码加入项目与审批流程
+
+![加入项目审批](docs/images/seq-join-approval.svg)
+
+### Mermaid（文本版图示）
+
+> 若你的渲染环境支持 Mermaid，可直接查看下列文本版图示；否则请参考上面的 SVG 图片版本。
+
+#### 架构图（Mermaid）
+
+```mermaid
+flowchart LR
+  client[Browser SPA\n(public/)]
+
+  subgraph Server[Node.js + Express + ws\n(server.js)]
+    api[REST APIs]
+    hub[WebSocket Hub]
+    mail[(SMTP Mailer)]
+  end
+
+  subgraph Storage[File Storage (data/)]
+    users[(users.json)]
+    projects[(projects.json)]
+    boards[({projectId}_{board}.json)]
+    backups[(backups/)]
+  end
+
+  client -- Fetch --> api
+  client <--> hub
+  api --> users
+  api --> projects
+  api --> boards
+  api --> backups
+  api --> mail
+```
+
+#### 看板重命名/移动/删除（Mermaid 时序）
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as Client (SPA)
+  participant S as Server (Express)
+  participant D as Data Files (data/)
+
+  rect rgb(245,245,245)
+    Note over C,S: Rename Board
+    C->>S: POST /api/rename-board
+    S->>D: Rename {pid}_{old}.json → {pid}_{new}.json
+    S->>D: Update projects.json (boards, boardOwners)
+    S->>D: Update users.json stars/pins (boardName)
+    S-->>C: 200 OK
+    S-->>C: WS board-renamed
+  end
+
+  rect rgb(245,245,245)
+    Note over C,S: Move Board
+    C->>S: POST /api/move-board
+    S->>D: Move file to {toPid}_{board}.json
+    S->>D: Update projects.json (from→to)
+    S->>D: Update users.json stars projectId; clear pinnedBoards[from]
+    S-->>C: 200 OK
+    S-->>C: WS board-moved
+  end
+
+  rect rgb(245,245,245)
+    Note over C,S: Delete Board
+    C->>S: DELETE /api/delete-board
+    S->>D: Remove {pid}_{board}.json
+    S->>D: Clean users.json stars/pins for this board
+    S-->>C: 200 OK
+  end
+```
+
+#### 邀请码加入与审批（Mermaid 时序）
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as Applicant (Client)
+  participant S as Server (Express)
+  participant P as Project Data (projects.json)
+
+  U->>S: POST /api/join-project (inviteCode)
+  S->>P: pendingRequests += user
+  S-->>U: 200 OK (submitted)
+  S-->>U: WS join-request (to project participants)
+
+  participant O as Owner (Client)
+  O->>S: POST /api/approve-join (or equivalent)
+  S->>P: members += user; remove pendingRequests
+  S-->>O: 200 OK
+  S-->>U: WS member-added
+```
+
+#### 页面导航 / 状态流（Mermaid）
+
+```mermaid
+flowchart LR
+  Login[登录/注册] --> Home[首页/工作台]
+  Home -->|选择项目| ProjectBoards[项目看板页]
+  Home -->|点击星标看板| Board[看板页]
+  ProjectBoards -->|选择看板| Board
+  Board -->|归档管理| Archive[归档页]
+  Archive -->|返回| Board
+  Board -->|返回项目| ProjectBoards
+  ProjectBoards -->|返回首页| Home
+  Home -->|退出| Login
+
+  subgraph State[持久化状态]
+    LS[(localStorage\nuser/page/project/board)]
+    H[history.pushState / replaceState]
+  end
+  Home -.persist.-> LS
+  ProjectBoards -.persist.-> LS
+  Board -.persist.-> LS
+  Archive -.persist.-> LS
+  Home -.history.-> H
+  ProjectBoards -.history.-> H
+  Board -.history.-> H
+  Archive -.history.-> H
+```
+
+#### 模块依赖图（Mermaid）
+
+```mermaid
+flowchart TB
+  subgraph Client
+    App[SPA app.js]
+  end
+  subgraph Server[Express + ws]
+    Auth[/Auth/]
+    Projects[/Projects/]
+    Boards[/Boards/]
+    Stars[/Stars/]
+    Pins[/Pins/]
+    Admin[/Admin/]
+    IO[/Import/Export/]
+    Hub[WebSocket Hub]
+  end
+  subgraph Storage[data/]
+    U[(users.json)]
+    P[(projects.json)]
+    F[({pid}_{board}.json)]
+    BK[(backups/)]
+  end
+
+  App --> Auth
+  App --> Projects
+  App --> Boards
+  App --> Stars
+  App --> Pins
+  App --> Admin
+  App --> IO
+  App <--> Hub
+
+  Auth --> U
+  Projects --> P
+  Boards --> P
+  Boards --> F
+  IO --> F
+  Stars --> U
+  Pins --> U
+  Admin --> U
+  Boards -.备份.-> BK
+```
+
+#### 数据模型（Mermaid 类图）
+
+```mermaid
+classDiagram
+  class User {
+    +string username
+    +string passwordHash
+    +bool verified
+    +bool admin
+    +string[] projects
+    +Star[] stars
+    +string[] pinnedProjects
+    +map~string,string[]~ pinnedBoards
+    +string[] pinnedStarBoards
+  }
+
+  class Star {
+    +string projectId
+    +string boardName
+    +string projectName
+    +number starredAt
+  }
+
+  class Project {
+    +string id
+    +string name
+    +string inviteCode
+    +string owner
+    +string[] members
+    +string[] boards
+    +string[] archivedBoards
+    +map~string,string~ boardOwners
+    +string created
+    +Request[] pendingRequests
+    +string[] pendingInvites
+  }
+
+  class BoardData {
+    +Card[] todo
+    +Card[] doing
+    +Card[] done
+    +Card[] archived
+    +ListsMeta lists
+  }
+
+  class ListsMeta {
+    +string[] listIds
+    +map~string,ListMeta~ lists
+  }
+  class ListMeta {
+    +string id
+    +string title
+    +number pos
+    +string status
+  }
+
+  class Card {
+    +string id
+    +string title
+    +string description
+    +string assignee
+    +string deadline
+    +string author
+    +string created
+    +number commentsCount
+    +string[] labels
+  }
+
+  class Request {
+    +string username
+    +string created
+  }
+
+  User "1" o-- "*" Star
+  User "1" o-- "*" Project : via id in projects[]
+  Project "1" o-- "*" BoardData : via boards[]
+  Project "1" o-- "*" Request : pendingRequests
+```
+
+## 🔐 权限矩阵（简化）
+
+| 动作 | 项目所有者 | 看板创建者 | 项目成员 |
+|---|---|---|---|
+| 创建看板 | ✅ | ✅ | ✅ |
+| 重命名看板 | ✅ | ✅ | ❌ |
+| 移动看板到其他项目 | ✅ | ✅（且目标项目成员） | ❌ |
+| 归档/还原看板 | ✅ | ✅ | ❌ |
+| 删除看板 | ✅ | ✅ | ❌ |
+| 重命名项目 | ✅ | ❌ | ❌ |
+| 删除项目 | ✅ | ❌ | ❌ |
+| 添加/移除成员 | ✅（移除他人） | ❌ | 自行退出 |
+| 审批加入申请 | ✅ | ❌ | ❌ |
+| 星标/取消星标 | ✅ | ✅ | ✅ |
+| 置前项目 | ✅ | ✅ | ✅（项目成员即可） |
+| 置前看板（项目页） | ✅ | ✅ | ✅（项目成员即可） |
+| 星标区置前 | ✅ | ✅ | ✅ |
+
+> 注：服务端已在相关 API 中进行权限校验；前端将“更多(…)”与“删除(✕)”按权限显示/隐藏。
+
+## 🎨 UI 主题与交互规范（摘录）
+
+- 颜色与语义
+  - 文字：#111827 / 次要 #374151 / 辅助 #6b7280
+  - 主色：#3b82f6（按钮/高亮），危险：#dc2626（删除）
+  - 边框：#e5e7eb，卡片 hover 边：var(--primary-light)
+- 尺寸与间距
+  - 卡片圆角：10–12px；按钮圆角：6–8px
+  - 列间距：12px；卡片间距：12px；看板三栏布局
+  - 常用按钮大小：32×32（操作区小按钮）
+- 字体
+  - 系统字体栈（system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial）
+  - 标题 16–18px，正文 13–14px
+- 交互状态
+  - Hover：轻色背景/边框增强；Focus-visible：清晰的描边与阴影
+  - 操作区显示：悬停显示；打开“更多(…)”菜单时为卡片加 hold-actions，保持显示
+  - 删除(✕)：始终置于操作区最右；更多(…) 合并重命名/移动/归档
+- 栅格与响应式
+  - 首页卡片与项目页卡片：三栏（宽屏），两栏（中屏）；归档看板列表固定三栏
+  - 归档页任务：单列，与普通卡片样式一致
+
 
 ### 🧱 Trello 式卡组（List）
 - 动态卡组（客户端 lists 元数据）：新增/重命名/删除，顺序持久化
@@ -92,6 +422,41 @@
 1. 注册后前往邮箱验证，再登录
 2. 首页创建项目，或在“邀请管理”中输入邀请码发起加入申请
 3. 进入项目选择看板，或在导航栏点击看板名打开切换器进行切换/创建/重命名（下拉不展示已归档看板）
+
+### 🎬 录屏生成 GIF（建议放在 PR 或发布说明中）
+
+- macOS（推荐）：
+  - 录屏：按 Command+Shift+5 选择“录制所选区域”，保存为 `.mov`。
+  - 转 GIF（需要 ffmpeg 与 gifski）：
+    ```bash
+    # 使用 Homebrew 安装
+    brew install ffmpeg gifski
+    # 先缩放并导出高质量 GIF（12fps，可以根据需要调整）
+    ffmpeg -i screen.mov -vf "fps=12,scale=960:-1:flags=lanczos" -f gif - | gifski -o demo.gif --fps 12 --quality 80 -
+    ```
+
+- Windows：
+  - 录屏：可使用 PowerToys 的屏幕录像或 OBS 录制为 `.mp4`。
+  - 转 GIF（使用调色板提高清晰度）：
+    ```bash
+    ffmpeg -y -i screen.mp4 -vf "fps=12,scale=960:-1:flags=lanczos,palettegen" palette.png
+    ffmpeg -i screen.mp4 -i palette.png -lavfi "fps=12,scale=960:-1:flags=lanczos,paletteuse" demo.gif
+    ```
+
+- Linux：
+  - 录屏：可用 Peek（GUI）或 ffmpeg 直接录制 X11/Wayland。
+  - 例：用 ffmpeg 录制并转 GIF：
+    ```bash
+    # 录制屏幕区域到 mp4（自行调整 -video_size 与 -offset）
+    ffmpeg -f x11grab -video_size 1280x720 -framerate 30 -i :0.0+100,200 -c:v libx264 -preset ultrafast screen.mp4
+    # 生成高质量 GIF
+    ffmpeg -y -i screen.mp4 -vf "fps=12,scale=960:-1:flags=lanczos,palettegen" palette.png
+    ffmpeg -i screen.mp4 -i palette.png -lavfi "fps=12,scale=960:-1:flags=lanczos,paletteuse" demo.gif
+    ```
+
+小贴士：
+- 建议控制分辨率（如宽度 960px）与帧率（如 10–12fps），在清晰度与体积间取得平衡。
+- 可用 `gifsicle -O3 demo.gif -o demo.min.gif` 进一步压缩体积。
 
 ### 看板与卡片
 - 每个卡组底部提供“添加卡片”入口（点击展开、Enter 添加、Esc 取消），在列表空白处按 Enter 也可展开；提交后保持打开便于连续添加

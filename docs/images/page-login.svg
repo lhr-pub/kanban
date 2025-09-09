@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="420" viewBox="0 0 820 420">
+  <style>
+    .card { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:12; }
+    .title { font:700 18px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .label { font:600 14px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#374151; }
+    .muted { font:12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .input { fill:#fff; stroke:#d1d5db; stroke-width:1.5; rx:8; }
+    .btn { fill:#3b82f6; rx:8; }
+    .btn-t { font:600 14px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#fff; }
+  </style>
+  <rect class="card" x="140" y="40" width="540" height="340" />
+  <text class="title" x="170" y="80">登录 / 注册</text>
+  <text class="muted" x="170" y="104">邮箱验证登录、忘记/重置密码</text>
+
+  <text class="label" x="170" y="140">用户名或邮箱</text>
+  <rect class="input" x="170" y="148" width="480" height="34" />
+
+  <text class="label" x="170" y="196">邮箱（注册时显示）</text>
+  <rect class="input" x="170" y="204" width="480" height="34" />
+
+  <text class="label" x="170" y="252">密码</text>
+  <rect class="input" x="170" y="260" width="480" height="34" />
+
+  <rect class="btn" x="170" y="308" width="120" height="36" />
+  <text class="btn-t" x="230" y="331" text-anchor="middle">提交</text>
+  <text class="muted" x="310" y="331">切换到注册/登录 · 忘记密码</text>
+</svg>
+

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="540" viewBox="0 0 980 540">
+  <style>
+    .swim { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:10; }
+    .head { font:700 16px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .evt  { font:13px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .muted{ font:12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .line { stroke:#9ca3af; stroke-width:2; }
+    .arrow{ marker-end:url(#arrow); }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af"/>
+    </marker>
+  </defs>
+
+  <!-- Lanes -->
+  <rect class="swim" x="40"  y="40"  width="260" height="460"/>
+  <rect class="swim" x="360" y="40"  width="260" height="460"/>
+  <rect class="swim" x="680" y="40"  width="260" height="460"/>
+  <text class="head" x="52"  y="68">Browser SPA</text>
+  <text class="head" x="372" y="68">Express API</text>
+  <text class="head" x="692" y="68">Storage</text>
+
+  <!-- Events: Rename / Move / Delete -->
+  <text class="evt" x="60" y="112">点击 看板“…/重命名”</text>
+  <line class="line arrow" x1="300" y1="120" x2="360" y2="120"/>
+  <text class="evt" x="372" y="116">POST /api/rename-board</text>
+  <text class="muted" x="692" y="116">projects.json 更新、文件重命名</text>
+  <line class="line arrow" x1="620" y1="120" x2="680" y2="120"/>
+  <line class="line arrow" x1="680" y1="148" x2="360" y2="148"/>
+  <text class="evt" x="372" y="160">同步 users.json：更新星标/置前</text>
+  <line class="line arrow" x1="360" y1="168" x2="620" y2="168"/>
+  <text class="evt" x="60" y="200">收到 200 OK → 刷新列表/标题</text>
+  <line class="line arrow" x1="300" y1="204" x2="360" y2="204"/>
+  <text class="evt" x="372" y="200">ws.broadcast("board-renamed")</text>
+  <line class="line arrow" x1="360" y1="228" x2="300" y2="228"/>
+  <text class="muted" x="52" y="248">客户端：更新星标/置前按钮状态</text>
+
+  <text class="evt" x="60" y="292">点击 看板“…/移动”</text>
+  <line class="line arrow" x1="300" y1="300" x2="360" y2="300"/>
+  <text class="evt" x="372" y="296">POST /api/move-board</text>
+  <text class="muted" x="692" y="296">文件移动、projects.json from→to</text>
+  <line class="line arrow" x1="620" y1="300" x2="680" y2="300"/>
+  <text class="evt" x="372" y="324">同步 users.json：更新星标项目ID</text>
+  <line class="line arrow" x1="360" y1="332" x2="300" y2="332"/>
+  <text class="evt" x="60" y="352">收到 200 OK → 更新 UI、toast</text>
+  <text class="muted" x="372" y="356">ws.broadcast("board-moved")</text>
+
+  <text class="evt" x="60" y="396">点击 看板“…/删除” 或 “✕”</text>
+  <line class="line arrow" x1="300" y1="404" x2="360" y2="404"/>
+  <text class="evt" x="372" y="400">DELETE /api/delete-board</text>
+  <text class="muted" x="692" y="400">删除 {pid}_{board}.json</text>
+  <line class="line arrow" x1="620" y1="404" x2="680" y2="404"/>
+  <text class="evt" x="372" y="428">清理 users.json 星标/置前</text>
+  <line class="line arrow" x1="360" y1="436" x2="300" y2="436"/>
+  <text class="evt" x="60" y="456">刷新列表、移除星标卡片、toast</text>
+</svg>
+

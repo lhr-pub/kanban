@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="480" viewBox="0 0 860 480">
+  <style>
+    .panel { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:12; }
+    .title { font:700 18px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .muted { font:12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .row { fill:#ffffff; stroke:#e5e7eb; stroke-width:1.5; rx:8; }
+  </style>
+  <rect class="panel" x="40" y="32" width="780" height="416"/>
+  <text class="title" x="64" y="64">管理员页</text>
+  <text class="muted" x="64" y="84">用户列表 · 搜索 · 修改属性（验证/管理员） · 删除用户（若为任一项目所有者则阻止）</text>
+
+  <rect class="row" x="64" y="110" width="732" height="44"/>
+  <rect class="row" x="64" y="164" width="732" height="44"/>
+  <rect class="row" x="64" y="218" width="732" height="44"/>
+  <rect class="row" x="64" y="272" width="732" height="44"/>
+  <rect class="row" x="64" y="326" width="732" height="44"/>
+</svg>
+

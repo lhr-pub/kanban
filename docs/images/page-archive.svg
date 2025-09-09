@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="520" viewBox="0 0 920 520">
+  <style>
+    .panel { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:12; }
+    .title { font:700 18px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .muted { font:12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .card { fill:#ffffff; stroke:#e5e7eb; stroke-width:1.5; rx:10; }
+    .input { fill:#fff; stroke:#d1d5db; stroke-width:1.5; rx:8; }
+  </style>
+  <rect class="panel" x="40" y="32" width="840" height="456"/>
+  <text class="title" x="64" y="64">归档页（任务归档）</text>
+  <text class="muted" x="64" y="84">搜索框（输入关键字实时过滤） · 清空归档</text>
+  <rect class="input" x="64" y="96" width="520" height="34"/>
+
+  <!-- archived cards list (single column with normal card style) -->
+  <rect class="card" x="64" y="150" width="760" height="56"/>
+  <rect class="card" x="64" y="214" width="760" height="56"/>
+  <rect class="card" x="64" y="278" width="760" height="56"/>
+  <text class="muted" x="64" y="350">卡片样式与正常一致；提供“还原/删除”等动作。</text>
+</svg>
+

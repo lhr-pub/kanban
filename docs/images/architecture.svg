@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="560" viewBox="0 0 960 560">
+  <style>
+    .box { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:12; }
+    .title { font:700 16px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .text { font:13px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#374151; }
+    .muted { font:12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .line { stroke:#9ca3af; stroke-width:2; }
+  </style>
+
+  <!-- Client -->
+  <rect class="box" x="40" y="40" width="360" height="210"/>
+  <text class="title" x="60" y="70">Browser SPA（public/）</text>
+  <text class="text" x="60" y="98">• index.html + app.js + style.css</text>
+  <text class="text" x="60" y="118">• 页面：登录 / 工作台 / 项目看板 / 看板 / 归档 / 管理员</text>
+  <text class="text" x="60" y="138">• 状态：localStorage（用户/页面/项目/看板）</text>
+  <text class="text" x="60" y="158">• 实时：WebSocket 客户端</text>
+  <text class="text" x="60" y="178">• 通讯：REST Fetch API</text>
+
+  <!-- Server -->
+  <rect class="box" x="560" y="40" width="360" height="250"/>
+  <text class="title" x="580" y="70">Node.js + Express + ws（server.js）</text>
+  <text class="text" x="580" y="98">• Auth/Users：注册/登录/邮箱验证/管理</text>
+  <text class="text" x="580" y="118">• Projects/Boards：创建/重命名/移动/删除/归档/还原</text>
+  <text class="text" x="580" y="138">• Stars：加星/取消星标（用户侧持久化）</text>
+  <text class="text" x="580" y="158">• Pins：项目置前、项目内看板置前、星标列表置前</text>
+  <text class="text" x="580" y="178">• Import/Export：Markdown / JSON</text>
+  <text class="text" x="580" y="198">• WebSocket：房间广播（board-update 等）</text>
+  <text class="text" x="580" y="218">• Mail：SMTP（注册、重置密码）</text>
+
+  <!-- Storage -->
+  <rect class="box" x="560" y="320" width="360" height="180"/>
+  <text class="title" x="580" y="350">文件存储（data/）</text>
+  <text class="text" x="580" y="378">• users.json（用户、星标、置前等）</text>
+  <text class="text" x="580" y="398">• projects.json（项目信息/看板列表/所有者等）</text>
+  <text class="text" x="580" y="418">• {projectId}_{board}.json（看板数据 + lists）</text>
+  <text class="text" x="580" y="438">• backups/（最近 50 份自动备份）</text>
+
+  <!-- Lines -->
+  <!-- REST -->
+  <line class="line" x1="400" y1="136" x2="560" y2="136"/>
+  <text class="muted" x="446" y="128">REST</text>
+  <!-- WS -->
+  <line class="line" x1="400" y1="176" x2="560" y2="176"/>
+  <text class="muted" x="444" y="168">WebSocket</text>
+  <!-- Server -> Storage -->
+  <line class="line" x1="740" y1="290" x2="740" y2="320"/>
+  <!-- Mail hint -->
+  <text class="muted" x="560" y="244">SMTP：注册验证与重置密码</text>
+
+  <!-- Notes -->
+  <text class="muted" x="40" y="520">说明：
+  • 星标（/api/user-stars）与置前（/api/user-pins、/api/user-board-pins、/api/user-star-pins）持久化在 users.json。
+  • 看板重命名/移动/删除时，会同步清理/更新星标与置前信息并广播房间事件。
+  </text>
+</svg>
+

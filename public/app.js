@@ -313,6 +313,12 @@ document.addEventListener('DOMContentLoaded', function() {
         currentBoardNameEl.addEventListener('click', openBoardSwitcher);
         currentBoardNameEl.setAttribute('title', '切换看板');
     }
+    // 看板页面包屑中的项目名：改为“切换项目”（与项目页一致）
+    const currentProjectNameEl2 = document.getElementById('currentProjectName');
+    if (currentProjectNameEl2) {
+        currentProjectNameEl2.addEventListener('click', openProjectSwitcher);
+        currentProjectNameEl2.setAttribute('title', '切换项目');
+    }
 
     // 忘记密码链接
     const forgotLink = document.getElementById('forgotPasswordLink');

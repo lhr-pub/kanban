@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="620" viewBox="0 0 980 620">
+  <style>
+    .panel { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:12; }
+    .title { font:700 18px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .muted { font:12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .col { fill:#ffffff; stroke:#e5e7eb; stroke-width:2; rx:12; }
+    .card { fill:#ffffff; stroke:#e5e7eb; stroke-width:1.5; rx:10; }
+    .h2 { font:700 16px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+  </style>
+
+  <rect class="panel" x="40" y="32" width="900" height="556"/>
+  <text class="title" x="64" y="64">看板页</text>
+  <text class="muted" x="64" y="84">面包屑：项目名 / 看板名（看板名可点击打开下拉切换/重命名/创建）</text>
+  <text class="muted" x="64" y="104">右侧：导入/导出 ▾ · 归档管理 · 返回 · 退出</text>
+
+  <!-- columns -->
+  <rect class="col" x="64" y="140" width="260" height="420"/>
+  <rect class="col" x="344" y="140" width="260" height="420"/>
+  <rect class="col" x="624" y="140" width="260" height="420"/>
+  <text class="muted" x="64" y="134">列表（可重命名/添加/删除/拖拽排序）</text>
+
+  <!-- sample cards -->
+  <rect class="card" x="80" y="168" width="228" height="44"/>
+  <rect class="card" x="80" y="218" width="228" height="44"/>
+  <rect class="card" x="360" y="168" width="228" height="44"/>
+  <rect class="card" x="640" y="168" width="228" height="44"/>
+  <text class="muted" x="64" y="574">卡片：标题/描述内联编辑、分配/截止日期、评论、拖拽排序、归档/还原</text>
+</svg>
+

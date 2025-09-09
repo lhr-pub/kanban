@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="940" height="560" viewBox="0 0 940 560">
+  <style>
+    .panel { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:12; }
+    .title { font:700 18px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .muted { font:12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .chip { fill:#f9fafb; stroke:#e5e7eb; stroke-width:1.5; rx:10; }
+    .h2 { font:700 16px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+  </style>
+
+  <rect class="panel" x="40" y="32" width="860" height="496"/>
+  <text class="title" x="64" y="64">工作台 / 首页</text>
+  <text class="muted" x="64" y="84">右上：当前用户 / 邀请管理 / 修改密码 / 退出</text>
+
+  <!-- Starred boards -->
+  <text class="h2" x="64" y="120">★ 星标看板</text>
+  <rect class="chip" x="64" y="132" width="220" height="64"/>
+  <rect class="chip" x="296" y="132" width="220" height="64"/>
+  <rect class="chip" x="528" y="132" width="220" height="64"/>
+  <text class="muted" x="64" y="210">卡片操作：加星(★) · 更多(…) · 删除(✕)</text>
+
+  <!-- Project management -->
+  <text class="h2" x="64" y="252">📁 项目管理</text>
+  <text class="muted" x="170" y="252">创建项目 · 加入项目</text>
+  <rect class="chip" x="64" y="266" width="260" height="96"/>
+  <rect class="chip" x="336" y="266" width="260" height="96"/>
+  <rect class="chip" x="608" y="266" width="260" height="96"/>
+  <text class="muted" x="64" y="374">项目卡片：置前(⇧) · 重命名(✎) · 删除(✕)</text>
+
+  <!-- All boards quick access -->
+  <text class="h2" x="64" y="414">🧭 所有看板（快速访问）</text>
+  <rect class="chip" x="64" y="426" width="260" height="72"/>
+  <rect class="chip" x="336" y="426" width="260" height="72"/>
+  <rect class="chip" x="608" y="426" width="260" height="72"/>
+</svg>
+
