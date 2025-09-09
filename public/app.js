@@ -797,7 +797,6 @@ async function loadUserProjects() {
                 const actions = document.createElement('div');
                 actions.className = 'board-card-actions';
                 actions.innerHTML = `
-                        <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${project.id}', '${escapeJs(boardName)}')" title="置前">⇧</button>
                         <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${project.id}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${project.id}', '${escapeJs(boardName)}', '${escapeJs(project.name)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                         <button class="board-action-btn rename-btn" onclick="event.stopPropagation(); promptRenameBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="重命名">✎</button>
                         <button class="board-action-btn move-btn" onclick="event.stopPropagation(); promptMoveBoardFromHome('${project.id}', '${escapeJs(boardName)}')" title="移动到其他项目">⇄</button>
@@ -6077,7 +6076,6 @@ function renderStarredBoards(){
                 <span class="board-project">${escapeHtml(item.projectName || '')}</span>
             </div>
             <div class="board-card-actions">
-                <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${item.projectId}', '${escapeJs(item.boardName)}')" title="置前">⇧</button>
                 <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${item.projectId}" data-board-name="${escapeHtml(item.boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${item.projectId}', '${escapeJs(item.boardName)}', '${escapeJs(item.projectName || '')}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
             </div>
         `;
@@ -6232,7 +6230,6 @@ async function renderStarredBoards(){
                 <span class="board-project">${escapeHtml(item.projectName || '')}</span>
             </div>
             <div class="board-card-actions">
-                <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${item.projectId}', '${escapeJs(item.boardName)}')" title="置前">⇧</button>
                 <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${item.projectId}" data-board-name="${escapeHtml(item.boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${item.projectId}', '${escapeJs(item.boardName)}', '${escapeJs(item.projectName || '')}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
             </div>
         `;
