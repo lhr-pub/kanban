@@ -13,6 +13,9 @@ let pendingRenderTimer = null;
 let inlineEditorOpening = false;
 let pendingFocusSelector = null;
 let pendingFocusCaretIndex = null;
+// Guard to avoid double initial render and provide WS fallback
+let initialBoardRendered = false;
+let initialBoardTimeout = null;
 
 // Board switcher state
 let boardSwitcherMenu = null;
@@ -449,7 +452,17 @@ function showBoard(replaceHistory) {
     updateHistory('board', !!replaceHistory);
 
     updateBoardHeader();
-    loadBoardData();
+    // 初次加载改为等待 WebSocket 的 board-update 再渲染，避免 fetch 渲染 + WS 渲染导致闪烁
+    const cont = document.getElementById('listsContainer');
+    if (cont) cont.innerHTML = '<div class="board-loading">加载中…</div>';
+    initialBoardRendered = false;
+    if (initialBoardTimeout) { try{ clearTimeout(initialBoardTimeout); }catch(_){} initialBoardTimeout = null; }
+    // Fallback: 若 2000ms 内未收到 WS 更新，则拉取一次数据渲染
+    initialBoardTimeout = setTimeout(() => {
+        if (!initialBoardRendered) {
+            loadBoardData();
+        }
+    }, 2000);
     connectWebSocket();
 
     // 加载项目成员信息（如果还未加载）
@@ -1301,6 +1314,8 @@ function handleWebSocketMessage(data) {
                     saveClientListsToStorage();
                 }
                 pendingBoardUpdate = true;
+                initialBoardRendered = true;
+                if (initialBoardTimeout) { try{ clearTimeout(initialBoardTimeout); }catch(_){} initialBoardTimeout = null; }
                 scheduleDeferredRender();
                 // 如果编辑模态打开，刷新评论列表
                 if (editingCardId && !editModal.classList.contains('hidden')) {

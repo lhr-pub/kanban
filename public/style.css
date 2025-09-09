@@ -4338,3 +4338,13 @@ body {
 .archived-left #archivedBoardsSearch { height: 32px; padding: 0 10px; border: 1px solid var(--gray-300); border-radius: 6px; background: #fff; color: #374151; width: 220px; }
 @media (prefers-color-scheme: dark) { .archived-left #archivedBoardsSearch { background: #0b1220; color: var(--gray-700); border-color: var(--gray-300); } }
 
+/* Board loading placeholder */
+#boardPage .board-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--gray-500);
+    font-size: 14px;
+}
+
