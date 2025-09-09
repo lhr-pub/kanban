@@ -34,6 +34,11 @@
 - 看板归档：项目看板支持归档/还原；项目页底部可展开“归档的看板”并搜索
 - 移动看板：支持在项目间移动（带项目选择器与搜索）
 - 首页“项目置前”：支持将某项目卡片置前显示
+ - 看板置前与更多操作：
+   - 置前按钮（⇧）：仅在“项目看板列表”页显示，用于将该看板在本项目中置前排序。
+   - “更多(…)”操作按钮：合并“重命名/移动/归档”为一个菜单；“删除(✕)”按钮保持独立，始终位于操作区最右侧。
+   - 打开“更多(…)”菜单时，卡片的操作区不会消失，便于连续操作（焦点在菜单内时保持可见）。
+ - 归档看板区：三栏栅格，计数在首次渲染即正确；从归档区“还原”看板后保持展开状态与当前搜索，不会自动收起。
 
 ### 🧱 Trello 式卡组（List）
 - 动态卡组（客户端 lists 元数据）：新增/重命名/删除，顺序持久化
@@ -65,6 +70,7 @@
 - 星标列表为每个用户服务器持久化（非本地存储）
 - 首页与项目页看板卡片提供星标按钮；顶部“星标看板”区按最近加星时间倒序展示
 - 重命名/移动/删除看板后会同步更新星标记录；跨项目移动后星标仍保留
+ - 独立的星标置前顺序：星标区支持单独的“置前(⇧)”按钮与排序，不影响项目内的看板排序。
 
 ### 🧭 历史与状态（无闪烁）
 - 前进/后退可在“首页/项目页/看板/归档页”之间切换
@@ -137,6 +143,10 @@
 - GET `/api/user-stars/:username` → { stars }
 - POST `/api/user-stars/toggle` { username, projectId, boardName, projectName } → { stars, starred }
 - POST `/api/user-pins/pin` { username, projectId } （首页项目置前）
+ - GET `/api/user-board-pins/:username/:projectId` → { pins }（项目内看板置前顺序）
+ - POST `/api/user-board-pins/pin` { username, projectId, boardName } → { pins }（置前指定看板至项目内列表最前）
+ - GET `/api/user-star-pins/:username` → { pins }（星标列表的置前顺序，仅影响星标区）
+ - POST `/api/user-star-pins/pin` { username, projectId, boardName } → { pins }（置前指定星标看板至星标区最前）
 
 ### 管理员
 - POST `/api/admin/login` { username, password }

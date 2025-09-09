@@ -6205,6 +6205,8 @@ let boardActionsMenuEl = null;
 let boardActionsMenuCloser = null;
 function closeBoardActionsMenu(){
     if (boardActionsMenuCloser) { try { document.removeEventListener('click', boardActionsMenuCloser, true); } catch(_){} boardActionsMenuCloser = null; }
+    // Remove hold class from anchored card so actions can hide again
+    try { if (boardActionsMenuEl && boardActionsMenuEl._cardEl) { boardActionsMenuEl._cardEl.classList.remove('hold-actions'); } } catch(_){}
     if (boardActionsMenuEl && boardActionsMenuEl.parentNode) { try { boardActionsMenuEl.parentNode.removeChild(boardActionsMenuEl); } catch(_){} }
     boardActionsMenuEl = null;
 }
@@ -6225,6 +6227,11 @@ function openBoardActionsMenu(scope, projectId, boardName, anchor){
         zIndex: 1000
     });
     document.body.appendChild(menu);
+    // Keep the card visually active while interacting with the menu
+    try {
+        const cardEl = anchor.closest('.board-card-with-actions') || anchor.closest('.quick-board-card');
+        if (cardEl) { cardEl.classList.add('hold-actions'); menu._cardEl = cardEl; }
+    } catch(_){ }
     boardActionsMenuEl = menu;
     const handler = (e) => {
         if (!menu.contains(e.target)) closeBoardActionsMenu();
