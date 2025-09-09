@@ -82,4 +82,4 @@ case "$CMD" in
         usage
         exit 1
         ;;
-fi
+esac
