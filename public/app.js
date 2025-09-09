@@ -43,6 +43,7 @@ let homeDirty = false;
 let projectBoardsLoadToken = 0;
 let lastLoadedProjectIdForBoards = null;
 let projectBoardsAbortController = null;
+let boardSelectPendingShow = false;
 
 // 拖拽状态（支持跨列）
 let draggingCardId = null;
@@ -460,13 +461,19 @@ function showBoardSelectPage(replaceHistory) {
         if (typeof window.boardSelectDirty === 'undefined') window.boardSelectDirty = false;
         const key = String(currentProjectId || '');
         if (!window.boardSelectLoadedOnce || window.boardSelectProjectKey !== key) {
-            if (list) list.replaceChildren((() => { const d=document.createElement('div'); d.className='empty-state'; d.textContent=''; return d; })());
+            // 延迟揭示：先隐藏实际列表，用纯透明占位避免闪视觉占位
+            if (list) {
+                list.style.visibility = 'hidden';
+                list.style.minHeight = '140px';
+            }
             window.boardSelectLoadedOnce = true;
             window.boardSelectProjectKey = key;
+            boardSelectPendingShow = true;
             loadProjectBoards();
         } else if (window.boardSelectDirty) {
             window.boardSelectDirty = false;
             if (list) list.setAttribute('aria-busy','true');
+            boardSelectPendingShow = true;
             loadProjectBoards();
         }
     } catch(_) {}
@@ -1075,6 +1082,15 @@ async function loadProjectBoards() {
             empty.textContent = '还没有看板，创建第一个看板吧！';
             frag.appendChild(empty);
             boardList.replaceChildren(frag);
+            // 确保显示空态（之前开启了延迟揭示）
+            try {
+                if (boardSelectPendingShow) {
+                    boardSelectPendingShow = false;
+                    boardList.style.visibility = '';
+                    boardList.style.minHeight = '';
+                    boardList.removeAttribute('aria-busy');
+                }
+            } catch(_) {}
             return;
         }
 
@@ -1192,6 +1208,15 @@ async function loadProjectBoards() {
         }
 
         boardList.replaceChildren(frag);
+        // 延迟揭示：完成替换后再显示，避免用户看到占位跳帧
+        try {
+            if (boardSelectPendingShow) {
+                boardSelectPendingShow = false;
+                boardList.style.visibility = '';
+                boardList.style.minHeight = '';
+                boardList.removeAttribute('aria-busy');
+            }
+        } catch(_) {}
         // restore scroll
         try {
             if (ps && typeof ps.y === 'number') {
