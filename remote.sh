@@ -83,11 +83,13 @@ case "${CMD}" in
     deploy)
         build_push
         remote pull
-        remote restart "$@"
+        remote stop "$@"
+        remote start "$@"
         ;;
     refresh|update)
         remote pull
-        remote restart "$@"
+        remote stop "$@"
+        remote start "$@"
         ;;
     build|build-push|bp)
         build_push
