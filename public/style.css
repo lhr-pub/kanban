@@ -1004,7 +1004,7 @@ h1 {
     border-color: #94a3b8;
     background: #f1f5f9;
 }
-
+/*
 .add-card button {
     width: 100%;
     margin: 0;
@@ -1022,23 +1022,23 @@ h1 {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-}
+} */
 
-.add-card button:hover {
+/* .add-card button:hover {
     background: linear-gradient(135deg, var(--primary-dark), #1e40af);
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
-}
-
+} */
+/*
 .add-card button:active {
     transform: translateY(0);
     box-shadow: var(--shadow);
 }
-
+/* */
 .add-card button:focus {
     outline: none;
     box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.3);
-}
+} */
 
 .add-card button:disabled {
     background: #9ca3af;
@@ -1062,6 +1062,31 @@ h1 {
     opacity: 1;
     color: var(--gray-500);
 }
+
+
+.add-card button  {
+    display: flex;
+    flex-grow: 1;
+    align-items: center;
+    justify-content: flex-start;
+    margin: var(--ds-space-0, 0);
+    padding: var(--ds-space-075, 6px) var(--ds-space-150, 12px) var(--ds-space-075, 6px) var(--ds-space-100, 8px);
+    border-radius: var(--ds-border-radius-200, 8px);
+    background-color: transparent;
+    color: var(--accent-text, var(--ds-text-subtle, #44546f));
+    text-decoration: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+.add-card button:hover {
+    border: none;
+    background-color: var(--ds-background-neutral-hovered, #091e4224);
+    box-shadow: none;
+    color: var(--ds-text, #172b4d);
+    text-decoration: none;
+}
+
 
 /* 卡片移动按钮 */
 .card-actions {
@@ -2965,7 +2990,7 @@ body {
 #boardPage .label { height: 8px; border-radius: 999px; }
 
 /* Add-card area: blend with list background */
-#boardPage .add-card { background: transparent; border-radius: 10px; padding: 6px; }
+#boardPage .add-card { background: transparent; border-radius: 8px; padding: 6px 2px 2px; }
 #boardPage .add-card .task-title-input,
 #boardPage .add-card .assignee-select,
 #boardPage .add-card .date-input {
@@ -3048,8 +3073,9 @@ body {
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 .add-card button {
-    height: 40px;
+    height: 38px;
     border-radius: var(--border-radius-lg);
+
 }
 
 /* 快速访问卡片与项目卡片统一为白底卡片 */
@@ -3885,7 +3911,7 @@ body {
 .add-card.collapsed .input-row-inline { display: none; }
 .add-card.collapsed .add-card-link { display: inline-block; }
 .add-card .add-card-link { display:none; color:#0c66e4; background:transparent; border:0; padding:4px 6px; cursor:pointer; font-size:13px; }
-.add-card .add-card-link:hover { text-decoration: underline; }
+/* .add-card .add-card-link:hover { text-decoration: underline; } */
 
 /* === Trello-like lists & composer visuals === */
 .list { background: #ebecf0; border: 1px solid #dfe1e6; border-radius: 8px; padding: 8px; width: var(--list-width); min-width: var(--list-width); max-width: var(--list-width); display:flex; flex-direction:column; gap:8px; }
@@ -3985,7 +4011,7 @@ body {
   justify-content: flex-start;
   width: 100%;
   margin: 0;
-  padding: 0px 12px 6px 8px; /* ds-space-075 6px, ds-space-150 12px, ds-space-100 8px */
+  padding: 6px 12px 6px 8px; /* ds-space-075 6px, ds-space-150 12px, ds-space-100 8px */
   border-radius: 8px; /* ds-border-radius-200 */
   background: transparent;
   border: 0;
