@@ -3783,18 +3783,29 @@ body {
     --card-bg:#fff;
 }
 
-/* === Final wallpaper targeting: apply only to board content === */
-#boardPage .board-container {
-    background-color: var(--bg);
-    background-image: var(--board-bg-url);
-    background-position: center center;
-    background-size: cover;
-    background-repeat: no-repeat;
-    background-attachment: fixed;
+/* === Wallpaper: apply to whole board page (header + content) === */
+#boardPage {
+    background-image: var(--board-bg-url) !important;
+    background-position: center center !important;
+    background-size: cover !important;
+    background-repeat: no-repeat !important;
+    background-attachment: fixed !important;
 }
 
-/* Keep board header solid so wallpaper doesn't show behind it */
-#boardPage .header { background: #ffffff !important; }
+/* Let content area be transparent so page wallpaper shows through */
+#boardPage .board-container {
+    background-color: transparent !important;
+    background-image: none !important;
+}
+
+/* Frosted glass header over wallpaper */
+#boardPage .header {
+    background: rgba(255,255,255,0.6) !important;
+    -webkit-backdrop-filter: saturate(1.2) blur(10px);
+    backdrop-filter: saturate(1.2) blur(10px);
+    box-shadow: none !important;
+    border-bottom: 1px solid rgba(255,255,255,0.6) !important;
+}
 
 /* board/list */
 .board-container{ display:flex; gap:var(--list-gap); padding:12px; overflow:auto; background:var(--bg); height:calc(100vh - 64px); }
@@ -3915,7 +3926,7 @@ body {
 .card-quick { top: 2px; line-height: 1; }
 
 /* tighten card spacing and list paddings */
-.board-container { gap: var(--list-gap); padding: 12px; }
+.board-container { gap: var(--list-gap); padding: 12px !important; }
 .list { padding: 6px; gap: 6px; }
 .cards { gap: 6px; }
 .card { padding: 8px 10px; margin-bottom: 6px; }
