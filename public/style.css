@@ -1628,6 +1628,36 @@ h1 {
 .pin-wrap .icon-hover { display:none; }
 .pin-wrap:hover .icon-base { display:none; }
 .pin-wrap:hover .icon-hover { display:inline-flex; }
+.pin-wrap { position: relative; }
+.pin-wrap .pin-label {
+    position: absolute;
+    top: 140%;
+    left: 0;
+    display: none;
+    background: rgba(17,24,39,0.95);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 20;
+}
+.pin-wrap:hover .pin-label { display: inline-block; }
+
+/* Group separators within grid containers */
+.group-separator {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #6b7280;
+    font-weight: 600;
+    margin: 6px 0 2px;
+}
+.group-sep-dot { width: 8px; height: 8px; border-radius: 50%; background: #d1d5db; display: inline-block; }
+.group-sep-text { font-size: 12px; letter-spacing: .02em; }
 .project-action-btn.pin-btn.active,
 .board-action-btn.pin-btn.active {
     background: rgba(22,163,74,0.12);

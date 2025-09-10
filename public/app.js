@@ -946,8 +946,10 @@ async function loadUserProjects() {
             plFrag.appendChild(projectCard);
         };
 
-        // 置顶分组在前，普通组在后
+        // 置顶分组在前，普通组在后（带分隔标题）
+        if (pinnedResults.length) plFrag.appendChild(createGroupSeparator('置顶'));
         pinnedResults.forEach(r => renderOne(r, true));
+        if (pinnedResults.length && normalResults.length) plFrag.appendChild(createGroupSeparator('全部'));
         normalResults.forEach(r => renderOne(r, false));
 
         if (token !== userProjectsLoadToken) return;
@@ -1282,7 +1284,9 @@ async function loadProjectBoards() {
             frag.appendChild(boardCard);
         };
 
+        if (orderedPinned.length) frag.appendChild(createGroupSeparator('置顶'));
         orderedPinned.forEach(name => renderBoard(name, true));
+        if (orderedPinned.length && normalList.length) frag.appendChild(createGroupSeparator('全部'));
         normalList.forEach(name => renderBoard(name, false));
 
         // Archived boards section
@@ -4937,38 +4941,38 @@ async function reorderBoardToEdge(projectId, boardName, where){
 // Insert a new project card right after pinned group
 function insertProjectCardAtCorrectPosition(container, card){
     try {
-        let anchor = null;
-        const icons = container.querySelectorAll('.project-card .pin-wrap.pinned');
-        icons.forEach(icon => {
-            const c = icon.closest('.project-card');
-            if (c && c.parentNode === container) anchor = c; // last one wins
-        });
-        if (anchor && anchor.nextSibling) {
-            container.insertBefore(card, anchor.nextSibling);
-        } else if (anchor) {
-            container.appendChild(card);
-        } else {
-            container.insertBefore(card, container.firstChild);
+        const seps = container.querySelectorAll('.group-separator');
+        if (seps.length >= 2) {
+            const afterSep = seps[1].nextSibling;
+            if (afterSep) container.insertBefore(card, afterSep); else container.appendChild(card);
+            return;
         }
+        const pinnedIcons = container.querySelectorAll('.project-card .pin-wrap.pinned');
+        if (pinnedIcons.length > 0) {
+            const lastPinnedCard = pinnedIcons[pinnedIcons.length - 1].closest('.project-card');
+            if (lastPinnedCard && lastPinnedCard.nextSibling) container.insertBefore(card, lastPinnedCard.nextSibling); else container.appendChild(card);
+            return;
+        }
+        container.insertBefore(card, container.firstChild);
     } catch(_) { container.appendChild(card); }
 }
 
 // Insert a new board card right after pinned group
 function insertBoardCardAtCorrectPosition(container, card){
     try {
-        let anchor = null;
-        const icons = container.querySelectorAll('.quick-board-card .pin-wrap.pinned');
-        icons.forEach(icon => {
-            const c = icon.closest('.quick-board-card');
-            if (c && c.parentNode === container) anchor = c;
-        });
-        if (anchor && anchor.nextSibling) {
-            container.insertBefore(card, anchor.nextSibling);
-        } else if (anchor) {
-            container.appendChild(card);
-        } else {
-            container.insertBefore(card, container.firstChild);
+        const seps = container.querySelectorAll('.group-separator');
+        if (seps.length >= 2) {
+            const afterSep = seps[1].nextSibling;
+            if (afterSep) container.insertBefore(card, afterSep); else container.appendChild(card);
+            return;
         }
+        const pinnedIcons = container.querySelectorAll('.quick-board-card .pin-wrap.pinned');
+        if (pinnedIcons.length > 0) {
+            const lastPinnedCard = pinnedIcons[pinnedIcons.length - 1].closest('.quick-board-card');
+            if (lastPinnedCard && lastPinnedCard.nextSibling) container.insertBefore(card, lastPinnedCard.nextSibling); else container.appendChild(card);
+            return;
+        }
+        container.insertBefore(card, container.firstChild);
     } catch(_) { container.appendChild(card); }
 }
 
@@ -6570,7 +6574,19 @@ function toggleBoardStarFromHome(projectId, boardName, projectName, btn){
 function pinIconMarkup(kind, isPinned){
     const base = isPinned ? 'pin' : (kind === 'project' ? 'folder' : 'boards');
     const hover = isPinned ? 'pin-off' : 'pin';
-    return `<span class="pin-wrap ${isPinned ? 'pinned' : ''}"><span class="icon-base" data-icon="${base}"></span><span class="icon-hover" data-icon="${hover}"></span></span>`;
+    const text = isPinned ? '取消置顶' : '置顶';
+    return `<span class="pin-wrap ${isPinned ? 'pinned' : ''}" aria-label="${text}" title="${text}">
+                <span class="icon-base" data-icon="${base}"></span>
+                <span class="icon-hover" data-icon="${hover}"></span>
+                <span class="pin-label">${text}</span>
+            </span>`;
+}
+
+function createGroupSeparator(title){
+    const sep = document.createElement('div');
+    sep.className = 'group-separator';
+    sep.innerHTML = `<span class="group-sep-dot"></span><span class="group-sep-text">${title}</span>`;
+    return sep;
 }
 
 function syncStarButtons(){
