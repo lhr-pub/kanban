@@ -3949,7 +3949,7 @@ body {
 .card-deadline.clickable:hover { background:#e9ecef !important; }
 
 /* === Compact card height tweaks === */
-.cards { gap: 4px; }
+/* .cards { gap: 4px; } */
 .list { padding: 4px; }
 .card { padding: 6px 8px; margin-bottom: 4px; }
 .card .card-title { font-size: 13.5px; line-height: 1.25; -webkit-line-clamp: 2; }
