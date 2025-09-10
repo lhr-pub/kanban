@@ -2917,7 +2917,7 @@ body {
 #boardPage .list-header { margin-left: 0 !important; }
 #boardPage .card-title { margin-left: 6px !important;margin-top: 8px;margin-bottom: -2px; }
 /* Inline editors align with originals */
-#boardPage .list-title-input { padding-left: 14px !important; margin-bottom: 14px !important; }
+#boardPage .list-title-input { padding-left: 12px !important; margin-bottom: 14px !important; margin-left: 2px !important;}
 #boardPage .card-title-input { margin-top: 6px !important; font-size: 14px !important; padding-left: 6px !important; }
 
 /* List header and counters */
@@ -3644,7 +3644,7 @@ body {
 }
 
 /* 卡片更像 Trello：白底、轻边框、少阴影、紧凑间距 */
-.cards { gap: 8px; margin-bottom: 8px; }
+.cards { gap: 8px; margin-bottom: 0px; }
 .card {
     border: 1px solid #dfe1e6;
     box-shadow: none;
@@ -3800,11 +3800,11 @@ body {
 
 /* Frosted glass header over wallpaper */
 #boardPage .header {
-    background: rgba(255,255,255,0.6) !important;
-    -webkit-backdrop-filter: saturate(1.2) blur(10px);
-    backdrop-filter: saturate(1.2) blur(10px);
+    background: rgba(255,255,255,0.55) !important;
+    -webkit-backdrop-filter: saturate(1.2) blur(12px);
+    backdrop-filter: saturate(1.2) blur(12px);
     box-shadow: none !important;
-    border-bottom: 1px solid rgba(255,255,255,0.6) !important;
+    border-bottom: 1px solid rgba(255,255,255,0.35) !important;
 }
 
 /* board/list */
@@ -3966,9 +3966,9 @@ body {
 .card-deadline.clickable:hover { background:#e9ecef !important; }
 
 /* === Compact card height tweaks === */
-.cards { gap: 5px; }
+.cards { gap: 0px; }
 .list { padding: 4px; }
-.card { padding: 6px 8px; margin-bottom: 4px; }
+.card { padding: 0px 8px; margin-top: 0px;margin-bottom: 10px; }
 .card .card-title { font-size: 13.5px; line-height: 1.25; -webkit-line-clamp: 2; }
 .card-badges { gap: 6px; margin-top: 4px; }
 .card-assignee, .card-deadline { padding: 1px 6px; font-size: 11px; min-height: 18px; }
@@ -3978,7 +3978,27 @@ body {
 
 /* blend add-card button with list background */
 .card-composer { margin-top: 0; padding: 4px 6px; background: transparent; }
-.card-composer .composer-open { display:inline-flex; align-items:center; gap:6px; width:100%; text-align:left; color:#44546f; background: transparent; border: 0; padding:6px 8px; border-radius:6px; }
+.card-composer .composer-open {
+  display: flex;
+  flex-grow: 1;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  margin: 0;
+  padding: 0px 12px 6px 8px; /* ds-space-075 6px, ds-space-150 12px, ds-space-100 8px */
+  border-radius: 8px; /* ds-border-radius-200 */
+  background: transparent;
+  border: 0;
+  color: #44546f; /* ds-text-subtle */
+  text-align: left;
+  text-decoration: none;
+  -webkit-user-select: none;
+  user-select: none;
+  gap: 6px;
+}
+
+/* .card-composer .composer-open { display:inline-flex; align-items:center; gap:6px; width:100%; text-align:left; color:#44546f; background: transparent; border: 0; padding:6px 8px; border-radius:6px; } */
+
 .card-composer .composer-open::before { content:'+'; font-weight:600; }
 .card-composer .composer-open:hover { background: rgba(9,30,66,.06); }
 
@@ -4855,7 +4875,7 @@ body {
 #boardPage .header {
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-    border-bottom: 1px solid var(--gray-200) !important;
+    border-bottom: 1px solid rgba(255,255,255,0.3) !important; /* lighter hairline on wallpaper */
     padding: 0 !important; /* rely on inner container */
 }
 #boardPage .header > .container {
@@ -4867,4 +4887,5 @@ body {
     align-items: center !important;
     justify-content: space-between !important;
     min-height: 56px !important;
+    border-bottom: none !important; /* avoid double-thick divider */
 }
