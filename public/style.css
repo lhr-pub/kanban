@@ -2633,6 +2633,104 @@ h1 {
 }
 
 /* =============================================
+   Header/Nav Alignment Fixes (cross-page)
+   - Unify container width, side padding, and vertical rhythm
+   - Align breadcrumb/title baseline and right actions
+   ============================================= */
+/* Consistent max-width and horizontal padding for navbar containers */
+#boardPage .header > .container,
+#projectPage > .container,
+#boardSelectPage > .container {
+  max-width: 1200px !important;
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+  padding-top: 0 !important;   /* remove top padding so headers sit flush */
+  padding-bottom: 0 !important;/* footer spacing handled by sections */
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+/* Consistent vertical spacing + subtle border across navbars */
+#boardPage .header > .container,
+#projectPage .project-header,
+#boardSelectPage .board-select-header {
+  padding-top: 1rem !important;
+  padding-bottom: 1rem !important;
+  border-bottom: 1px solid var(--gray-200) !important;
+  min-height: 56px !important; /* unify navbar row height */
+}
+
+/* Align left titles/breadcrumbs visually (size, baseline, spacing) */
+#boardPage .board-breadcrumb,
+#projectPage .project-header h1,
+#boardSelectPage .board-select-header h1 {
+  font-size: 20px !important;
+  line-height: 1.35 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  margin: 0 !important;
+  text-align: left !important;
+}
+
+/* Align inline parts (caret/home links/names) on the same baseline */
+.board-breadcrumb .crumb-caret,
+.project-breadcrumb .crumb-caret,
+.board-breadcrumb .home-link,
+.project-breadcrumb .home-link {
+  line-height: 1.35 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+/* Renamable text should be hideable by JS (do not force display) */
+#currentProjectName,
+#currentBoardName,
+#projectTitle {
+  line-height: 1.35 !important;
+}
+
+/* Right-side actions: consistent alignment and control height */
+#boardPage .header .header-actions,
+#boardSelectPage .board-select-header .header-actions,
+#projectPage .project-header .user-info {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.75rem !important;
+}
+
+#boardPage .header .header-actions button,
+#boardSelectPage .board-select-header .header-actions button,
+#projectPage .project-header button {
+  height: 36px !important;
+}
+
+/* Pills/labels in right area: match 36px controls */
+.online-users {
+  height: 36px !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+.online-users #userList { display: inline-flex !important; align-items: center !important; gap: 4px !important; }
+
+#projectPage .project-header .user-info span {
+  height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* Ensure generic H1 centering doesn't affect nav titles */
+#boardPage .board-breadcrumb,
+#projectPage .project-header h1,
+#boardSelectPage .board-select-header h1 {
+  text-align: left !important;
+}
+
+/* =============================================
    现代极简主题覆盖（不改动结构，仅覆写样式）
    ============================================= */
 :root {
@@ -2742,6 +2840,107 @@ body {
 .column h3 {
     border-bottom: 1px solid var(--gray-200);
     color: var(--gray-800);
+}
+
+/* =============================================
+   Board Aesthetic Polish (scoped to #boardPage)
+   - Softer background gradient + subtle radial accents
+   - Glassy lists, refined cards, tasteful hover/drag states
+   - Minimal, consistent tokens without touching other pages
+   ============================================= */
+#boardPage {
+  /* Use theme-consistent neutral, slightly darker than --gray-100 */
+  --list-bg: #f3f4f6; /* refined neutral per request */
+  --list-border: var(--gray-200);
+  --list-shadow: var(--shadow-sm);
+  --list-shadow-hover: var(--shadow);
+  --card-bg: #ffffff;
+  --card-border: var(--gray-200);
+  --card-shadow: var(--shadow-sm);
+  --card-shadow-hover: var(--shadow);
+  position: relative;
+}
+
+/* Remove decorative overlays to match original theme */
+
+/* Lists: glassy panels with gentle elevation */
+#boardPage .column,
+#boardPage .archive-column {
+  background: var(--list-bg) !important;
+  border: 1px solid var(--list-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--list-shadow) !important; /* baseline shadow */
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+/* No hover shadow change on lists */
+#boardPage .column:hover,
+#boardPage .archive-column:hover {
+  transform: none !important;
+  box-shadow: var(--list-shadow) !important;
+  border-color: var(--list-border) !important;
+}
+
+/* List header and counters */
+#boardPage .list-header { margin: 4px 6px 8px !important; }
+#boardPage .list-title { color: #1f2937; letter-spacing: -0.01em; }
+#boardPage .count { background: var(--gray-100); color: var(--gray-600); }
+#boardPage .column h3 { color: #334155; border-bottom: 1px solid #e2e8f0; margin-bottom: 8px; padding-bottom: 6px; }
+
+/* Cards: light, crisp, with accent hairline */
+#boardPage .card {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: 10px !important;
+  box-shadow: var(--card-shadow) !important; /* baseline shadow */
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease, background .18s ease;
+  position: relative;
+}
+
+/* Remove left accent bar to align with original theme */
+#boardPage .card::before { content: none; }
+
+#boardPage .card:hover {
+  border-color: var(--card-border) !important;
+  box-shadow: var(--card-shadow) !important;
+  transform: none !important;
+}
+
+#boardPage .card.dragging {
+  transform: rotate(1deg) scale(1.01);
+  box-shadow: 0 12px 26px rgba(16,24,40,0.18) !important;
+  border-color: #bfdbfe !important;
+}
+
+/* Card title/desc color tuning */
+#boardPage .card-title { color: #0f172a; }
+#boardPage .card-description { color: #475569; }
+
+/* Card badges + avatars */
+#boardPage .badge-icon { background: var(--gray-100); color: var(--gray-700); }
+#boardPage .badge-user { background: #1f2937; }
+#boardPage .card-badges { color: var(--gray-600); }
+
+/* Card labels: slightly rounded and vivid, but compact */
+#boardPage .card-labels { gap: 6px; min-height: 10px; }
+#boardPage .label { height: 8px; border-radius: 999px; }
+
+/* Add-card area: blend with list background */
+#boardPage .add-card { background: transparent; border-radius: 10px; padding: 6px; }
+#boardPage .add-card .task-title-input,
+#boardPage .add-card .assignee-select,
+#boardPage .add-card .date-input {
+  border: 1px solid var(--gray-300);
+  background: #ffffff;
+}
+
+/* Board scrollbar polishing */
+#boardPage .board-container::-webkit-scrollbar-thumb { background: #cbd5e1; }
+#boardPage .board-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Drop targets: clearer indication */
+#boardPage .cards:has(.card.dragging) .card:not(.dragging) {
+  filter: saturate(0.9) opacity(0.92);
 }
 
 /* 卡片更干净：细边框+悬浮提升 */
@@ -3231,8 +3430,8 @@ body {
 }
 
 /* Match board header height and top alignment with homepage */
-#boardPage .header { padding: 0; margin-top: 0; }
-#boardPage .header > .container { max-width: 1400px; margin: 0 auto; padding: 2rem 2rem 1rem; display: flex; align-items: center; justify-content: space-between; }
+#boardPage .header { padding: 0 !important; margin-top: 0 !important; }
+#boardPage .header > .container { max-width: 1200px !important; margin: 0 auto !important; padding: 1rem 2rem !important; display: flex !important; align-items: center !important; justify-content: space-between !important; min-height: 56px !important; }
 /* #boardPage .board-header-left { display: flex; align-items: center; } */
 #boardPage .board-breadcrumb { margin: 0; }
 
@@ -3777,18 +3976,19 @@ body {
 #boardPage .header {
     background: transparent;
     box-shadow: none;
-    padding: 0;
-    margin-top: 0;
-    margin-bottom: 2rem;
-    border-bottom: 2px solid #e5e7eb;
+    padding: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    border-bottom: 1px solid var(--gray-200) !important;
 }
 #boardPage .header > .container {
-    max-width: 1400px;
-    margin: 0 auto;
-    padding: 2rem 2rem 1rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    max-width: 1200px !important;
+    margin: 0 auto !important;
+    padding: 1rem 2rem !important; /* match other pages */
+    min-height: 56px !important;   /* consistent navbar row height */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
 }
 #boardPage .board-header-left { min-width: 0; }
 #boardPage .board-breadcrumb { margin: 0; text-align: left; /* keep title left */ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; /* prevent title from taking too much width */ }
@@ -4594,21 +4794,17 @@ body {
 /* Ensure board page header aligns exactly with project/board-select headers */
 #boardPage .header {
     margin-top: 0 !important;
-    margin-bottom: 2rem !important;
-    border-bottom: 2px solid #e5e7eb !important;
+    margin-bottom: 0 !important;
+    border-bottom: 1px solid var(--gray-200) !important;
     padding: 0 !important; /* rely on inner container */
 }
 #boardPage .header > .container {
-    max-width: 1400px !important;
+    max-width: 1200px !important;
     margin: 0 auto !important;
-    /* header container gutter 2rem (same as project page header) */
-    padding: 2rem 2rem 1rem !important;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
-
-/* Match project page container width at desktop breakpoint */
-@media (min-width: 1024px) {
-  #boardPage .header > .container { max-width: 1200px !important; }
+    /* header container gutter same as project/board-select */
+    padding: 1rem 2rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    min-height: 56px !important;
 }
