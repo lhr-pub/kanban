@@ -12,7 +12,8 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // 中间件
-app.use(express.json());
+// raise JSON body limit to support base64 image upload (~10MB)
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static('public'));
 
 // 数据目录
@@ -26,6 +27,13 @@ if (!fs.existsSync(dataDir)) {
 if (!fs.existsSync(backupsDir)) {
     fs.mkdirSync(backupsDir, { recursive: true });
 }
+
+// uploads directory (served statically)
+const uploadsRoot = path.join(dataDir, 'uploads');
+const wallpapersDir = path.join(uploadsRoot, 'wallpapers');
+if (!fs.existsSync(uploadsRoot)) fs.mkdirSync(uploadsRoot, { recursive: true });
+if (!fs.existsSync(wallpapersDir)) fs.mkdirSync(wallpapersDir, { recursive: true });
+app.use('/uploads', express.static(uploadsRoot));
 
 // 内存中的WebSocket连接管理
 const connections = new Map();
@@ -1133,6 +1141,82 @@ app.get('/api/project-boards/:projectId', (req, res) => {
         pendingRequests: project.pendingRequests || [],
         pendingInvites: project.pendingInvites || []
     });
+});
+
+// User background APIs (per-user board wallpaper)
+app.get('/api/user-background/:username', (req, res) => {
+    const { username } = req.params;
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const url = user.backgroundUrl || '';
+    return res.json({ url });
+});
+
+app.post('/api/user-background/upload', (req, res) => {
+    const { username, imageData } = req.body || {};
+    if (!username || !imageData || typeof imageData !== 'string') {
+        return res.status(400).json({ message: '缺少参数' });
+    }
+    try {
+        const usersFile = path.join(dataDir, 'users.json');
+        const users = readJsonFile(usersFile, {});
+        const user = users[username];
+        if (!user) return res.status(404).json({ message: '用户不存在' });
+
+        // parse data URL
+        const m = imageData.match(/^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/i);
+        if (!m) return res.status(400).json({ message: '图片格式不支持，请上传 PNG/JPEG/WEBP' });
+        const mime = m[1].toLowerCase();
+        const ext = mime.includes('png') ? 'png' : (mime.includes('webp') ? 'webp' : 'jpg');
+        const b64 = m[3];
+        const buf = Buffer.from(b64, 'base64');
+        if (buf.length > 10 * 1024 * 1024) return res.status(413).json({ message: '图片过大（<=10MB）' });
+
+        // save file with stable per-user name
+        const fname = `${username}.${ext}`;
+        const filePath = path.join(wallpapersDir, fname);
+        fs.writeFileSync(filePath, buf);
+
+        // persist url on user profile
+        const url = `/uploads/wallpapers/${fname}`;
+        user.backgroundUrl = url;
+        writeJsonFile(usersFile, users);
+
+        return res.json({ url });
+    } catch (e) {
+        console.error('Upload background error:', e);
+        return res.status(500).json({ message: '上传失败' });
+    }
+});
+
+app.post('/api/user-background/clear', (req, res) => {
+    const { username } = req.body || {};
+    if (!username) return res.status(400).json({ message: '缺少参数' });
+    try {
+        const usersFile = path.join(dataDir, 'users.json');
+        const users = readJsonFile(usersFile, {});
+        const user = users[username];
+        if (!user) return res.status(404).json({ message: '用户不存在' });
+
+        // remove file if present
+        if (user.backgroundUrl && typeof user.backgroundUrl === 'string') {
+            try {
+                const p = user.backgroundUrl.replace(/^\/uploads\//, '');
+                const abs = path.join(uploadsRoot, p);
+                if (abs.startsWith(uploadsRoot) && fs.existsSync(abs)) {
+                    fs.unlinkSync(abs);
+                }
+            } catch (_) {}
+        }
+        delete user.backgroundUrl;
+        writeJsonFile(usersFile, users);
+        return res.json({ success: true });
+    } catch (e) {
+        console.error('Clear background error:', e);
+        return res.status(500).json({ message: '清除失败' });
+    }
 });
 
 // 新增：获取项目的待加入请求（兼容前端 /api/join-requests/:projectId 调用）

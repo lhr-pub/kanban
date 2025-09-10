@@ -301,6 +301,60 @@ document.addEventListener('DOMContentLoaded', function() {
     const changePwdBoard = document.getElementById('changePasswordBoard');
     if (changePwdBoard) changePwdBoard.addEventListener('click', changePasswordFlow);
 
+    // 背景上传/清除
+    const bgBtn = document.getElementById('bgBtn');
+    const bgClearBtn = document.getElementById('bgClearBtn');
+    const bgUploadFile = document.getElementById('bgUploadFile');
+    if (bgBtn && bgUploadFile) {
+        bgBtn.addEventListener('click', (e) => { e.preventDefault(); bgUploadFile.click(); });
+        bgUploadFile.addEventListener('change', async (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            if (!/^image\//.test(file.type)) { uiToast('请选择图片文件','error'); e.target.value=''; return; }
+            try {
+                const dataUrl = await fileToDataURL(file);
+                const rs = await fetch('/api/user-background/upload', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser, imageData: dataUrl })
+                });
+                const rj = await rs.json().catch(()=>({}));
+                if (rs.ok && rj && rj.url) {
+                    applyBoardBackground(rj.url);
+                    try { localStorage.setItem(`kanbanBgUrl:${currentUser}`, rj.url); } catch(_){}
+                    uiToast('背景已更新','success');
+                } else {
+                    uiToast((rj && rj.message) || '上传失败','error');
+                }
+            } catch (err) {
+                console.error('Upload bg error', err);
+                uiToast('上传失败','error');
+            } finally {
+                try { e.target.value = ''; } catch(_){}
+            }
+        });
+    }
+    if (bgClearBtn) {
+        bgClearBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                const rs = await fetch('/api/user-background/clear', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser })
+                });
+                if (rs.ok) {
+                    applyBoardBackground('');
+                    try { localStorage.removeItem(`kanbanBgUrl:${currentUser}`); } catch(_){}
+                    uiToast('已清除背景','success');
+                } else {
+                    const rj = await rs.json().catch(()=>({}));
+                    uiToast((rj && rj.message) || '清除失败','error');
+                }
+            } catch (err) {
+                uiToast('清除失败','error');
+            }
+        });
+    }
+
     // 绑定模态框事件
     let editModalBackdropGuard = false;
     editModal.addEventListener('mousedown', function(e) {
@@ -521,6 +575,37 @@ function startInlineBoardRename(e){
     bindPopstateRouter();
 });
 
+function fileToDataURL(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+function applyBoardBackground(url) {
+    const v = (url && typeof url === 'string' && url.trim()) ? `url('${url}?t=${Date.now()}')` : 'none';
+    try { document.documentElement.style.setProperty('--board-bg-url', v); } catch(_){}
+}
+
+async function loadUserBackground() {
+    if (!currentUser) return;
+    try {
+        const cached = localStorage.getItem(`kanbanBgUrl:${currentUser}`);
+        if (cached) { applyBoardBackground(cached); return; }
+    } catch(_) {}
+    try {
+        const rs = await fetch(`/api/user-background/${currentUser}`);
+        if (rs.ok) {
+            const rj = await rs.json().catch(()=>({}));
+            const url = rj && rj.url ? rj.url : '';
+            applyBoardBackground(url);
+            try { if (url) localStorage.setItem(`kanbanBgUrl:${currentUser}`, url); } catch(_){}
+        }
+    } catch(_) {}
+}
+
 // 页面显示函数前添加清理浮层的工具函数
 function cleanupTransientOverlays() {
     try { hideBoardSwitcher(); } catch (_) {}
@@ -635,6 +720,9 @@ function showBoard(replaceHistory) {
     boardSelectPage.classList.add('hidden');
     boardPage.classList.remove('hidden');
     archivePage.classList.add('hidden');
+
+    // 应用用户背景
+    try { loadUserBackground(); } catch(_){}
 
     // 保存页面状态
     localStorage.setItem('kanbanPageState', 'board');
