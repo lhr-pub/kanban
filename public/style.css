@@ -2850,14 +2850,14 @@ body {
    ============================================= */
 #boardPage {
   /* Use theme-consistent neutral, slightly darker than --gray-100 */
-  --list-bg: #f3f4f6; /* refined neutral per request */
-  --list-border: var(--gray-200);
-  --list-shadow: var(--shadow-sm);
-  --list-shadow-hover: var(--shadow);
+  --list-bg: #f1f2f4; /* user-specified refined neutral */
+  --list-border: #e9eaed; /* refined per request */
+  --list-shadow: 0 1px 3px rgba(16,24,40,0.06); /* subtle but present */
+  --list-shadow-hover: 0 2px 6px rgba(16,24,40,0.08);
   --card-bg: #ffffff;
-  --card-border: var(--gray-200);
-  --card-shadow: var(--shadow-sm);
-  --card-shadow-hover: var(--shadow);
+  --card-border: #e9eaed; /* align with list border */
+  --card-shadow: 0 1px 3px rgba(16,24,40,0.06);
+  --card-shadow-hover: 0 2px 6px rgba(16,24,40,0.08);
   position: relative;
 }
 
