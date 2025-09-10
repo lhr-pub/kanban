@@ -1628,6 +1628,8 @@ h1 {
 .pin-wrap .icon-hover { display:none; }
 .pin-wrap:hover .icon-base { display:none; }
 .pin-wrap:hover .icon-hover { display:inline-flex; }
+/* local svg icon size for board base icon */
+/* No inline <img> inside pin-wrap base when using Icon.boards */
 .pin-wrap { position: relative; }
 .pin-wrap .pin-label {
     position: absolute;
@@ -3171,7 +3173,6 @@ body {
 
 /* SVG 图标尺寸与配色（继承容器颜色） */
 .board-icon svg { width: 22px; height: 22px; display: block; }
-.quick-board-card .board-icon { color: #ffffff; }
 
 /* 首页与项目页标题与分区留白优化 */
 .dashboard-section h2, .board-section h2 { display: flex; align-items: center; gap: .5rem; }
@@ -3190,12 +3191,6 @@ body {
 .board-section h2 [data-icon] svg { width: 20px; height: 20px; }
 
 /* 看板卡片左侧图标：柔和底色 + 主色描边 */
-.quick-board-card .board-icon {
-    background: rgba(59,130,246,0.10);
-    border: 1px solid rgba(59,130,246,0.20);
-    color: var(--primary-dark);
-    box-shadow: none;
-}
 
 /* Board name dropdown caret indicator */
 #currentBoardName {
@@ -3228,12 +3223,7 @@ body {
 
 @media (prefers-color-scheme: dark) {
     .dashboard-section h2 [data-icon] { color: var(--gray-600); }
-    .quick-board-card .board-icon {
-        background: rgba(59,130,246,0.18);
-        border-color: rgba(59,130,246,0.28);
-        color: var(--primary-light);
-    }
-    .board-project {
+        .board-project {
         background: #0b1220;
         color: var(--gray-700);
         border: 1px solid var(--gray-300);
@@ -3281,15 +3271,8 @@ body {
     }
 }
 
-/* 无图标模式：隐藏占位并调整间距 */
-/* icons visible globally */
+/* 显示看板卡片内的图标（恢复默认） */
 .projects-header .header-actions { gap: 0.75rem; }
-.quick-board-card { padding-left: 1.25rem; }
-
-/* 仅隐藏看板卡片内部图标（其他图标保留） */
-.quick-board-card .board-icon { display: none !important; }
-.projects-header .header-actions { gap: 0.75rem; }
-.quick-board-card { padding-left: 1.25rem; }
 
 /* Board and project card icon sizes */
 /* Prevent icon flash: hide [data-icon] until injected */
@@ -3354,6 +3337,8 @@ body {
 #projectPage .project-header .logout-btn:hover {
     background: var(--danger-dark);
 }
+
+/* (revert) remove board-icon overrides to keep original styles */
 
 /* === Trello-like compact overrides (non-destructive) === */
 /* 布局与背景更接近 Trello */

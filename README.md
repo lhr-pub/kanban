@@ -8,7 +8,7 @@
 - [🗺️ Roadmap（规划）](#roadmap)
 - [🗂️ 项目与看板](#projects-boards)
 - [导航与面包屑（Breadcrumbs）](#breadcrumbs)
-- [置顶（Pin Group）设计草案（即将实现）](#pin-group)
+- [置顶分组（Pin Group）](#pin-group)
 - [星标与置前](#stars-move-front)
 - [🧩 设计图（Architecture & Pages）](#design)
 - [Mermaid（文本版图示）](#mermaid)
@@ -73,40 +73,18 @@
 
 ![面包屑结构与交互](docs/images/breadcrumbs.svg)
 
-#### 置顶（Pin Group）设计草案（即将实现）
+#### 置顶分组（Pin Group）
 <a id="pin-group"></a>
 
-- 目标：在首页与项目页的卡片列表中，新增“置顶分组”，用于将重要的项目/看板固定在列表上方；其余为“普通分组”。
-- 交互：
-  - 置顶/取消置顶：
-    - 左侧新增“置顶”按钮（pin 图标）。点击后，卡片进入/离开置顶分组；置顶分组内的卡片 pin 图标常亮。
-  - 排序移动（组内）：
-    - 保留“移到最前/移到最后”按钮，仅在当前分组（置顶或普通）内调整顺序。
-  - 新建卡片位置：
-    - 新建项目/看板进入“普通分组”，位置在置顶分组之后，完全保留当前组内插入策略（通常是最前）。
-- 数据模型建议：
-  - 项目置顶：在用户维度存储 `users[username].pinnedProjects: string[]`（仅保存置顶的项目 id，顺序表示分组内顺序）。
-  - 看板置顶（项目内）：
-    - 选项A（用户维度）：`users[username].pinnedBoards: Record<projectId, string[]>`（每个项目下置顶的看板名称数组）
-    - 选项B（项目维度）：`projects[projectId].pinnedBoards: string[]`（全员共享置顶，看板创建者或项目所有者可置顶，视需求而定）
-  - 读取顺序：
-    - 列表 = 置顶分组（pinned 顺序） + 普通分组（原有顺序，去除已置顶项）
-  - 移动逻辑：
-    - “置顶”/“取消置顶”：在 pinned 数组中插入/删除，或从普通组移出/恢复。
-    - “移到最前/最后”：只在 pinned 或普通数组内移动。
-- API 草案：
-  - 项目：
-    - POST `/api/user-pins/pin` { username, projectId } → 将项目加入用户置顶分组（并可选地在原 projects 内保留位置，以便取消置顶后回到原序；实现时可选）
-    - POST `/api/user-pins/unpin` { username, projectId }
-    - POST `/api/user-pins/reorder` { username, projectId, to: 'front'|'back' }
-  - 看板：
-    - POST `/api/user-board-pins/pin` { username, projectId, boardName }
-    - POST `/api/user-board-pins/unpin` { username, projectId, boardName }
-    - POST `/api/user-board-pins/reorder` { username, projectId, boardName, to: 'front'|'back' }
-- 前端渲染：
-  - 首页项目列表：渲染置顶分组（卡片 pin 常亮） + 普通分组；两组间有组标题或轻微分隔。
-  - 项目页看板列表：同上（根据是否采用用户维度或项目维度决定看板置顶的范围）。
-  - 现有“移到最前/最后”按钮保留，但仅在分组内生效；“置顶”按钮为分组切换。
+- 功能已上线：
+  - 首页与项目页的卡片列表按“置顶分组 / 普通分组”展示；两组间有“置顶 / 全部”的分隔标题。
+  - 置顶/取消置顶：鼠标移到标题左侧图标，图标切换为 pin/pin-off，点击即可切换；置顶项 pin 常亮。
+  - 组内排序：保留“移到最前/移到最后”，仅在当前分组内调整顺序。
+  - 新建：新建项目/看板默认进入“普通分组”，位于“置顶分组”之后。
+  - 图标策略：
+    - 项目页看板卡片：使用内联 SVG（Icon.boards）作为未置顶基础图标；置顶显示 pin。
+    - 首页看板卡片：不再显示卡片左侧图标（保持布局干净）。
+    - “所有看板”标题仍显示 boards 图标。
 
 
 #### 看板卡片操作区示意
@@ -812,11 +790,16 @@ MIT
 - 内联重命名：
   - 看板名：仅项目所有者或看板创建者；Enter 保存、Esc 取消、失焦保存；刷新后也可立即编辑；不会误触发新增卡片输入。
   - 项目名：仅项目所有者；同上交互规则。
-- 置前语义（Move to front）：
-  - 项目置前：仅将该项目在用户的 projects 顺序移动到最前；不是“置顶分组”。
-  - 看板置前：仅将该看板在项目 boards 顺序移动到最前；是项目全局顺序。
+- 置顶分组：
+  - 新增“置顶 / 普通”分组；置顶项 pin 常亮，组内“移到最前/移到最后”。
+  - 标题左侧图标悬停切换为 pin/pin-off，点击置顶/取消置顶。
+  - 新建进入“普通分组”（置顶分组之后）。
+- 首页“所有看板”支持搜索：按看板名/项目名实时过滤。
+- 图标策略：
+  - 项目页看板卡片使用内联 SVG（Icon.boards）作为基础图标（未置顶），置顶显示 pin；
+  - 首页看板卡片不显示左侧图标；
+  - “所有看板”标题仍显示 boards 图标。
 - 导航对齐：看板页导航与项目页在桌面断点（≥1024px）使用相同容器宽度（1200）与左右间距（2rem），底部边框与间距一致；箭头 hover 位移、展开旋转动画一致。
 ## 🗺️ Roadmap（规划）
 
-- 置顶（Pin Group）：见下文“置顶（Pin Group）设计草案（即将实现）”。
-  - 引入置顶分组及 pin 常亮、分组内排序（移到最前/最后）、新建卡片进入普通分组等。
+- 置顶（Pin Group）：已实现（见上文）。

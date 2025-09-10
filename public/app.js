@@ -135,6 +135,26 @@ function updateHistory(page, replace) {
         }
     } catch (e) {}
 }
+
+// === Homepage: quick boards search ===
+function bindQuickBoardsSearch(){
+    const input = document.getElementById('quickBoardsSearch');
+    if (!input || input._bound) return;
+    input._bound = true;
+    input.addEventListener('input', applyQuickBoardsFilter);
+}
+function applyQuickBoardsFilter(){
+    const input = document.getElementById('quickBoardsSearch');
+    const grid = document.getElementById('quickAccessBoards');
+    if (!grid) return;
+    const q = (input && input.value ? input.value.trim().toLowerCase() : '');
+    grid.querySelectorAll('.quick-board-card').forEach(card => {
+        const title = (card.querySelector('h4')?.textContent || '').trim().toLowerCase();
+        const proj = (card.querySelector('.board-project')?.textContent || '').trim().toLowerCase();
+        const show = !q || title.includes(q) || proj.includes(q);
+        card.style.display = show ? '' : 'none';
+    });
+}
 function bindPopstateRouter() {
     window.addEventListener('popstate', function(e) {
         const s = e.state || {};
@@ -266,6 +286,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('logoutFromBoard').addEventListener('click', logout);
     const manageBtn = document.getElementById('manageMembersBtn');
     if (manageBtn) manageBtn.addEventListener('click', openMembersModal);
+    // 首页“所有看板”搜索
+    bindQuickBoardsSearch();
     // Project title: do not open switcher; inline rename for owners only (binding after owner info ready)
 
     // 看板页面事件
@@ -887,9 +909,6 @@ async function loadUserProjects() {
                 const owner = (boardsData.boardOwners && boardsData.boardOwners[boardName]) || '';
                 const isStar = isBoardStarred(project.id, boardName);
 
-                const icon = document.createElement('span');
-                icon.className = 'board-icon';
-                icon.setAttribute('data-icon', 'boards');
                 const details = document.createElement('div');
                 details.className = 'board-details';
                 details.innerHTML = `<h4>${escapeHtml(boardName)}</h4><span class="board-project">${escapeHtml(project.name)}</span>`;
@@ -902,7 +921,6 @@ async function loadUserProjects() {
                         ${canManage ? `<button class=\"board-action-btn more-btn\" onclick=\"event.stopPropagation(); openBoardActionsMenu('home','${project.id}','${escapeJs(boardName)}', this)\" title=\"更多操作\">⋮</button>` : ''}
                         ${canManage ? `<button class=\"board-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteBoardFromHome('${escapeJs(boardName)}', '${project.id}')\" title=\"删除看板\">✕</button>` : ''}`;
 
-                boardCard.appendChild(icon);
                 boardCard.appendChild(details);
                 if (ownerEl) boardCard.appendChild(ownerEl);
                 boardCard.appendChild(actions);
@@ -957,6 +975,7 @@ async function loadUserProjects() {
             quickAccessBoards.replaceChildren(qabFrag);
             quickAccessBoards.removeAttribute('aria-busy');
             renderIconsInDom(quickAccessBoards);
+            try { applyQuickBoardsFilter(); } catch(e){}
         }
         if (projectsList) {
             projectsList.replaceChildren(plFrag);
@@ -4233,7 +4252,7 @@ function getBoardIconSVG() {
 
 // 简易图标库
 const Icon = {
-    boards: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h4v14H4zM10 5h4v10h-4zM16 5h4v7h-4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
+    boards: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19,0H5C2.24,0,0,2.24,0,5v14c0,2.76,2.24,5,5,5h14c2.76,0,5-2.24,5-5V5c0-2.76-2.24-5-5-5Zm3,19c0,1.65-1.35,3-3,3H5c-1.65,0-3-1.35-3-3V5c0-1.65,1.35-3,3-3h14c1.65,0,3,1.35,3,3v14ZM11,6v5c0,.55-.45,1-1,1s-1-.45-1-1V6c0-.55,.45-1,1-1s1,.45,1,1Zm-4,0V14c0,.55-.45,1-1,1s-1-.45-1-1V6c0-.55,.45-1,1-1s1,.45,1,1Zm8,0v12c0,.55-.45,1-1,1s-1-.45-1-1V6c0-.55,.45-1,1-1s1,.45,1,1Zm4,0v3c0,.55-.45,1-1,1s-1-.45-1-1v-3c0-.55,.45-1,1-1s1,.45,1,1Z" fill="currentColor"/></svg>',
     folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h5l2 2h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 8.5a4 4 0 0 1 4-4h2a4 4 0 1 1 0 8h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 15.5a4 4 0 0 1-4 4H8a4 4 0 1 1 0-8h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -6535,7 +6554,6 @@ function renderStarredBoards(){
             };
             const isStar = isBoardStarred(item.projectId, item.boardName);
             card.innerHTML = `
-                <span class="board-icon" data-icon="boards"></span>
                 <div class="board-details">
                     <h4>${escapeHtml(item.boardName)}</h4>
                     <span class="board-project">${escapeHtml(item.projectName || '')}</span>
@@ -6572,11 +6590,19 @@ function toggleBoardStarFromHome(projectId, boardName, projectName, btn){
 }
 
 function pinIconMarkup(kind, isPinned){
-    const base = isPinned ? 'pin' : (kind === 'project' ? 'folder' : 'boards');
     const hover = isPinned ? 'pin-off' : 'pin';
     const text = isPinned ? '取消置顶' : '置顶';
+    let baseEl;
+    if (isPinned) {
+        baseEl = `<span class="icon-base" data-icon="pin"></span>`;
+    } else if (kind === 'project') {
+        baseEl = `<span class="icon-base" data-icon="folder"></span>`;
+    } else {
+        // board non-pinned: use inline icon via Icon.boards
+        baseEl = `<span class="icon-base" data-icon="boards"></span>`;
+    }
     return `<span class="pin-wrap ${isPinned ? 'pinned' : ''}" aria-label="${text}" title="${text}">
-                <span class="icon-base" data-icon="${base}"></span>
+                ${baseEl}
                 <span class="icon-hover" data-icon="${hover}"></span>
                 <span class="pin-label">${text}</span>
             </span>`;
@@ -6792,7 +6818,6 @@ async function renderStarredBoards(){
         };
         const isStar = isBoardStarred(item.projectId, item.boardName);
         card.innerHTML = `
-            <span class="board-icon" data-icon="boards"></span>
             <div class="board-details">
                 <h4>${escapeHtml(item.boardName)}</h4>
                 <span class="board-project">${escapeHtml(item.projectName || '')}</span>
