@@ -21,6 +21,7 @@ yarn-error.log*
 
 # 数据存储目录（用户数据和备份）
 data/
+ref/
 
 # 临时文件
 *.tmp

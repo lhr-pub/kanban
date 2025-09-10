@@ -2851,13 +2851,14 @@ body {
 #boardPage {
   /* Use theme-consistent neutral, slightly darker than --gray-100 */
   --list-bg: #f1f2f4; /* user-specified refined neutral */
-  --list-border: #dfe1e6; /* crisper against #f1f2f4 */
+  --list-border: #dfe1e6; /* darker, crisper border */
   --list-shadow: 0 1px 3px rgba(16,24,40,0.06); /* subtle but present */
   --list-shadow-hover: 0 2px 6px rgba(16,24,40,0.08);
   --card-bg: #ffffff;
   --card-border: #dfe1e6; /* align with list border */
-  --card-shadow: 0 1px 3px rgba(16,24,40,0.06);
-  --card-shadow-hover: 0 2px 6px rgba(16,24,40,0.08);
+  /* Trello-like raised shadow per reference */
+  --card-shadow: 0px 1px 1px #091e4240, 0px 0px 1px #091e424f;
+  --card-shadow-hover: 0px 1px 1px #091e4240, 0px 0px 1px #091e424f;
   position: relative;
 }
 
@@ -2868,7 +2869,7 @@ body {
 #boardPage .archive-column {
   background: var(--list-bg) !important;
   border: 1px solid var(--list-border) !important;
-  border-radius: 12px !important;
+  border-radius: 8px !important; /* tighter, closer to Trello */
   box-shadow: var(--list-shadow) !important; /* baseline shadow */
   transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
@@ -2890,10 +2891,10 @@ body {
 /* Cards: light, crisp, with accent hairline */
 #boardPage .card {
   background: var(--card-bg) !important;
-  border: 1px solid var(--card-border) !important;
-  border-radius: 10px !important;
-  box-shadow: var(--card-shadow) !important; /* baseline shadow */
-  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease, background .18s ease;
+  border: 0 none !important; /* rely on Trello-like raised shadow instead of solid border */
+  border-radius: 8px !important; /* tighter radius */
+  box-shadow: var(--card-shadow) !important; /* per reference */
+  transition: border-color .14s ease, background .14s ease, box-shadow .14s ease;
   position: relative;
 }
 
@@ -2901,8 +2902,8 @@ body {
 #boardPage .card::before { content: none; }
 
 #boardPage .card:hover {
-  border-color: var(--card-border) !important;
-  box-shadow: var(--card-shadow) !important;
+  background: #F0F1F2 !important;   /* ds-surface-raised-hovered */
+  box-shadow: var(--card-shadow) !important; /* keep same shadow (no extra hover) */
   transform: none !important;
 }
 
