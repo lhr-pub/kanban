@@ -35,6 +35,8 @@ let isCreatingBoard = false;
 let pendingWindowScroll = null;
 let wsReconnectTimer = null;
 let suppressAutoReconnect = false;
+// Guard: suppress global Enter handlers (e.g., open composer) after inline rename submit
+let enterComposerSuppressUntil = 0;
 
 // Project switcher state
 let projectSwitcherMenu = null;
@@ -307,20 +309,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    // 看板名称下拉切换
-    const currentBoardNameEl = document.getElementById('currentBoardName');
-    if (currentBoardNameEl) {
-        currentBoardNameEl.addEventListener('click', openBoardSwitcher);
-        currentBoardNameEl.setAttribute('title', '切换看板');
-    }
+    // 看板名称：不再展开面包屑，仅在有权限时内联重命名（点击行为在更新头部时应用）
     // 看板页面包屑
     const breadcrumbHome = document.getElementById('breadcrumbHome');
     if (breadcrumbHome) {
         breadcrumbHome.addEventListener('click', function(e){ e.preventDefault(); showProjectPage(); });
     }
-    const projectCaret = document.getElementById('projectCaret');
-    if (projectCaret) {
-        projectCaret.addEventListener('click', function(e){ e.preventDefault(); openProjectSwitcher(e); });
+    // Board page project caret (unique ID to avoid clash with project page)
+    const boardProjectCaret = document.getElementById('boardProjectCaret');
+    if (boardProjectCaret) {
+        boardProjectCaret.addEventListener('click', function(e){ e.preventDefault(); openProjectSwitcher(e); });
     }
     const currentProjectNameEl2 = document.getElementById('currentProjectName');
     if (currentProjectNameEl2) {
@@ -333,12 +331,83 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     const currentBoardNameEl2 = document.getElementById('currentBoardName');
     if (currentBoardNameEl2) {
-        currentBoardNameEl2.addEventListener('click', openBoardSwitcher);
+        currentBoardNameEl2.addEventListener('click', startInlineBoardRename);
     }
+    // Fallback: delegated click to ensure binding after refresh/race
+    document.addEventListener('click', function(e){
+        try {
+            const t = e.target;
+            const nameEl = document.getElementById('currentBoardName');
+            if (!nameEl || document.querySelector('.breadcrumb-rename-input')) return;
+            if (t === nameEl || (t.closest && t.closest('#currentBoardName'))) {
+                if (canRenameCurrentBoard()) { startInlineBoardRename(e); }
+            }
+        } catch(_){}
+    }, true);
+
+// Inline rename for breadcrumb board name
+function startInlineBoardRename(e){
+    e.preventDefault();
+    e.stopPropagation();
+    const span = document.getElementById('currentBoardName');
+    if (!span || span._editing) return;
+    const oldName = currentBoardName || (span.textContent || '').trim();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = oldName;
+    input.className = 'breadcrumb-rename-input';
+    span._editing = true;
+    const parent = span.parentNode;
+    // Insert input right after caret to keep layout stable
+    span.style.display = 'none';
+    parent.insertBefore(input, span.nextSibling);
+    try { input.focus(); input.select(); } catch(_){ }
+
+    let committed = false;
+    let submittedByEnter = false;
+    const cleanup = () => {
+        const latest = (input.value || '').trim();
+        span.textContent = committed && latest ? latest : oldName;
+        try { input.remove(); } catch(_){ }
+        span.style.display = '';
+        span._editing = false;
+    };
+
+    input.addEventListener('keydown', async (ev) => {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            try { ev.stopPropagation(); ev.stopImmediatePropagation && ev.stopImmediatePropagation(); } catch(_){ }
+            const newName = (input.value || '').trim();
+            if (!newName || newName === oldName) { committed = false; cleanup(); return; }
+            const res = await renameBoardDirect(currentProjectId, oldName, newName);
+            committed = !!(res && res.success);
+            submittedByEnter = committed;
+            // suppress global Enter handlers (keyup) shortly after committing
+            try { enterComposerSuppressUntil = Date.now() + 500; } catch(_){ }
+            cleanup();
+        } else if (ev.key === 'Escape') {
+            ev.preventDefault();
+            committed = false; cleanup();
+        }
+    });
+    input.addEventListener('blur', async () => {
+        if (submittedByEnter) { return; } // already handled on Enter
+        const newName = (input.value || '').trim();
+        if (!newName || newName === oldName) { committed = false; cleanup(); return; }
+        const res = await renameBoardDirect(currentProjectId, oldName, newName);
+        committed = !!(res && res.success);
+        cleanup();
+    });
+}
     // 项目页面面包屑（首页/项目）
     const projectHomeLink = document.getElementById('projectHomeLink');
     if (projectHomeLink) {
         projectHomeLink.addEventListener('click', function(e){ e.preventDefault(); showProjectPage(); });
+    }
+    // Ensure project page caret works
+    const projectPageCaret = document.getElementById('projectCaret');
+    if (projectPageCaret) {
+        projectPageCaret.addEventListener('click', function(e){ e.preventDefault(); openProjectSwitcher(e); });
     }
 
     // 忘记密码链接
@@ -1083,11 +1152,15 @@ async function loadProjectMembers() {
         const response = await fetch(`/api/project-boards/${currentProjectId}`);
         const data = await response.json();
 
-        // 保存项目成员列表用于分配用户选项
+        // 保存项目成员/所有者/看板拥有者用于权限判断（如内联重命名）
         window.currentProjectMembers = data.members;
+        window.currentProjectOwner = data.owner;
+        window.currentBoardOwners = data.boardOwners || {};
 
         // 更新分配用户选项
         updateAssigneeOptions();
+        // 更新看板名称点击行为（需在 owner 信息就绪后）
+        try { applyBoardNameClickBehavior(); } catch(_){ }
     } catch (error) {
         console.error('Load project members error:', error);
     }
@@ -1487,6 +1560,36 @@ async function deleteBoardFromHome(boardName, projectId) {
 function updateBoardHeader() {
     document.getElementById('currentProjectName').textContent = currentProjectName;
     document.getElementById('currentBoardName').textContent = currentBoardName;
+    try {
+        if (!document.querySelector('.breadcrumb-rename-input')) {
+            applyBoardNameClickBehavior();
+        }
+    } catch(_){}
+}
+
+function canRenameCurrentBoard(){
+    try {
+        const owner = (window.currentBoardOwners && window.currentBoardOwners[currentBoardName]) || '';
+        const projOwner = window.currentProjectOwner || '';
+        return !!(currentUser && (currentUser === projOwner || currentUser === owner));
+    } catch(_) { return false; }
+}
+
+function applyBoardNameClickBehavior(){
+    const el = document.getElementById('currentBoardName');
+    if (!el) return;
+    if (document.querySelector('.breadcrumb-rename-input') || el._editing) return;
+    // Remove any previous click listeners by cloning
+    const clone = el.cloneNode(true);
+    el.parentNode.replaceChild(clone, el);
+    if (canRenameCurrentBoard()) {
+        clone.setAttribute('title', '重命名看板');
+        clone.style.cursor = 'text';
+        clone.addEventListener('click', startInlineBoardRename);
+    } else {
+        clone.removeAttribute('title');
+        clone.style.cursor = 'default';
+    }
 }
 
 // WebSocket 连接
@@ -3141,10 +3244,10 @@ async function openProjectSwitcher(e) {
     showProjectSwitcherAt(rect, Array.isArray(projects) ? projects : []);
     const titleEl = document.getElementById('projectTitle');
     if (titleEl) titleEl.classList.add('open');
-    const caret = document.getElementById('projectCaret');
-    if (caret) caret.classList.add('open');
-    const arrowEl = document.getElementById('backToProjectLink');
-    if (arrowEl) arrowEl.classList.add('open');
+    const caretProjectPage = document.getElementById('projectCaret');
+    if (caretProjectPage) caretProjectPage.classList.add('open');
+    const caretBoardPage = document.getElementById('boardProjectCaret');
+    if (caretBoardPage) caretBoardPage.classList.add('open');
 }
 
 function showProjectSwitcherAt(rect, projects) {
@@ -3259,10 +3362,11 @@ function hideProjectSwitcher() {
     projectSwitcherOpen = false;
     const titleEl = document.getElementById('projectTitle');
     if (titleEl) titleEl.classList.remove('open');
-    const caret = document.getElementById('projectCaret');
-    if (caret) caret.classList.remove('open');
-    const arrowEl = document.getElementById('backToProjectLink');
-    if (arrowEl) arrowEl.classList.remove('open');
+    const caretProjectPage = document.getElementById('projectCaret');
+    if (caretProjectPage) caretProjectPage.classList.remove('open');
+    const caretBoardPage = document.getElementById('boardProjectCaret');
+    if (caretBoardPage) caretBoardPage.classList.remove('open');
+    // no legacy arrow in breadcrumb anymore
 }
 
 // 内联编辑任务标题
@@ -4431,6 +4535,60 @@ async function renameBoardRequest(projectId, oldName, isHome) {
         }
     } catch (error) {
         console.error('Rename board error:', error);
+        uiToast('重命名失败','error');
+        return { success: false };
+    }
+}
+
+// Direct rename without prompt (used by breadcrumb inline input)
+async function renameBoardDirect(projectId, oldName, newName) {
+    const trimmed = (newName || '').trim();
+    if (!trimmed || trimmed === oldName) return { success: false };
+    try {
+        const response = await fetch('/api/rename-board', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, oldName, newName: trimmed, actor: currentUser })
+        });
+        const result = await response.json().catch(()=>({}));
+        if (response.ok) {
+            if (projectId === currentProjectId && currentBoardName === oldName) {
+                currentBoardName = trimmed;
+                localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
+                updateBoardHeader();
+            }
+            // Update cached board lists to prevent stale entries causing errors
+            try {
+                if (Array.isArray(projectBoardsCache[projectId])) {
+                    const arr = projectBoardsCache[projectId];
+                    const idx = arr.indexOf(oldName);
+                    if (idx !== -1) { arr[idx] = trimmed; }
+                }
+            } catch(e){}
+            // Update owners map
+            try {
+                if (window.currentBoardOwners && window.currentBoardOwners[oldName]) {
+                    window.currentBoardOwners[trimmed] = window.currentBoardOwners[oldName];
+                    delete window.currentBoardOwners[oldName];
+                }
+            } catch(e){}
+            try { updateBoardNameInDom(projectId, oldName, trimmed); } catch(e){}
+            try { updateStarsOnBoardRenamed(projectId, oldName, trimmed); } catch(e){}
+            try { if (!boardSelectPage.classList.contains('hidden')) loadProjectBoards(); } catch(e){}
+            try { renderStarredBoards(); } catch(e){}
+            // Re-join renamed board without waiting WS, to avoid transient not found
+            try {
+                if (socket && socket.readyState === WebSocket.OPEN && projectId === currentProjectId) {
+                    socket.send(JSON.stringify({ type:'join', user: currentUser, projectId: currentProjectId, boardName: currentBoardName }));
+                }
+            } catch(e){}
+            uiToast('重命名成功','success');
+            return { success: true, newName: trimmed };
+        } else {
+            uiToast(result.message || '重命名失败','error');
+            return { success: false };
+        }
+    } catch (e) {
         uiToast('重命名失败','error');
         return { success: false };
     }
@@ -6620,6 +6778,7 @@ document.addEventListener('keydown', function(e){
 document.addEventListener('keyup', function(e){
     if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
     if (!boardPage || boardPage.classList.contains('hidden')) return;
+    try { if (enterComposerSuppressUntil && Date.now() < enterComposerSuppressUntil) { return; } else { enterComposerSuppressUntil = 0; } } catch(_){ }
     // if composer already open anywhere, skip
     if (document.querySelector('.card-composer.is-open')) return;
     const t = e.target;

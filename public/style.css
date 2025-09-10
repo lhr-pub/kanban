@@ -1816,6 +1816,7 @@ h1 {
 .board-breadcrumb .crumb-caret, .project-breadcrumb .crumb-caret {
     display: inline-flex;
     align-items: center;
+    cursor: pointer;
     gap: 6px;
     padding: 2px 6px;
     border-radius: 6px;
@@ -1836,6 +1837,23 @@ h1 {
 }
 .board-breadcrumb .crumb-caret:hover::before, .project-breadcrumb .crumb-caret:hover::before { opacity: 1; transform: translateX(1px); }
 .board-breadcrumb .crumb-caret.open::before, .project-breadcrumb .crumb-caret.open::before { transform: rotate(90deg); opacity: 1; }
+
+/* Inline rename input for breadcrumb board name */
+.breadcrumb-rename-input {
+  font: inherit;
+  color: #111827;
+  padding: 2px 6px;
+  border: 1px solid var(--gray-300);
+  border-radius: 6px;
+  outline: none;
+  width: auto;
+  min-width: 8ch;
+  background: #fff;
+}
+.breadcrumb-rename-input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+}
 
 /* Final header/breadcrumb tuning for board page */
 #boardPage .board-breadcrumb {
