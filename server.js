@@ -682,19 +682,8 @@ app.get('/api/user-projects/:username', (req, res) => {
         return res.status(404).json({ message: '用户不存在' });
     }
 
-    const userProjectIds = Array.isArray(user.projects) ? user.projects.slice() : [];
-    const pinned = Array.isArray(user.pinnedProjects) ? user.pinnedProjects.slice() : [];
-    const projectSet = new Set(userProjectIds);
-    const orderedIds = [];
-
-    // Pinned first, in pinned order
-    pinned.forEach(pid => {
-        if (projectSet.has(pid)) orderedIds.push(pid);
-    });
-    // Then the rest in original order
-    userProjectIds.forEach(pid => {
-        if (!orderedIds.includes(pid)) orderedIds.push(pid);
-    });
+    // Use user's own projects order directly (newest first if unshifted on create/join)
+    const orderedIds = Array.isArray(user.projects) ? user.projects.slice() : [];
 
     const userProjects = orderedIds.map(projectId => {
         const project = projects[projectId];
@@ -763,26 +752,7 @@ app.post('/api/user-stars/toggle', (req, res) => {
 });
 // === End User Stars ===
 
-// === User Pinned Boards (per project, server-side persistence) ===
-// Get pinned boards for a user within a project
-app.get('/api/user-board-pins/:username/:projectId', (req, res) => {
-    const { username, projectId } = req.params;
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-    const isMember = Array.isArray(project.members) && project.members.includes(username);
-    if (!isMember) return res.status(403).json({ message: '只有项目成员可以查看置前顺序' });
-    const pinsMap = user.pinnedBoards && typeof user.pinnedBoards === 'object' ? user.pinnedBoards : {};
-    const pins = Array.isArray(pinsMap[projectId]) ? pinsMap[projectId].slice() : [];
-    return res.json({ pins });
-});
-
-// Pin a board to front for a user within a project
+// === Board move-to-front (project-global order) ===
 app.post('/api/user-board-pins/pin', (req, res) => {
     const { username, projectId, boardName } = req.body || {};
     if (!username || !projectId || !boardName) return res.status(400).json({ message: '缺少参数' });
@@ -794,26 +764,18 @@ app.post('/api/user-board-pins/pin', (req, res) => {
     if (!user) return res.status(404).json({ message: '用户不存在' });
     const project = projects[projectId];
     if (!project) return res.status(404).json({ message: '项目不存在' });
-
-    // 只有项目成员可以置前
+    // 仅项目成员可调整顺序
     const isMember = Array.isArray(project.members) && project.members.includes(username);
-    if (!isMember) return res.status(403).json({ message: '只有项目成员可以置前看板' });
-
-    // 必须存在该看板（未归档或已归档均可置前，最终按渲染处过滤）
-    const exists = (Array.isArray(project.boards) && project.boards.includes(boardName)) || (Array.isArray(project.archivedBoards) && project.archivedBoards.includes(boardName));
-    if (!exists) return res.status(404).json({ message: '看板不存在' });
-
-    if (!user.pinnedBoards || typeof user.pinnedBoards !== 'object') user.pinnedBoards = {};
-    const arr = Array.isArray(user.pinnedBoards[projectId]) ? user.pinnedBoards[projectId] : [];
-    const idx = arr.indexOf(boardName);
-    if (idx !== -1) arr.splice(idx, 1);
-    arr.unshift(boardName);
-    user.pinnedBoards[projectId] = arr;
-
-    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ message: '已置前', pins: arr.slice() });
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以调整顺序' });
+    project.boards = Array.isArray(project.boards) ? project.boards : [];
+    const idx = project.boards.indexOf(boardName);
+    if (idx === -1) return res.status(404).json({ message: '看板不存在' });
+    project.boards.splice(idx, 1);
+    project.boards.unshift(boardName);
+    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ message: '已置前', boards: project.boards.slice() });
 });
-// === End User Pinned Boards ===
+// === End Board move-to-front ===
 
 // === User Starred Boards Pin Order (server-side persistence) ===
 // Get pinned order for starred boards list (independent of project lists)
@@ -886,17 +848,16 @@ app.post('/api/user-pins/pin', (req, res) => {
     const isMember = Array.isArray(project.members) && project.members.includes(username);
     if (!isMember) return res.status(403).json({ message: '只有项目成员可以置前项目' });
 
-    user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
-
-    // 将项目移到 pinnedProjects 的最前
-    const existingIndex = user.pinnedProjects.indexOf(projectId);
+    // 将项目在用户的 projects 列表中移动到最前（一次性排序，不作为置顶分组）
+    user.projects = Array.isArray(user.projects) ? user.projects : [];
+    const existingIndex = user.projects.indexOf(projectId);
     if (existingIndex !== -1) {
-        user.pinnedProjects.splice(existingIndex, 1);
+        user.projects.splice(existingIndex, 1);
     }
-    user.pinnedProjects.unshift(projectId);
+    user.projects.unshift(projectId);
 
     if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ message: '已置前', pins: user.pinnedProjects.slice() });
+    return res.json({ message: '已置前', projects: user.projects.slice() });
 });
 // === End User Pinned Projects ===
 

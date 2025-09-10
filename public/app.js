@@ -266,12 +266,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('logoutFromBoard').addEventListener('click', logout);
     const manageBtn = document.getElementById('manageMembersBtn');
     if (manageBtn) manageBtn.addEventListener('click', openMembersModal);
-    // Project title switcher (switch projects)
-    const projTitleEl = document.getElementById('projectTitle');
-    if (projTitleEl) {
-        projTitleEl.addEventListener('click', openProjectSwitcher);
-        projTitleEl.setAttribute('title', '切换项目');
-    }
+    // Project title: do not open switcher; inline rename for owners only (binding after owner info ready)
 
     // 看板页面事件
     document.getElementById('logoutBtn').addEventListener('click', logout);
@@ -333,7 +328,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (currentBoardNameEl2) {
         currentBoardNameEl2.addEventListener('click', startInlineBoardRename);
     }
-    // Fallback: delegated click to ensure binding after refresh/race
+    // Fallback: delegated click to ensure binding after refresh/race (board name)
     document.addEventListener('click', function(e){
         try {
             const t = e.target;
@@ -341,6 +336,17 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!nameEl || document.querySelector('.breadcrumb-rename-input')) return;
             if (t === nameEl || (t.closest && t.closest('#currentBoardName'))) {
                 if (canRenameCurrentBoard()) { startInlineBoardRename(e); }
+            }
+        } catch(_){}
+    }, true);
+    // Fallback: delegated click for project title (project page)
+    document.addEventListener('click', function(e){
+        try {
+            const t = e.target;
+            const nameEl = document.getElementById('projectTitle');
+            if (!nameEl || document.querySelector('.breadcrumb-rename-input')) return;
+            if (t === nameEl || (t.closest && t.closest('#projectTitle'))) {
+                if (canRenameCurrentProject()) { startInlineProjectRename(e); }
             }
         } catch(_){}
     }, true);
@@ -836,17 +842,10 @@ async function loadUserProjects() {
                     const boardsResponse = await fetch(`/api/project-boards/${project.id}`);
                     boardsData = await boardsResponse.json();
                 }
-                // fetch pinned boards order for this user/project to reorder cards
-                let pins = [];
-                try {
-                    const pinsResp = await fetch(`/api/user-board-pins/${currentUser}/${project.id}`);
-                    const pinsJson = await pinsResp.json().catch(()=>({pins:[]}));
-                    if (pinsResp.ok && pinsJson && Array.isArray(pinsJson.pins)) pins = pinsJson.pins;
-                } catch(e) {}
-                return { project, boardsData, pins };
+                return { project, boardsData };
             } catch (error) {
                 console.error(`Error loading boards for project ${project.id}:`, error);
-                return { project, boardsData: { boards: [], boardOwners: {} }, pins: [] };
+                return { project, boardsData: { boards: [], boardOwners: {} } };
             }
         })());
 
@@ -857,18 +856,10 @@ async function loadUserProjects() {
         const qabFrag = document.createDocumentFragment();
         const plFrag = document.createDocumentFragment();
 
-        results.forEach(({ project, boardsData, pins }) => {
+        results.forEach(({ project, boardsData }) => {
             // 添加快速访问看板
             const archivedSet = new Set(Array.isArray(boardsData.archivedBoards) ? boardsData.archivedBoards : []);
-            // reorder boards by user pins first
-            let boardsList = Array.isArray(boardsData.boards) ? boardsData.boards.slice() : [];
-            if (Array.isArray(pins) && pins.length) {
-                const set = new Set(boardsList);
-                const ahead = pins.filter(n => set.has(n));
-                const rest = boardsList.filter(n => !ahead.includes(n));
-                boardsList = ahead.concat(rest);
-            }
-            boardsList.filter(n => !archivedSet.has(n)).forEach(boardName => {
+            (Array.isArray(boardsData.boards) ? boardsData.boards : []).filter(n => !archivedSet.has(n)).forEach(boardName => {
                 if (token !== userProjectsLoadToken) return;
                 const boardCard = document.createElement('div');
                 boardCard.className = 'quick-board-card board-card-with-actions';
@@ -1200,6 +1191,7 @@ async function loadProjectBoards() {
 
         const boardList = document.getElementById('boardList');
         if (!boardList) return;
+        try { applyProjectTitleClickBehavior(); } catch(_){}
 
         // 离线构建，最后一次性替换，避免残留和闪烁
         const frag = document.createDocumentFragment();
@@ -1222,16 +1214,7 @@ async function loadProjectBoards() {
             return;
         }
 
-        // Reorder boards by user's pinned order
-        let pins = [];
-        try {
-            const pinsResp = await fetch(`/api/user-board-pins/${currentUser}/${currentProjectId}`);
-            const pinsJson = await pinsResp.json().catch(()=>({pins:[]}));
-            if (pinsResp.ok && pinsJson && Array.isArray(pinsJson.pins)) pins = pinsJson.pins;
-        } catch(e) {}
-        const orderedBoards = orderBoardsByPins(data.boards, pins);
-
-        orderedBoards.forEach(boardName => {
+        (data.boards || []).forEach(boardName => {
             const boardCard = document.createElement('div');
             boardCard.className = 'quick-board-card board-card-with-actions';
             boardCard.onclick = () => selectBoard(boardName);
@@ -1589,6 +1572,100 @@ function applyBoardNameClickBehavior(){
     } else {
         clone.removeAttribute('title');
         clone.style.cursor = 'default';
+    }
+}
+
+function canRenameCurrentProject(){
+    try { return !!(currentUser && window.currentProjectOwner && currentUser === window.currentProjectOwner); } catch(_) { return false; }
+}
+
+function applyProjectTitleClickBehavior(){
+    const el = document.getElementById('projectTitle');
+    if (!el) return;
+    if (el._editing) return;
+    const clone = el.cloneNode(true);
+    el.parentNode.replaceChild(clone, el);
+    if (canRenameCurrentProject()) {
+        clone.setAttribute('title', '重命名项目');
+        clone.style.cursor = 'text';
+        clone.addEventListener('click', startInlineProjectRename);
+    } else {
+        clone.removeAttribute('title');
+        clone.style.cursor = 'default';
+    }
+}
+
+function startInlineProjectRename(e){
+    e.preventDefault();
+    e.stopPropagation();
+    const span = document.getElementById('projectTitle');
+    if (!span || span._editing) return;
+    const oldName = currentProjectName || (span.textContent || '').trim();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = oldName;
+    input.className = 'breadcrumb-rename-input';
+    span._editing = true;
+    span.style.display = 'none';
+    span.parentNode.insertBefore(input, span.nextSibling);
+    try { input.focus(); input.select(); } catch(_){ }
+
+    let committed = false;
+    const cleanup = () => {
+        const latest = (input.value || '').trim();
+        span.textContent = committed && latest ? latest : oldName;
+        try { input.remove(); } catch(_){ }
+        span.style.display = '';
+        span._editing = false;
+        applyProjectTitleClickBehavior();
+    };
+    input.addEventListener('keydown', async (ev) => {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            const newName = (input.value || '').trim();
+            if (!newName || newName === oldName) { committed = false; cleanup(); return; }
+            const res = await renameProjectDirect(currentProjectId, newName);
+            committed = !!(res && res.success);
+            cleanup();
+        } else if (ev.key === 'Escape') {
+            ev.preventDefault(); committed = false; cleanup();
+        }
+    });
+    input.addEventListener('blur', async () => {
+        const newName = (input.value || '').trim();
+        if (!newName || newName === oldName) { committed = false; cleanup(); return; }
+        const res = await renameProjectDirect(currentProjectId, newName);
+        committed = !!(res && res.success);
+        cleanup();
+    });
+}
+
+async function renameProjectDirect(projectId, newName){
+    const trimmed = (newName||'').trim();
+    if (!trimmed || !projectId) return { success:false };
+    try {
+        const rs = await fetch('/api/rename-project', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, newName: trimmed, actor: currentUser })
+        });
+        const rj = await rs.json().catch(()=>({}));
+        if (rs.ok) {
+            currentProjectName = trimmed;
+            localStorage.setItem('kanbanCurrentProjectName', currentProjectName);
+            const pt = document.getElementById('projectTitle');
+            if (pt) pt.textContent = currentProjectName;
+            updateBoardHeader();
+            try { loadUserProjects(); } catch(_){ }
+            try { renderStarredBoards(); } catch(_){ }
+            uiToast('项目重命名成功','success');
+            return { success:true };
+        } else {
+            uiToast(rj.message || '项目重命名失败','error');
+            return { success:false };
+        }
+    } catch(e) {
+        uiToast('项目重命名失败','error');
+        return { success:false };
     }
 }
 
@@ -4737,12 +4814,6 @@ async function pinProjectToFront(projectId) {
 
 // === User pinned boards helpers ===
 async function fetchUserBoardPins(projectId){
-    if (!currentUser || !projectId) return [];
-    try {
-        const resp = await fetch(`/api/user-board-pins/${currentUser}/${projectId}`);
-        const data = await resp.json().catch(()=>({pins:[]}));
-        if (resp.ok && data && Array.isArray(data.pins)) return data.pins;
-    } catch(e) {}
     return [];
 }
 function orderBoardsByPins(boards, pins){

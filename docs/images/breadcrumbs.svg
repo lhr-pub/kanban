@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="300" viewBox="0 0 980 300">
+  <style>
+    .title { font: 700 18px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#111827; }
+    .crumb { font: 600 16px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#1f2937; }
+    .caret { font: 700 16px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#1f2937; }
+    .muted { font: 12px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#6b7280; }
+    .note  { font: 13px system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; fill:#374151; }
+    .box   { fill:#fff; stroke:#e5e7eb; stroke-width:2; rx:12; }
+    .line  { stroke:#9ca3af; stroke-width:1.5; }
+  </style>
+
+  <rect class="box" x="40" y="40" width="900" height="200" />
+  <text class="title" x="60" y="70">导航与面包屑（工作台 &gt; 项目 &gt; 看板）</text>
+
+  <!-- Breadcrumb row -->
+  <g transform="translate(60, 110)">
+    <text class="crumb" x="0" y="0">工作台</text>
+    <text class="caret" x="90" y="0">▸</text>
+    <text class="crumb" x="112" y="0">项目</text>
+    <text class="caret" x="180" y="0">▸</text>
+    <text class="crumb" x="202" y="0">看板</text>
+  </g>
+
+  <!-- Notes -->
+  <g transform="translate(60, 140)">
+    <circle cx="6" cy="-4" r="3" fill="#6b7280"/>
+    <text class="note" x="16" y="0">点击“工作台”：返回工作台</text>
+  </g>
+
+  <g transform="translate(60, 168)">
+    <circle cx="6" cy="-4" r="3" fill="#6b7280"/>
+    <text class="note" x="16" y="0">点击“项目前的 ▸”：展开“项目切换器”（▸ 旋转为 ▾）</text>
+  </g>
+
+  <g transform="translate(60, 196)">
+    <circle cx="6" cy="-4" r="3" fill="#6b7280"/>
+    <text class="note" x="16" y="0">点击“项目名”：看板页返回项目页；项目页内联重命名（仅项目所有者）</text>
+  </g>
+
+  <g transform="translate(60, 224)">
+    <circle cx="6" cy="-4" r="3" fill="#6b7280"/>
+    <text class="note" x="16" y="0">点击“看板前的 ▸”：展开“看板切换器”（▸ 旋转为 ▾）</text>
+  </g>
+
+  <g transform="translate(60, 252)">
+    <circle cx="6" cy="-4" r="3" fill="#6b7280"/>
+    <text class="note" x="16" y="0">点击“看板名”：内联重命名（仅项目所有者或看板创建者）</text>
+  </g>
+
+</svg>
+

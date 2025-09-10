@@ -40,6 +40,25 @@
    - 打开“更多(…)”菜单时，卡片的操作区不会消失，便于连续操作（焦点在菜单内时保持可见）。
 - 归档看板区：三栏栅格，计数在首次渲染即正确；从归档区“还原”看板后保持展开状态与当前搜索，不会自动收起。
 
+#### 导航与面包屑（Breadcrumbs）
+
+- 结构：工作台 > 项目 > 看板。
+  - 两侧用“面包屑箭头”展开对应的切换器，箭头初始朝右，展开时旋转为朝下（带过渡动画）。
+- 看板页：
+  - 工作台：点击返回“工作台”。
+  - 项目：点击“项目箭头”展开“项目切换器”；点击“项目名”返回项目页（看板列表）。
+  - 看板：点击“看板箭头”展开“看板切换器”；点击“看板名”进行内联重命名（仅当用户为项目所有者或该看板创建者）。
+- 项目页：
+  - 工作台：点击返回“工作台”。
+  - 项目：点击“项目箭头”展开“项目切换器”；点击“项目名”进行内联重命名（仅项目所有者）。
+- 交互细节：
+  - 内联重命名：Enter 保存、Esc 取消、失焦保存；保存后立即更新标题与本地状态；仅在有权限时启用。
+  - 仅“箭头”展开面包屑；名称点击用于“返回”或“内联重命名”（按页面与权限而定）。
+
+示意图：
+
+![面包屑结构与交互](docs/images/breadcrumbs.svg)
+
 #### 看板卡片操作区示意
 
 ![看板卡片操作区示意](docs/images/board-card-actions.svg)
@@ -525,9 +544,8 @@ classDiagram
 ### 星标与置前
 - GET `/api/user-stars/:username` → { stars }
 - POST `/api/user-stars/toggle` { username, projectId, boardName, projectName } → { stars, starred }
-- POST `/api/user-pins/pin` { username, projectId } （首页项目置前）
- - GET `/api/user-board-pins/:username/:projectId` → { pins }（项目内看板置前顺序）
- - POST `/api/user-board-pins/pin` { username, projectId, boardName } → { pins }（置前指定看板至项目内列表最前）
+- POST `/api/user-pins/pin` { username, projectId }（项目置前：仅将该用户的项目顺序移动至最前，不设置置顶分组）
+- POST `/api/user-board-pins/pin` { username, projectId, boardName }（看板置前：将该看板移动到项目看板顺序最前，作为一次性排序）
  - GET `/api/user-star-pins/:username` → { pins }（星标列表的置前顺序，仅影响星标区）
  - POST `/api/user-star-pins/pin` { username, projectId, boardName } → { pins }（置前指定星标看板至星标区最前）
 
