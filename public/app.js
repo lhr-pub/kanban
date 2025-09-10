@@ -853,10 +853,23 @@ async function loadUserProjects() {
 
         if (token !== userProjectsLoadToken) return;
 
+        // 获取置顶分组状态
+        let pinnedProjectsArr = [];
+        try {
+            const presp = await fetch(`/api/user-pinned/${currentUser}`);
+            const pdata = await presp.json().catch(()=>({}));
+            if (presp.ok && pdata && Array.isArray(pdata.pinnedProjects)) pinnedProjectsArr = pdata.pinnedProjects;
+        } catch(_) {}
+        const pinnedSet = new Set(pinnedProjectsArr);
+        const mapById = new Map();
+        results.forEach(r => { if (r && r.project) mapById.set(r.project.id, r); });
+        const pinnedResults = pinnedProjectsArr.map(id => mapById.get(id)).filter(Boolean);
+        const normalResults = results.filter(r => !pinnedSet.has(r.project.id));
+
         const qabFrag = document.createDocumentFragment();
         const plFrag = document.createDocumentFragment();
 
-        results.forEach(({ project, boardsData }) => {
+        const renderOne = ({ project, boardsData }, isPinned) => {
             // 添加快速访问看板
             const archivedSet = new Set(Array.isArray(boardsData.archivedBoards) ? boardsData.archivedBoards : []);
             (Array.isArray(boardsData.boards) ? boardsData.boards : []).filter(n => !archivedSet.has(n)).forEach(boardName => {
@@ -904,14 +917,16 @@ async function loadUserProjects() {
 
             // build DOM incrementally to avoid innerHTML measuring/reflow
             const h3 = document.createElement('h3');
-            h3.innerHTML = `<span class="project-icon" data-icon="folder"></span>${escapeHtml(project.name)}`;
+            h3.innerHTML = `${pinIconMarkup('project', !!isPinned)}${escapeHtml(project.name)}`;
             const info = document.createElement('div');
             info.className = 'project-info';
             info.innerHTML = `邀请码: <span class="invite-code">${project.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(project.inviteCode)}')">复制</button><br>成员: ${project.memberCount}人<br>看板: ${project.boardCount}个<br>创建于: ${new Date(project.created).toLocaleDateString()}`;
             const actions = document.createElement('div');
             actions.className = 'project-card-actions';
             {
-                let actionsHtml = `<button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${project.id}')" title="置前">⇧</button>`;
+                let actionsHtml = '';
+                actionsHtml += `<button class="project-action-btn" onclick="event.stopPropagation(); reorderProjectToEdge('${project.id}', 'first')" title="移到最前">⇧</button>`;
+                actionsHtml += `<button class="project-action-btn" onclick="event.stopPropagation(); reorderProjectToEdge('${project.id}', 'last')" title="移到最后">⇩</button>`;
                 if (currentUser === (project.owner || '')) {
                     actionsHtml += `<button class=\"project-action-btn rename-btn\" onclick=\"event.stopPropagation(); renameProjectFromHome('${project.id}', '${escapeJs(project.name)}')\" title=\"重命名项目\">✎</button>`;
                     actionsHtml += `<button class=\"project-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteProjectFromHome('${project.id}', '${escapeJs(project.name)}')\" title=\"删除项目\">✕</button>`;
@@ -926,9 +941,14 @@ async function loadUserProjects() {
             projectCard.appendChild(info);
             projectCard.appendChild(actions);
             projectCard.appendChild(ownerEl);
-
+            // 绑定悬停显示的 pin 图标点击置顶
+            setupProjectCardPinToggle(projectCard, project.id, !!isPinned);
             plFrag.appendChild(projectCard);
-        });
+        };
+
+        // 置顶分组在前，普通组在后
+        pinnedResults.forEach(r => renderOne(r, true));
+        normalResults.forEach(r => renderOne(r, false));
 
         if (token !== userProjectsLoadToken) return;
         if (quickAccessBoards) {
@@ -1073,7 +1093,7 @@ async function createProject() {
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(newProject.id, newProject.name);
             projectCard.innerHTML = `
-                <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(newProject.name)}</h3>
+                <h3>${pinIconMarkup('project', false)}${escapeHtml(newProject.name)}</h3>
                 <div class="project-info">
                     邀请码: <span class="invite-code">${newProject.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(newProject.inviteCode)}')">复制</button><br>
                     成员: ${newProject.memberCount}人<br>
@@ -1081,14 +1101,18 @@ async function createProject() {
                     创建于: ${new Date(newProject.created).toLocaleDateString()}
                 </div>
                 <div class="project-card-actions">
-                    <button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${newProject.id}')" title="置前">⇧</button>
+                    <button class="project-action-btn" onclick="event.stopPropagation(); reorderProjectToEdge('${newProject.id}', 'first')" title="移到最前">⇧</button>
+                    <button class="project-action-btn" onclick="event.stopPropagation(); reorderProjectToEdge('${newProject.id}', 'last')" title="移到最后">⇩</button>
                     <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
                     <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
                 </div>
                 <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
             `;
+            // setup hover-to-pin icon
+            setupProjectCardPinToggle(projectCard, newProject.id, false);
+
             if (projectsList) {
-                projectsList.insertBefore(projectCard, projectsList.firstChild);
+                insertProjectCardAtCorrectPosition(projectsList, projectCard);
                 renderIconsInDom(projectCard);
             }
 
@@ -1214,7 +1238,18 @@ async function loadProjectBoards() {
             return;
         }
 
-        (data.boards || []).forEach(boardName => {
+        // 获取当前项目置顶看板顺序
+        let pinnedBoardsArr = [];
+        try {
+            const presp = await fetch(`/api/user-pinned/${currentUser}`);
+            const pdata = await presp.json().catch(()=>({}));
+            if (presp.ok && pdata && pdata.pinnedBoards && Array.isArray(pdata.pinnedBoards[currentProjectId])) pinnedBoardsArr = pdata.pinnedBoards[currentProjectId];
+        } catch(_) {}
+        const setBoards = new Set(Array.isArray(data.boards) ? data.boards : []);
+        const orderedPinned = pinnedBoardsArr.filter(n => setBoards.has(n));
+        const normalList = (data.boards || []).filter(n => !orderedPinned.includes(n));
+
+        const renderBoard = (boardName, isPinned) => {
             const boardCard = document.createElement('div');
             boardCard.className = 'quick-board-card board-card-with-actions';
             boardCard.onclick = () => selectBoard(boardName);
@@ -1223,32 +1258,32 @@ async function loadProjectBoards() {
             const canManage = (currentUser && (currentUser === window.currentProjectOwner || currentUser === owner));
             const isStar = isBoardStarred(currentProjectId, boardName);
 
-            const icon = document.createElement('div');
-            icon.className = 'board-icon';
-            icon.style.display = 'none';
-
             const details = document.createElement('div');
             details.className = 'board-details';
-            details.innerHTML = `<h4>${escapeHtml(boardName)}</h4><span class="board-project">${escapeHtml(currentProjectName)}</span>`;
+            details.innerHTML = `<h4>${pinIconMarkup('board', !!isPinned)}${escapeHtml(boardName)}</h4><span class="board-project">${escapeHtml(currentProjectName)}</span>`;
 
             const ownerEl = owner ? (()=>{ const d=document.createElement('div'); d.className='card-owner'; d.textContent=`创建者：${owner}`; return d; })() : null;
 
             const actions = document.createElement('div');
             actions.className = 'board-card-actions';
             actions.innerHTML = `
-                <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')" title="置前">⇧</button>
+                <button class="board-action-btn" onclick="event.stopPropagation(); reorderBoardToEdge('${currentProjectId}', '${escapeJs(boardName)}', 'first')" title="移到最前">⇧</button>
+                <button class="board-action-btn" onclick="event.stopPropagation(); reorderBoardToEdge('${currentProjectId}', '${escapeJs(boardName)}', 'last')" title="移到最后">⇩</button>
                 <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                 ${canManage ? `<button class=\"board-action-btn more-btn\" onclick=\"event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)\" title=\"更多操作\">⋮</button>` : ''}
                 ${canManage ? `<button class=\"board-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')\" title=\"删除看板\">✕</button>` : ''}
             `;
 
-            boardCard.appendChild(icon);
             boardCard.appendChild(details);
             if (ownerEl) boardCard.appendChild(ownerEl);
             boardCard.appendChild(actions);
+            setupBoardCardPinToggle(boardCard, currentProjectId, boardName, !!isPinned);
 
             frag.appendChild(boardCard);
-        });
+        };
+
+        orderedPinned.forEach(name => renderBoard(name, true));
+        normalList.forEach(name => renderBoard(name, false));
 
         // Archived boards section
         if (window.currentArchivedBoards && window.currentArchivedBoards.length) {
@@ -1356,6 +1391,7 @@ async function loadProjectBoards() {
         }
 
         boardList.replaceChildren(frag);
+        try { renderIconsInDom(boardList); } catch(_){}
         // 延迟揭示：完成替换后再显示，避免用户看到占位跳帧
         try {
             if (boardSelectPendingShow) {
@@ -1441,21 +1477,25 @@ async function createBoard() {
             boardCard.className = 'quick-board-card board-card-with-actions';
             boardCard.onclick = () => selectBoard(boardName);
             boardCard.innerHTML = `
-                <div class="board-icon" style="display:none"></div>
                 <div class="board-details">
-                    <h4>${escapeHtml(boardName)}</h4>
+                    <h4>${pinIconMarkup('board', false)}${escapeHtml(boardName)}</h4>
                     <span class="board-project">${escapeHtml(currentProjectName)}</span>
                 </div>
                 ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
                 <div class="board-card-actions">
-                    <button class="board-action-btn pin-btn" onclick="event.stopPropagation(); pinBoardToFront('${currentProjectId}', '${escapeJs(boardName)}')" title="置前">⇧</button>
+                    <button class="board-action-btn" onclick="event.stopPropagation(); reorderBoardToEdge('${currentProjectId}', '${escapeJs(boardName)}', 'first')" title="移到最前">⇧</button>
+                    <button class="board-action-btn" onclick="event.stopPropagation(); reorderBoardToEdge('${currentProjectId}', '${escapeJs(boardName)}', 'last')" title="移到最后">⇩</button>
                     <button class="board-action-btn star-btn ${isStar ? 'active' : ''}" data-project-id="${currentProjectId}" data-board-name="${escapeHtml(boardName)}" onclick="event.stopPropagation(); toggleBoardStarFromHome('${currentProjectId}', '${escapeJs(boardName)}', '${escapeJs(currentProjectName)}', this)" title="${isStar ? '取消星标' : '加星'}">★</button>
                     ${canManage ? `<button class="board-action-btn more-btn" onclick="event.stopPropagation(); openBoardActionsMenu('project','${currentProjectId}','${escapeJs(boardName)}', this)" title="更多操作">⋮</button>` : ''}
                     ${canManage ? `<button class="board-action-btn delete-btn" onclick="event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')" title="删除看板">✕</button>` : ''}
                 </div>
             `;
+            // setup hover-to-pin icon on board title
+            setupBoardCardPinToggle(boardCard, currentProjectId, boardName, false);
+
             if (boardList) {
-                boardList.insertBefore(boardCard, boardList.firstChild);
+                insertBoardCardAtCorrectPosition(boardList, boardCard);
+                try { renderIconsInDom(boardCard); } catch(_){}
             }
 
             uiToast('看板创建成功！','success');
@@ -4192,7 +4232,9 @@ const Icon = {
     boards: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h4v14H4zM10 5h4v10h-4zM16 5h4v7h-4z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>',
     folder: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h5l2 2h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     plus: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-    link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 8.5a4 4 0 0 1 4-4h2a4 4 0 1 1 0 8h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 15.5a4 4 0 0 1-4 4H8a4 4 0 1 1 0-8h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 8.5a4 4 0 0 1 4-4h2a4 4 0 1 1 0 8h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 15.5a4 4 0 0 1-4 4H8a4 4 0 1 1 0-8h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8l-1 5 3 3v2H6v-2l3-3-1-5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 14v6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    'pin-off': '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 4h8l-1 5 3 3v2H9M12 14v6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>'
 };
 
 function renderIconsInDom(root=document) {
@@ -4755,7 +4797,12 @@ function renameProjectFromHome(projectId, currentName) {
                             const on2 = delBtn ? (delBtn.getAttribute('onclick') || '') : '';
                             if (on1.includes("'" + projectId + "'") || on2.includes("'" + projectId + "'")) {
                                 const h3 = card.querySelector('h3');
-                                if (h3) { h3.innerHTML = `<span class="project-icon" data-icon="folder"></span>${escapeHtml(newName)}`; try { renderIconsInDom(h3); } catch (e) {} }
+                                if (h3) {
+                                    const wasPinned = !!card.querySelector('h3 .pin-wrap.pinned');
+                                    h3.innerHTML = `${pinIconMarkup('project', wasPinned)}${escapeHtml(newName)}`;
+                                    try { renderIconsInDom(card); } catch(_){}
+                                    try { setupProjectCardPinToggle(card, projectId, wasPinned); } catch(_){}
+                                }
                                 if (renameBtn) renameBtn.setAttribute('onclick', `event.stopPropagation(); renameProjectFromHome('${projectId}', '${escapeJs(newName)}')`);
                                 card.onclick = () => selectProject(projectId, newName);
                             }
@@ -4865,6 +4912,187 @@ async function pinStarBoardToFront(projectId, boardName){
     } catch(e) {
         uiToast('置前失败','error');
     }
+}
+
+// === Pin Group helpers (toggle + reorder) ===
+function setupProjectCardPinToggle(card, projectId, initiallyPinned){
+    try {
+        const wrap = card.querySelector('h3 .pin-wrap');
+        if (!wrap) return;
+        let isPinned = !!initiallyPinned;
+        const base = wrap.querySelector('.icon-base');
+        const hover = wrap.querySelector('.icon-hover');
+        const apply = () => {
+            wrap.classList.toggle('pinned', isPinned);
+            if (base) base.setAttribute('data-icon', isPinned ? 'pin' : 'folder');
+            if (hover) hover.setAttribute('data-icon', isPinned ? 'pin-off' : 'pin');
+            try { renderIconsInDom(wrap); } catch(_){}
+        };
+        apply();
+        const stop = (e)=>{ try{e.stopPropagation();}catch(_){} try{e.preventDefault();}catch(_){} };
+        const activate = async (e)=>{
+            stop(e);
+            try {
+                const resp = await fetch('/api/toggle-pin-project', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ username: currentUser, projectId, pinned: !isPinned })
+                });
+                const rj = await resp.json().catch(()=>({}));
+                if (resp.ok){
+                    isPinned = !isPinned;
+                    apply();
+                    try { await loadUserProjects(); } catch(_){ }
+                    uiToast(isPinned ? '已置顶' : '已取消置顶','success');
+                } else { uiToast(rj.message || '操作失败','error'); }
+            } catch(_) { uiToast('网络错误','error'); }
+        };
+        ['mousedown','mouseup','pointerdown','pointerup','touchstart'].forEach(evt => wrap.addEventListener(evt, stop, true));
+        wrap.addEventListener('click', activate);
+        wrap.setAttribute('tabindex','0'); wrap.setAttribute('role','button');
+        wrap.addEventListener('keydown', (e)=>{ if (e.key==='Enter' || e.key===' ') activate(e); });
+    } catch(_){}
+}
+async function toggleProjectPinned(projectId, el){
+    if (!currentUser || !projectId) return;
+    try {
+        // Infer current state from button class if provided
+        const isPinned = !!(el && el.classList && el.classList.contains('active'));
+        const resp = await fetch('/api/toggle-pin-project', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, projectId, pinned: !isPinned })
+        });
+        const result = await resp.json().catch(()=>({}));
+        if (resp.ok){
+            try { await loadUserProjects(); } catch(_){}
+            uiToast(!isPinned ? '已置顶' : '已取消置顶','success');
+        } else {
+            uiToast(result.message || '操作失败','error');
+        }
+    } catch(e) { uiToast('网络错误','error'); }
+}
+
+async function reorderProjectToEdge(projectId, where){
+    if (!currentUser || !projectId || !where) return;
+    try {
+        const resp = await fetch('/api/reorder-project', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, projectId, where })
+        });
+        const result = await resp.json().catch(()=>({}));
+        if (resp.ok){
+            try { await loadUserProjects(); } catch(_){}
+            uiToast(where === 'first' ? '已移到最前' : '已移到最后','success');
+        } else { uiToast(result.message || '调整失败','error'); }
+    } catch(e) { uiToast('网络错误','error'); }
+}
+
+async function toggleBoardPinned(projectId, boardName, el){
+    if (!currentUser || !projectId || !boardName) return;
+    try {
+        const isPinned = !!(el && el.classList && el.classList.contains('active'));
+        const resp = await fetch('/api/toggle-pin-board', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, projectId, boardName, pinned: !isPinned })
+        });
+        const result = await resp.json().catch(()=>({}));
+        if (resp.ok){
+            try { if (!boardSelectPage.classList.contains('hidden')) await loadProjectBoards(); } catch(_){}
+            try { if (!projectPage.classList.contains('hidden')) await loadUserProjects(); } catch(_){}
+            uiToast(!isPinned ? '已置顶' : '已取消置顶','success');
+        } else { uiToast(result.message || '操作失败','error'); }
+    } catch(e) { uiToast('网络错误','error'); }
+}
+
+async function reorderBoardToEdge(projectId, boardName, where){
+    if (!currentUser || !projectId || !boardName || !where) return;
+    try {
+        const resp = await fetch('/api/reorder-board', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, projectId, boardName, where })
+        });
+        const result = await resp.json().catch(()=>({}));
+        if (resp.ok){
+            try { if (!boardSelectPage.classList.contains('hidden')) await loadProjectBoards(); } catch(_){}
+            try { if (!projectPage.classList.contains('hidden')) await loadUserProjects(); } catch(_){}
+            uiToast(where === 'first' ? '已移到最前' : '已移到最后','success');
+        } else { uiToast(result.message || '调整失败','error'); }
+    } catch(e) { uiToast('网络错误','error'); }
+}
+
+// Insert a new project card right after pinned group
+function insertProjectCardAtCorrectPosition(container, card){
+    try {
+        let anchor = null;
+        const icons = container.querySelectorAll('.project-card .pin-wrap.pinned');
+        icons.forEach(icon => {
+            const c = icon.closest('.project-card');
+            if (c && c.parentNode === container) anchor = c; // last one wins
+        });
+        if (anchor && anchor.nextSibling) {
+            container.insertBefore(card, anchor.nextSibling);
+        } else if (anchor) {
+            container.appendChild(card);
+        } else {
+            container.insertBefore(card, container.firstChild);
+        }
+    } catch(_) { container.appendChild(card); }
+}
+
+// Insert a new board card right after pinned group
+function insertBoardCardAtCorrectPosition(container, card){
+    try {
+        let anchor = null;
+        const icons = container.querySelectorAll('.quick-board-card .pin-wrap.pinned');
+        icons.forEach(icon => {
+            const c = icon.closest('.quick-board-card');
+            if (c && c.parentNode === container) anchor = c;
+        });
+        if (anchor && anchor.nextSibling) {
+            container.insertBefore(card, anchor.nextSibling);
+        } else if (anchor) {
+            container.appendChild(card);
+        } else {
+            container.insertBefore(card, container.firstChild);
+        }
+    } catch(_) { container.appendChild(card); }
+}
+
+function setupBoardCardPinToggle(card, projectId, boardName, initiallyPinned){
+    try {
+        const wrap = card.querySelector('h4 .pin-wrap');
+        if (!wrap) return;
+        let isPinned = !!initiallyPinned;
+        const base = wrap.querySelector('.icon-base');
+        const hover = wrap.querySelector('.icon-hover');
+        const apply = () => {
+            wrap.classList.toggle('pinned', isPinned);
+            if (base) base.setAttribute('data-icon', isPinned ? 'pin' : 'boards');
+            if (hover) hover.setAttribute('data-icon', isPinned ? 'pin-off' : 'pin');
+            try { renderIconsInDom(wrap); } catch(_){}
+        };
+        apply();
+        const stop = (e)=>{ try{e.stopPropagation();}catch(_){} try{e.preventDefault();}catch(_){} };
+        const activate = async (e)=>{
+            stop(e);
+            try {
+                const resp = await fetch('/api/toggle-pin-board', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ username: currentUser, projectId, boardName, pinned: !isPinned })
+                });
+                const rj = await resp.json().catch(()=>({}));
+                if (resp.ok){
+                    isPinned = !isPinned;
+                    apply();
+                    try { await loadProjectBoards(); } catch(_){ }
+                    uiToast(isPinned ? '已置顶' : '已取消置顶','success');
+                } else { uiToast(rj.message || '操作失败','error'); }
+            } catch(_) { uiToast('网络错误','error'); }
+        };
+        ['mousedown','mouseup','pointerdown','pointerup','touchstart'].forEach(evt => wrap.addEventListener(evt, stop, true));
+        wrap.addEventListener('click', activate);
+        wrap.setAttribute('tabindex','0'); wrap.setAttribute('role','button');
+        wrap.addEventListener('keydown', (e)=>{ if (e.key==='Enter' || e.key===' ') activate(e); });
+    } catch(_){}
 }
 
 // 删除项目（项目选择页头部按钮）
@@ -5896,7 +6124,7 @@ async function acceptInvite(projectId, projectName) {
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(newProject.id, newProject.name);
             projectCard.innerHTML = `
-                <h3><span class="project-icon" data-icon="folder"></span>${escapeHtml(newProject.name)}</h3>
+                <h3><span class=\"pin-toggle-icon\" data-icon=\"folder\"></span>${escapeHtml(newProject.name)}</h3>
                 <div class="project-info">
                     邀请码: <span class="invite-code">${newProject.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(newProject.inviteCode)}')">复制</button><br>
                     成员: ${newProject.memberCount}人<br>
@@ -5904,14 +6132,18 @@ async function acceptInvite(projectId, projectName) {
                     创建于: ${new Date(newProject.created).toLocaleDateString()}
                 </div>
                 <div class="project-card-actions">
-                    <button class="project-action-btn pin-btn" onclick="event.stopPropagation(); pinProjectToFront('${newProject.id}')" title="置前">⇧</button>
+                    <button class="project-action-btn" onclick="event.stopPropagation(); reorderProjectToEdge('${newProject.id}', 'first')" title="移到最前">⇧</button>
+                    <button class="project-action-btn" onclick="event.stopPropagation(); reorderProjectToEdge('${newProject.id}', 'last')" title="移到最后">⇩</button>
                     <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
                     <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
                 </div>
                 <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
             `;
+            // setup hover-to-pin icon
+            setupProjectCardPinToggle(projectCard, newProject.id, false);
+
             if (projectsList) {
-                projectsList.insertBefore(projectCard, projectsList.firstChild);
+                insertProjectCardAtCorrectPosition(projectsList, projectCard);
                 renderIconsInDom(projectCard);
             }
         } else uiToast(result.message || '操作失败','error');
@@ -6418,6 +6650,12 @@ function renderStarredBoards(){
 }
 function toggleBoardStarFromHome(projectId, boardName, projectName, btn){
     toggleBoardStar(projectId, boardName, projectName, btn);
+}
+
+function pinIconMarkup(kind, isPinned){
+    const base = isPinned ? 'pin' : (kind === 'project' ? 'folder' : 'boards');
+    const hover = isPinned ? 'pin-off' : 'pin';
+    return `<span class="pin-wrap ${isPinned ? 'pinned' : ''}"><span class="icon-base" data-icon="${base}"></span><span class="icon-hover" data-icon="${hover}"></span></span>`;
 }
 
 function syncStarButtons(){

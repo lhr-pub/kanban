@@ -703,6 +703,146 @@ app.get('/api/user-projects/:username', (req, res) => {
     res.json(userProjects);
 });
 
+// === Pin Groups APIs (projects + boards) ===
+// Fetch user's pin groups (projects and boards map)
+app.get('/api/user-pinned/:username', (req, res) => {
+    const { username } = req.params;
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects.slice() : [];
+    const pinnedBoards = user.pinnedBoards && typeof user.pinnedBoards === 'object' ? JSON.parse(JSON.stringify(user.pinnedBoards)) : {};
+    return res.json({ pinnedProjects, pinnedBoards });
+});
+
+// Toggle project pinned state
+app.post('/api/toggle-pin-project', (req, res) => {
+    const { username, projectId, pinned } = req.body || {};
+    if (!username || !projectId || typeof pinned !== 'boolean') {
+        return res.status(400).json({ message: '缺少参数' });
+    }
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[username];
+    const project = projects[projectId];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    const isMember = Array.isArray(project.members) && project.members.includes(username);
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以置顶项目' });
+    user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
+    const idx = user.pinnedProjects.indexOf(projectId);
+    if (pinned) {
+        if (idx === -1) user.pinnedProjects.unshift(projectId);
+    } else {
+        if (idx !== -1) user.pinnedProjects.splice(idx, 1);
+    }
+    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ message: pinned ? '已置顶' : '已取消置顶', pinnedProjects: user.pinnedProjects.slice() });
+});
+
+// Toggle board pinned state (within a project)
+app.post('/api/toggle-pin-board', (req, res) => {
+    const { username, projectId, boardName, pinned } = req.body || {};
+    if (!username || !projectId || !boardName || typeof pinned !== 'boolean') {
+        return res.status(400).json({ message: '缺少参数' });
+    }
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[username];
+    const project = projects[projectId];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    const isMember = Array.isArray(project.members) && project.members.includes(username);
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以置顶看板' });
+    const exists = (Array.isArray(project.boards) && project.boards.includes(boardName)) || (Array.isArray(project.archivedBoards) && project.archivedBoards.includes(boardName));
+    if (!exists) return res.status(404).json({ message: '看板不存在' });
+    user.pinnedBoards = user.pinnedBoards && typeof user.pinnedBoards === 'object' ? user.pinnedBoards : {};
+    user.pinnedBoards[projectId] = Array.isArray(user.pinnedBoards[projectId]) ? user.pinnedBoards[projectId] : [];
+    const arr = user.pinnedBoards[projectId];
+    const idx = arr.indexOf(boardName);
+    if (pinned) {
+        if (idx === -1) arr.unshift(boardName);
+    } else {
+        if (idx !== -1) arr.splice(idx, 1);
+    }
+    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ message: pinned ? '已置顶' : '已取消置顶', pinnedBoards: { [projectId]: arr.slice() } });
+});
+
+// Reorder project to first/last within its group (pinned or normal)
+app.post('/api/reorder-project', (req, res) => {
+    const { username, projectId, where } = req.body || {};
+    if (!username || !projectId || !where || !['first','last'].includes(where)) {
+        return res.status(400).json({ message: '缺少参数' });
+    }
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[username];
+    const project = projects[projectId];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    const isMember = Array.isArray(project.members) && project.members.includes(username);
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以调整顺序' });
+    user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
+    user.projects = Array.isArray(user.projects) ? user.projects : [];
+    const targetArr = user.pinnedProjects.includes(projectId) ? user.pinnedProjects : user.projects;
+    const idx = targetArr.indexOf(projectId);
+    if (idx === -1) return res.status(404).json({ message: '项目不在当前分组' });
+    targetArr.splice(idx, 1);
+    if (where === 'first') targetArr.unshift(projectId); else targetArr.push(projectId);
+    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
+    return res.json({ message: '已调整顺序' });
+});
+
+// Reorder board to first/last within its group (pinned or normal)
+app.post('/api/reorder-board', (req, res) => {
+    const { username, projectId, boardName, where } = req.body || {};
+    if (!username || !projectId || !boardName || !where || !['first','last'].includes(where)) {
+        return res.status(400).json({ message: '缺少参数' });
+    }
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[username];
+    const project = projects[projectId];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    if (!project) return res.status(404).json({ message: '项目不存在' });
+    const isMember = Array.isArray(project.members) && project.members.includes(username);
+    if (!isMember) return res.status(403).json({ message: '只有项目成员可以调整顺序' });
+    const inProject = Array.isArray(project.boards) && project.boards.includes(boardName);
+    const inArchived = Array.isArray(project.archivedBoards) && project.archivedBoards.includes(boardName);
+    if (!inProject && !inArchived) return res.status(404).json({ message: '看板不存在' });
+    user.pinnedBoards = user.pinnedBoards && typeof user.pinnedBoards === 'object' ? user.pinnedBoards : {};
+    const arrPinned = Array.isArray(user.pinnedBoards[projectId]) ? user.pinnedBoards[projectId] : [];
+    const isPinned = arrPinned.includes(boardName);
+    if (isPinned) {
+        const idx = arrPinned.indexOf(boardName);
+        arrPinned.splice(idx, 1);
+        if (where === 'first') arrPinned.unshift(boardName); else arrPinned.push(boardName);
+        user.pinnedBoards[projectId] = arrPinned;
+        if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
+        return res.json({ message: '已调整顺序' });
+    } else {
+        // reorder inside normal group (project.boards)
+        project.boards = Array.isArray(project.boards) ? project.boards : [];
+        const idx = project.boards.indexOf(boardName);
+        if (idx === -1) return res.status(404).json({ message: '仅支持在未归档的看板分组内移动' });
+        project.boards.splice(idx, 1);
+        if (where === 'first') project.boards.unshift(boardName); else project.boards.push(boardName);
+        if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
+        return res.json({ message: '已调整顺序' });
+    }
+});
+// === End Pin Groups APIs ===
+
 // === User Stars (server-side persistence) ===
 app.get('/api/user-stars/:username', (req, res) => {
     const { username } = req.params;
