@@ -4838,60 +4838,7 @@ function renameProjectFromHome(projectId, currentName) {
 }
 
 // 置前项目（首页项目卡片按钮）
-async function pinProjectToFront(projectId) {
-    if (!currentUser || !projectId) return;
-    try {
-        const resp = await fetch('/api/user-pins/pin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: currentUser, projectId })
-        });
-        const result = await resp.json().catch(() => ({}));
-        if (resp.ok) {
-            await loadUserProjects();
-            uiToast('已置前', 'success');
-        } else {
-            uiToast(result.message || '置前失败', 'error');
-        }
-    } catch (e) {
-        console.error('Pin project error:', e);
-        uiToast('置前失败', 'error');
-    }
-}
-
-// === User pinned boards helpers ===
-async function fetchUserBoardPins(projectId){
-    return [];
-}
-function orderBoardsByPins(boards, pins){
-    const list = Array.isArray(boards) ? boards.slice() : [];
-    if (!Array.isArray(pins) || pins.length === 0) return list;
-    const set = new Set(list);
-    const ahead = pins.filter(n => set.has(n));
-    const rest = list.filter(n => !ahead.includes(n));
-    return ahead.concat(rest);
-}
-async function pinBoardToFront(projectId, boardName){
-    if (!currentUser || !projectId || !boardName) return;
-    try {
-        const resp = await fetch('/api/user-board-pins/pin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: currentUser, projectId, boardName })
-        });
-        const result = await resp.json().catch(()=>({}));
-        if (resp.ok) {
-            // Refresh both homepage and project boards if visible
-            try { if (!projectPage.classList.contains('hidden')) loadUserProjects(); } catch(e){}
-            try { if (!boardSelectPage.classList.contains('hidden') && String(currentProjectId) === String(projectId)) loadProjectBoards(); } catch(e){}
-            uiToast('已置前','success');
-        } else {
-            uiToast(result.message || '置前失败','error');
-        }
-    } catch(e) {
-        uiToast('置前失败','error');
-    }
-}
+// Legacy pin-to-front helpers removed (superseded by pin groups UI)
 
 // === Starred boards independent pin order ===
 async function pinStarBoardToFront(projectId, boardName){
@@ -4952,24 +4899,7 @@ function setupProjectCardPinToggle(card, projectId, initiallyPinned){
         wrap.addEventListener('keydown', (e)=>{ if (e.key==='Enter' || e.key===' ') activate(e); });
     } catch(_){}
 }
-async function toggleProjectPinned(projectId, el){
-    if (!currentUser || !projectId) return;
-    try {
-        // Infer current state from button class if provided
-        const isPinned = !!(el && el.classList && el.classList.contains('active'));
-        const resp = await fetch('/api/toggle-pin-project', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: currentUser, projectId, pinned: !isPinned })
-        });
-        const result = await resp.json().catch(()=>({}));
-        if (resp.ok){
-            try { await loadUserProjects(); } catch(_){}
-            uiToast(!isPinned ? '已置顶' : '已取消置顶','success');
-        } else {
-            uiToast(result.message || '操作失败','error');
-        }
-    } catch(e) { uiToast('网络错误','error'); }
-}
+// toggleProjectPinned removed (handled by setupProjectCardPinToggle)
 
 async function reorderProjectToEdge(projectId, where){
     if (!currentUser || !projectId || !where) return;
@@ -4986,22 +4916,7 @@ async function reorderProjectToEdge(projectId, where){
     } catch(e) { uiToast('网络错误','error'); }
 }
 
-async function toggleBoardPinned(projectId, boardName, el){
-    if (!currentUser || !projectId || !boardName) return;
-    try {
-        const isPinned = !!(el && el.classList && el.classList.contains('active'));
-        const resp = await fetch('/api/toggle-pin-board', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: currentUser, projectId, boardName, pinned: !isPinned })
-        });
-        const result = await resp.json().catch(()=>({}));
-        if (resp.ok){
-            try { if (!boardSelectPage.classList.contains('hidden')) await loadProjectBoards(); } catch(_){}
-            try { if (!projectPage.classList.contains('hidden')) await loadUserProjects(); } catch(_){}
-            uiToast(!isPinned ? '已置顶' : '已取消置顶','success');
-        } else { uiToast(result.message || '操作失败','error'); }
-    } catch(e) { uiToast('网络错误','error'); }
-}
+// toggleBoardPinned removed (handled by setupBoardCardPinToggle)
 
 async function reorderBoardToEdge(projectId, boardName, where){
     if (!currentUser || !projectId || !boardName || !where) return;
@@ -6124,7 +6039,7 @@ async function acceptInvite(projectId, projectName) {
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(newProject.id, newProject.name);
             projectCard.innerHTML = `
-                <h3><span class=\"pin-toggle-icon\" data-icon=\"folder\"></span>${escapeHtml(newProject.name)}</h3>
+                <h3>${pinIconMarkup('project', false)}${escapeHtml(newProject.name)}</h3>
                 <div class="project-info">
                     邀请码: <span class="invite-code">${newProject.inviteCode}</span> <button class="btn-secondary" onclick="event.stopPropagation(); copyCode('${escapeJs(newProject.inviteCode)}')">复制</button><br>
                     成员: ${newProject.memberCount}人<br>

@@ -1584,7 +1584,6 @@ h1 {
 /* 项目卡片操作按钮（右上角悬浮显示） */
 .project-card-with-actions { position: relative; }
 .board-card-with-actions { position: relative; }
-.has-left-pin { position: relative; padding-left: 3rem; }
 .project-card-actions {
     display: none;
     position: absolute;
@@ -1670,33 +1669,10 @@ h1 {
 .pin-badge svg { width: 14px; height: 14px; }
 
 /* Left pin toggle button on cards */
-.pin-left-btn {
-    position: absolute;
-    top: 0.6rem;
-    left: 0.6rem;
-    width: 24px;
-    height: 24px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    background: transparent;
-    color: #9ca3af; /* gray-400 */
-    box-shadow: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: var(--transition);
-    z-index: 1;
-}
-.pin-left-btn svg { width: 16px; height: 16px; }
-.pin-left-btn.active { color:#16a34a; }
-.has-left-pin:hover .pin-left-btn { background: rgba(255,255,255,0.95); border-color: rgba(0,0,0,0.08); box-shadow: 0 2px 6px rgba(0,0,0,0.08); color:#374151; }
-.has-left-pin:hover .pin-left-btn.active { background: rgba(22,163,74,0.12); color:#15803d; border-color: rgba(22,163,74,0.35); }
-.pin-left-btn:hover { transform: translateY(-1px) scale(1.03); }
+/* removed old left-floating pin button styles */
 
 /* Mini icon on board title */
-.board-details h4 .board-mini-icon { display:none; }
-.board-details h4 .board-mini-icon.pin-on { color:#16a34a; }
+/* removed old mini icon class */
 
 .project-card h3, .board-card h3 {
     margin: 0 0 0.5rem 0;
