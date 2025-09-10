@@ -2,6 +2,18 @@
 
 一个现代化的多用户实时协作看板工具，专为团队项目管理而设计。支持项目/成员管理、邮件验证登录、实时协作、Trello 式卡组与卡片、稳定的内联编辑、拖拽排序、归档与导入导出、星标看板与“邀请管理”，并具备无闪烁的高质量交互体验。
 
+## 目录（Contents）
+
+- [最近改动要点（交互对齐）](#recent-changes)
+- [🗺️ Roadmap（规划）](#roadmap)
+- [🗂️ 项目与看板](#projects-boards)
+- [导航与面包屑（Breadcrumbs）](#breadcrumbs)
+- [置顶（Pin Group）设计草案（即将实现）](#pin-group)
+- [星标与置前](#stars-move-front)
+- [🧩 设计图（Architecture & Pages）](#design)
+- [Mermaid（文本版图示）](#mermaid)
+- [🧾 样式索引（Style Index）](#style-index)
+
 ## ✨ 主要特性
 
 ### 🎯 实时协作与编辑占用
@@ -23,6 +35,7 @@
   - 被移出项目时客户端自动退出并返回首页
 
 ### 🗂️ 项目与看板
+<a id="projects-boards"></a>
 - 首页优先展示项目，提供“星标看板”与“快速访问看板”区
 - 创建/重命名/删除 项目与看板（遵守所有权规则）
 - 看板切换器（导航栏标题可点）：
@@ -41,6 +54,7 @@
 - 归档看板区：三栏栅格，计数在首次渲染即正确；从归档区“还原”看板后保持展开状态与当前搜索，不会自动收起。
 
 #### 导航与面包屑（Breadcrumbs）
+<a id="breadcrumbs"></a>
 
 - 结构：工作台 > 项目 > 看板。
   - 两侧用“面包屑箭头”展开对应的切换器，箭头初始朝右，展开时旋转为朝下（带过渡动画）。
@@ -59,11 +73,48 @@
 
 ![面包屑结构与交互](docs/images/breadcrumbs.svg)
 
+#### 置顶（Pin Group）设计草案（即将实现）
+<a id="pin-group"></a>
+
+- 目标：在首页与项目页的卡片列表中，新增“置顶分组”，用于将重要的项目/看板固定在列表上方；其余为“普通分组”。
+- 交互：
+  - 置顶/取消置顶：
+    - 左侧新增“置顶”按钮（pin 图标）。点击后，卡片进入/离开置顶分组；置顶分组内的卡片 pin 图标常亮。
+  - 排序移动（组内）：
+    - 保留“移到最前/移到最后”按钮，仅在当前分组（置顶或普通）内调整顺序。
+  - 新建卡片位置：
+    - 新建项目/看板进入“普通分组”，位置在置顶分组之后，完全保留当前组内插入策略（通常是最前）。
+- 数据模型建议：
+  - 项目置顶：在用户维度存储 `users[username].pinnedProjects: string[]`（仅保存置顶的项目 id，顺序表示分组内顺序）。
+  - 看板置顶（项目内）：
+    - 选项A（用户维度）：`users[username].pinnedBoards: Record<projectId, string[]>`（每个项目下置顶的看板名称数组）
+    - 选项B（项目维度）：`projects[projectId].pinnedBoards: string[]`（全员共享置顶，看板创建者或项目所有者可置顶，视需求而定）
+  - 读取顺序：
+    - 列表 = 置顶分组（pinned 顺序） + 普通分组（原有顺序，去除已置顶项）
+  - 移动逻辑：
+    - “置顶”/“取消置顶”：在 pinned 数组中插入/删除，或从普通组移出/恢复。
+    - “移到最前/最后”：只在 pinned 或普通数组内移动。
+- API 草案：
+  - 项目：
+    - POST `/api/user-pins/pin` { username, projectId } → 将项目加入用户置顶分组（并可选地在原 projects 内保留位置，以便取消置顶后回到原序；实现时可选）
+    - POST `/api/user-pins/unpin` { username, projectId }
+    - POST `/api/user-pins/reorder` { username, projectId, to: 'front'|'back' }
+  - 看板：
+    - POST `/api/user-board-pins/pin` { username, projectId, boardName }
+    - POST `/api/user-board-pins/unpin` { username, projectId, boardName }
+    - POST `/api/user-board-pins/reorder` { username, projectId, boardName, to: 'front'|'back' }
+- 前端渲染：
+  - 首页项目列表：渲染置顶分组（卡片 pin 常亮） + 普通分组；两组间有组标题或轻微分隔。
+  - 项目页看板列表：同上（根据是否采用用户维度或项目维度决定看板置顶的范围）。
+  - 现有“移到最前/最后”按钮保留，但仅在分组内生效；“置顶”按钮为分组切换。
+
+
 #### 看板卡片操作区示意
 
 ![看板卡片操作区示意](docs/images/board-card-actions.svg)
 
 ## 🧩 设计图（Architecture & Pages）
+<a id="design"></a>
 
 ### 架构图
 
@@ -106,6 +157,7 @@
 ![加入项目审批](docs/images/seq-join-approval.svg)
 
 ### Mermaid（文本版图示）
+<a id="mermaid"></a>
 
 > 若你的渲染环境支持 Mermaid，可直接查看下列文本版图示；否则请参考上面的 SVG 图片版本。
 
@@ -389,6 +441,7 @@ classDiagram
   - 归档页任务：单列，与普通卡片样式一致
 
 ## 🧾 样式索引（Style Index）
+<a id="style-index"></a>
 
 主要样式文件：`public/style.css`
 
@@ -750,3 +803,20 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## 📄 许可
 MIT
+### 最近改动要点（交互对齐）
+
+- 命名：主页统一称为“工作台”。
+- 面包屑职责统一：
+  - 仅“箭头 ▸/▾”用于展开对应的切换器；
+  - 名称用于“返回”（项目名返回项目页、工作台返回首页）或“内联重命名”（看板名/项目名，需权限）。
+- 内联重命名：
+  - 看板名：仅项目所有者或看板创建者；Enter 保存、Esc 取消、失焦保存；刷新后也可立即编辑；不会误触发新增卡片输入。
+  - 项目名：仅项目所有者；同上交互规则。
+- 置前语义（Move to front）：
+  - 项目置前：仅将该项目在用户的 projects 顺序移动到最前；不是“置顶分组”。
+  - 看板置前：仅将该看板在项目 boards 顺序移动到最前；是项目全局顺序。
+- 导航对齐：看板页导航与项目页在桌面断点（≥1024px）使用相同容器宽度（1200）与左右间距（2rem），底部边框与间距一致；箭头 hover 位移、展开旋转动画一致。
+## 🗺️ Roadmap（规划）
+
+- 置顶（Pin Group）：见下文“置顶（Pin Group）设计草案（即将实现）”。
+  - 引入置顶分组及 pin 常亮、分组内排序（移到最前/最后）、新建卡片进入普通分组等。
