@@ -2908,9 +2908,24 @@ body {
   box-shadow: 0px 1px 1px #091e4240, 0px 0px 1px #091e424f !important;
 }
 
+/* =============================================
+   Board spacing refinements (aligned edges)
+   - Align list title and card text left edges
+   - Keep inline editors aligned with their originals
+   ============================================= */
+/* Remove extra padding on card text; rely on card's own left padding */
+#boardPage .card .card-title,
+#boardPage .card .card-description { padding-left: 0 !important; }
+/* Normalize list header left margin and pad list title to match card text */
+#boardPage .list-header { margin-left: 0 !important; }
+#boardPage .card-title { margin-left: 6px !important;margin-top: 8px;margin-bottom: -2px; }
+/* Inline editors align with originals */
+#boardPage .list-title-input { padding-left: 14px !important; margin-bottom: 14px !important; }
+#boardPage .card-title-input { margin-top: 6px !important; font-size: 14px !important; padding-left: 6px !important; }
+
 /* List header and counters */
-#boardPage .list-header { margin: 4px 6px 8px !important; }
-#boardPage .list-title { color: #1f2937; letter-spacing: -0.01em; }
+#boardPage .list-header { margin: 2px 4px -8px 0 !important; }
+#boardPage .list-title { margin-left: 14px !important; color: #1f2937; letter-spacing: -0.01em; }
 #boardPage .count { background: var(--gray-100); color: var(--gray-600); }
 #boardPage .column h3 { color: #334155; border-bottom: 1px solid #e2e8f0; margin-bottom: 8px; padding-bottom: 6px; }
 
@@ -4654,6 +4669,7 @@ body {
     align-items: center;
     gap: 0px;
     margin-bottom: -2px;
+    margin-left: 2px;
 }
 
 
