@@ -1583,6 +1583,7 @@ h1 {
 
 /* 项目卡片操作按钮（右上角悬浮显示） */
 .project-card-with-actions { position: relative; }
+.board-card-with-actions { position: relative; }
 .project-card-actions {
     display: none;
     position: absolute;
@@ -1616,6 +1617,55 @@ h1 {
 .project-action-btn.pin-btn:hover { background: rgba(22,163,74,0.08); }
 .board-action-btn.pin-btn { color: #16a34a; border-color: rgba(22,163,74,0.25); }
 .board-action-btn.pin-btn:hover { background: rgba(22,163,74,0.08); }
+.project-card .project-icon { cursor: default; pointer-events: none; }
+.project-card:hover .project-icon { cursor: pointer; pointer-events: auto; }
+.project-card .project-icon.pin-on { color: #16a34a; }
+/* Hover-only pin icon */
+.pin-wrap { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; margin-right:6px; cursor: pointer; transition: transform .16s ease; transform-origin: center; }
+.pin-wrap:hover { transform: translateY(-1px) scale(1.08); }
+.pin-wrap .icon-base, .pin-wrap .icon-hover { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; color:#9ca3af; }
+.pin-wrap.pinned .icon-base { color:#16a34a; }
+.pin-wrap .icon-hover { display:none; }
+.pin-wrap:hover .icon-base { display:none; }
+.pin-wrap:hover .icon-hover { display:inline-flex; }
+/* local svg icon size for board base icon */
+/* No inline <img> inside pin-wrap base when using Icon.boards */
+.pin-wrap { position: relative; }
+.pin-wrap .pin-label {
+    position: absolute;
+    top: 140%;
+    left: 0;
+    display: none;
+    background: rgba(17,24,39,0.95);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+    padding: 4px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 20;
+}
+.pin-wrap:hover .pin-label { display: inline-block; }
+
+/* Group separators within grid containers */
+.group-separator {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #6b7280;
+    font-weight: 600;
+    margin: 6px 0 2px;
+}
+.group-sep-dot { width: 8px; height: 8px; border-radius: 50%; background: #d1d5db; display: inline-block; }
+.group-sep-text { font-size: 12px; letter-spacing: .02em; }
+.project-action-btn.pin-btn.active,
+.board-action-btn.pin-btn.active {
+    background: rgba(22,163,74,0.12);
+    color: #15803d;
+    border-color: rgba(22,163,74,0.35);
+}
 .board-action-btn.rename-btn:hover, .project-action-btn.rename-btn:hover { background: rgba(37,99,235,0.08); }
 
 .project-card {
@@ -1640,6 +1690,21 @@ h1 {
     border-color: #a7f3d0;
     background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
 }
+
+/* Pin badge on pinned items */
+.pin-badge {
+    display: inline-flex;
+    vertical-align: middle;
+    margin-left: 6px;
+    color: #16a34a;
+}
+.pin-badge svg { width: 14px; height: 14px; }
+
+/* Left pin toggle button on cards */
+/* removed old left-floating pin button styles */
+
+/* Mini icon on board title */
+/* removed old mini icon class */
 
 .project-card h3, .board-card h3 {
     margin: 0 0 0.5rem 0;
@@ -3108,7 +3173,6 @@ body {
 
 /* SVG 图标尺寸与配色（继承容器颜色） */
 .board-icon svg { width: 22px; height: 22px; display: block; }
-.quick-board-card .board-icon { color: #ffffff; }
 
 /* 首页与项目页标题与分区留白优化 */
 .dashboard-section h2, .board-section h2 { display: flex; align-items: center; gap: .5rem; }
@@ -3127,12 +3191,6 @@ body {
 .board-section h2 [data-icon] svg { width: 20px; height: 20px; }
 
 /* 看板卡片左侧图标：柔和底色 + 主色描边 */
-.quick-board-card .board-icon {
-    background: rgba(59,130,246,0.10);
-    border: 1px solid rgba(59,130,246,0.20);
-    color: var(--primary-dark);
-    box-shadow: none;
-}
 
 /* Board name dropdown caret indicator */
 #currentBoardName {
@@ -3165,12 +3223,7 @@ body {
 
 @media (prefers-color-scheme: dark) {
     .dashboard-section h2 [data-icon] { color: var(--gray-600); }
-    .quick-board-card .board-icon {
-        background: rgba(59,130,246,0.18);
-        border-color: rgba(59,130,246,0.28);
-        color: var(--primary-light);
-    }
-    .board-project {
+        .board-project {
         background: #0b1220;
         color: var(--gray-700);
         border: 1px solid var(--gray-300);
@@ -3218,15 +3271,8 @@ body {
     }
 }
 
-/* 无图标模式：隐藏占位并调整间距 */
-/* icons visible globally */
+/* 显示看板卡片内的图标（恢复默认） */
 .projects-header .header-actions { gap: 0.75rem; }
-.quick-board-card { padding-left: 1.25rem; }
-
-/* 仅隐藏看板卡片内部图标（其他图标保留） */
-.quick-board-card .board-icon { display: none !important; }
-.projects-header .header-actions { gap: 0.75rem; }
-.quick-board-card { padding-left: 1.25rem; }
 
 /* Board and project card icon sizes */
 /* Prevent icon flash: hide [data-icon] until injected */
@@ -3291,6 +3337,8 @@ body {
 #projectPage .project-header .logout-btn:hover {
     background: var(--danger-dark);
 }
+
+/* (revert) remove board-icon overrides to keep original styles */
 
 /* === Trello-like compact overrides (non-destructive) === */
 /* 布局与背景更接近 Trello */
