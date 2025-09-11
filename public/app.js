@@ -56,6 +56,53 @@ let boardSelectPendingShow = false;
 // Keep add-list form open for consecutive list creation
 let keepAddingLists = false;
 
+// Track last time we handled Esc for add-list to avoid keyup double-handling
+let escAddListHandledAt = 0;
+
+// Unified closer for the add-list entry. Returns true if it closed something.
+function closeAddListEntry(e) {
+    try {
+        const add = document.getElementById('addListEntry');
+        if (!add) return false;
+        const form = add.querySelector('.add-list-form');
+        const openBtn = add.querySelector('.add-list-open');
+        if (!form || !openBtn || form.hidden) return false;
+        if (e) {
+            try { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}
+        }
+        keepAddingLists = false;
+        form.hidden = true;
+        openBtn.hidden = false;
+        const input = form.querySelector('input');
+        if (input) { try { input.value = ''; } catch(_){} }
+        try { openBtn.focus(); } catch(_){}
+        escAddListHandledAt = Date.now();
+        return true;
+    } catch(_) {
+        return false;
+    }
+}
+
+// Bind once: click outside add-list to close
+let addListOutsideHandlerBound = false;
+function bindAddListOutsideClose(){
+    if (addListOutsideHandlerBound) return;
+    addListOutsideHandlerBound = true;
+    document.addEventListener('mousedown', (ev) => {
+        const add = document.getElementById('addListEntry');
+        if (!add) return;
+        const form = add.querySelector('.add-list-form');
+        if (!form || form.hidden) return;
+        if (!add.contains(ev.target)) {
+            // Do not cancel the outside click; just close the add-list entry
+            closeAddListEntry();
+        }
+    }, true);
+}
+
+// ensure binding active
+try { bindAddListOutsideClose(); } catch(_){}
+
 // 拖拽状态（支持跨列）
 let draggingCardId = null;
 let draggingFromStatus = null;
@@ -2196,7 +2243,31 @@ function renderAddListEntry(container){
     const cancel = form.querySelector('.add-list-cancel');
 
     openBtn.onclick = ()=>{ openBtn.hidden = true; form.hidden = false; input.focus(); };
-    cancel.onclick = ()=>{ form.hidden = true; openBtn.hidden = false; input.value=''; keepAddingLists = false; };
+    cancel.onclick = ()=>{ form.hidden = true; openBtn.hidden = false; input.value=''; keepAddingLists = false; try{ openBtn.focus(); }catch(_){} };
+    // Allow Esc to cancel from input (even during IME composition)
+    input.addEventListener('keydown', (e)=>{
+        if (e.key === 'Escape') {
+            if (closeAddListEntry(e)) return;
+        }
+        const composing = e.isComposing || e.keyCode === 229;
+        if (composing) return;
+    }, true);
+    // Capture Esc on form as well to avoid needing a second press after blur
+    form.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') return;
+        if (closeAddListEntry(e)) return;
+    }, true);
+    // Close when focus leaves the form (e.g., click elsewhere)
+    form.addEventListener('focusout', () => {
+        setTimeout(() => {
+            const add = document.getElementById('addListEntry');
+            if (!add) return;
+            const active = document.activeElement;
+            if (!active || !add.contains(active)) {
+                closeAddListEntry();
+            }
+        }, 0);
+    }, true);
     // If user was in consecutive add mode, reopen immediately
     if (keepAddingLists) { openBtn.hidden = true; form.hidden = false; try { input.focus(); input.select(); } catch(_){} }
     form.addEventListener('submit', (e)=>{
@@ -6454,7 +6525,8 @@ document.addEventListener('keydown', function(e) {
 // 在捕获阶段也拦截一次，确保一次 Esc 生效
 document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
-    if (e.isComposing) return;
+    // First priority: close add-list if open to ensure single-press Esc behavior
+    if (closeAddListEntry(e)) return;
     let handled = false;
     const dynamicModals = Array.from(document.querySelectorAll('body > .modal')).filter(m => !m.id && !m.classList.contains('hidden'));
     const top = dynamicModals.length ? dynamicModals[dynamicModals.length - 1] : null;
@@ -7068,7 +7140,9 @@ function hideIOMenu(){
 // 在捕获阶段也拦截一次，确保一次 Esc 生效
 document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
-    if (e.isComposing) return;
+    // Highest priority: close add-list if open (avoid needing a second press after blur)
+    if (closeAddListEntry(e)) return;
+
     let handled = false;
     const dynamicModals = Array.from(document.querySelectorAll('body > .modal')).filter(m => !m.id && !m.classList.contains('hidden'));
     const top = dynamicModals.length ? dynamicModals[dynamicModals.length - 1] : null;
@@ -7152,6 +7226,15 @@ document.addEventListener('keyup', function(e){
     wrap.classList.add('is-open');
     form.hidden = false;
     setTimeout(()=>{ try{ textarea && textarea.focus(); }catch(_){ } }, 0);
+}, true);
+
+// Keyup fallback for Esc to ensure single-press closes add-list input
+document.addEventListener('keyup', function(e){
+    if (e.key !== 'Escape') return;
+    // If already handled by keydown very recently, skip fallback
+    if (escAddListHandledAt && Date.now() - escAddListHandledAt < 500) return;
+    // if add-list form is open, close it
+    closeAddListEntry(e);
 }, true);
 // ... existing code ...
 
