@@ -35,6 +35,9 @@ if (!fs.existsSync(uploadsRoot)) fs.mkdirSync(uploadsRoot, { recursive: true });
 if (!fs.existsSync(wallpapersDir)) fs.mkdirSync(wallpapersDir, { recursive: true });
 app.use('/uploads', express.static(uploadsRoot));
 
+// Default board background (used when a user hasn't set one)
+const DEFAULT_BACKGROUND_URL = 'https://snlz-1322843231.cos.ap-nanjing.myqcloud.com/uPic/photo-1742156345582-b857d994c84e.webp';
+
 // 内存中的WebSocket连接管理
 const connections = new Map();
 
@@ -1150,8 +1153,27 @@ app.get('/api/user-background/:username', (req, res) => {
     const users = readJsonFile(usersFile, {});
     const user = users[username];
     if (!user) return res.status(404).json({ message: '用户不存在' });
-    const url = user.backgroundUrl || '';
+    const url = (user.backgroundUrl && typeof user.backgroundUrl === 'string' && user.backgroundUrl.trim())
+        ? user.backgroundUrl
+        : '';
     return res.json({ url });
+});
+
+// Set default background for user
+app.post('/api/user-background/set-default', (req, res) => {
+    const { username } = req.body || {};
+    if (!username) return res.status(400).json({ message: '缺少参数' });
+    try {
+        const usersFile = path.join(dataDir, 'users.json');
+        const users = readJsonFile(usersFile, {});
+        const user = users[username];
+        if (!user) return res.status(404).json({ message: '用户不存在' });
+        user.backgroundUrl = DEFAULT_BACKGROUND_URL;
+        writeJsonFile(usersFile, users);
+        return res.json({ url: DEFAULT_BACKGROUND_URL });
+    } catch (e) {
+        return res.status(500).json({ message: '设置失败' });
+    }
 });
 
 app.post('/api/user-background/upload', (req, res) => {
@@ -1174,7 +1196,14 @@ app.post('/api/user-background/upload', (req, res) => {
         const buf = Buffer.from(b64, 'base64');
         if (buf.length > 10 * 1024 * 1024) return res.status(413).json({ message: '图片过大（<=10MB）' });
 
-        // save file with stable per-user name
+        // save file with stable per-user name; cleanup previous different extensions
+        const exts = ['png','jpg','jpeg','webp'];
+        try {
+            exts.forEach(x => {
+                const p = path.join(wallpapersDir, `${username}.${x}`);
+                if (fs.existsSync(p)) fs.unlinkSync(p);
+            });
+        } catch(_){}
         const fname = `${username}.${ext}`;
         const filePath = path.join(wallpapersDir, fname);
         fs.writeFileSync(filePath, buf);
@@ -1200,16 +1229,13 @@ app.post('/api/user-background/clear', (req, res) => {
         const user = users[username];
         if (!user) return res.status(404).json({ message: '用户不存在' });
 
-        // remove file if present
-        if (user.backgroundUrl && typeof user.backgroundUrl === 'string') {
-            try {
-                const p = user.backgroundUrl.replace(/^\/uploads\//, '');
-                const abs = path.join(uploadsRoot, p);
-                if (abs.startsWith(uploadsRoot) && fs.existsSync(abs)) {
-                    fs.unlinkSync(abs);
-                }
-            } catch (_) {}
-        }
+        // remove any stored files for all possible extensions
+        try {
+            ['png','jpg','jpeg','webp'].forEach(x => {
+                const p = path.join(wallpapersDir, `${username}.${x}`);
+                if (fs.existsSync(p)) fs.unlinkSync(p);
+            });
+        } catch(_){}
         delete user.backgroundUrl;
         writeJsonFile(usersFile, users);
         return res.json({ success: true });

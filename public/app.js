@@ -1,5 +1,7 @@
 // 全局变量
 let socket;
+let bgMenuOutsideClickHandler = null;
+let bgMenuKeyHandler = null;
 let currentUser = null;
 let currentProjectId = null;
 let currentProjectName = null;
@@ -371,57 +373,21 @@ document.addEventListener('DOMContentLoaded', function() {
     const changePwdBoard = document.getElementById('changePasswordBoard');
     if (changePwdBoard) changePwdBoard.addEventListener('click', changePasswordFlow);
 
-    // 背景上传/清除
+    // 背景菜单（默认/导入(本地)/清除）
     const bgBtn = document.getElementById('bgBtn');
-    const bgClearBtn = document.getElementById('bgClearBtn');
     const bgUploadFile = document.getElementById('bgUploadFile');
-    if (bgBtn && bgUploadFile) {
-        bgBtn.addEventListener('click', (e) => { e.preventDefault(); bgUploadFile.click(); });
+    if (bgBtn) bgBtn.addEventListener('click', toggleBgMenu);
+    if (bgUploadFile) {
         bgUploadFile.addEventListener('change', async (e) => {
             const file = e.target.files && e.target.files[0];
             if (!file) return;
             if (!/^image\//.test(file.type)) { uiToast('请选择图片文件','error'); e.target.value=''; return; }
             try {
                 const dataUrl = await fileToDataURL(file);
-                const rs = await fetch('/api/user-background/upload', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser, imageData: dataUrl })
-                });
+                const rs = await fetch('/api/user-background/upload', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, imageData: dataUrl }) });
                 const rj = await rs.json().catch(()=>({}));
-                if (rs.ok && rj && rj.url) {
-                    applyBoardBackground(rj.url);
-                    try { localStorage.setItem(`kanbanBgUrl:${currentUser}`, rj.url); } catch(_){}
-                    uiToast('背景已更新','success');
-                } else {
-                    uiToast((rj && rj.message) || '上传失败','error');
-                }
-            } catch (err) {
-                console.error('Upload bg error', err);
-                uiToast('上传失败','error');
-            } finally {
-                try { e.target.value = ''; } catch(_){}
-            }
-        });
-    }
-    if (bgClearBtn) {
-        bgClearBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            try {
-                const rs = await fetch('/api/user-background/clear', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser })
-                });
-                if (rs.ok) {
-                    applyBoardBackground('');
-                    try { localStorage.removeItem(`kanbanBgUrl:${currentUser}`); } catch(_){}
-                    uiToast('已清除背景','success');
-                } else {
-                    const rj = await rs.json().catch(()=>({}));
-                    uiToast((rj && rj.message) || '清除失败','error');
-                }
-            } catch (err) {
-                uiToast('清除失败','error');
-            }
+                if (rs.ok && rj && rj.url) { applyBoardBackground(rj.url); uiToast('背景已上传','success'); } else { uiToast((rj && rj.message) || '上传失败','error'); }
+            } catch (err) { uiToast('上传失败','error'); } finally { try { e.target.value=''; }catch(_){} }
         });
     }
 
@@ -655,25 +621,87 @@ function fileToDataURL(file) {
 }
 
 function applyBoardBackground(url) {
-    const v = (url && typeof url === 'string' && url.trim()) ? `url('${url}?t=${Date.now()}')` : 'none';
+    let v = 'none';
+    if (url && typeof url === 'string' && url.trim()) {
+        let raw = url.trim();
+        // Add cache-buster for same-origin or local uploads to ensure immediate refresh
+        const isData = /^data:/i.test(raw);
+        if (!isData) {
+            try {
+                // If path-only or same-origin, treat as same-origin
+                const a = document.createElement('a');
+                a.href = raw;
+                const isSameOrigin = raw.startsWith('/') || a.origin === window.location.origin;
+                if (isSameOrigin) {
+                    raw = raw + (raw.includes('?') ? '&' : '?') + 't=' + Date.now();
+                }
+            } catch(_){}
+        }
+        v = `url('${raw}')`;
+    } else {
+        v = 'none';
+    }
     try { document.documentElement.style.setProperty('--board-bg-url', v); } catch(_){}
 }
 
 async function loadUserBackground() {
     if (!currentUser) return;
     try {
-        const cached = localStorage.getItem(`kanbanBgUrl:${currentUser}`);
-        if (cached) { applyBoardBackground(cached); return; }
-    } catch(_) {}
-    try {
         const rs = await fetch(`/api/user-background/${currentUser}`);
         if (rs.ok) {
             const rj = await rs.json().catch(()=>({}));
-            const url = rj && rj.url ? rj.url : '';
+            const url = (rj && typeof rj.url === 'string') ? rj.url : '';
             applyBoardBackground(url);
-            try { if (url) localStorage.setItem(`kanbanBgUrl:${currentUser}`, url); } catch(_){}
         }
-    } catch(_) {}
+    } catch(_) { applyBoardBackground(''); }
+}
+
+function toggleBgMenu(e){
+    e && e.preventDefault();
+    const btn = document.getElementById('bgBtn');
+    const menu = document.getElementById('bgMenu');
+    if (!btn || !menu) return;
+    const isHidden = menu.classList.contains('hidden');
+    if (isHidden) {
+        // position near button
+        const rect = btn.getBoundingClientRect();
+        menu.style.top = `${window.scrollY + rect.bottom + 6}px`;
+        menu.style.left = `${window.scrollX + rect.left}px`;
+        menu.classList.remove('hidden');
+        bindBgMenuOnce();
+    } else {
+        hideBgMenu();
+    }
+}
+
+function bindBgMenuOnce(){
+    const menu = document.getElementById('bgMenu');
+    if (!menu) return;
+    const useDefault = document.getElementById('bgUseDefault');
+    const clearBg = document.getElementById('bgClear');
+    const uploadServer = document.getElementById('bgUploadServer');
+    if (useDefault) useDefault.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/set-default', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser }) }); const rj = await rs.json().catch(()=>({})); if (rs.ok && rj && rj.url) { applyBoardBackground(rj.url); uiToast('已应用默认背景','success'); } else { uiToast((rj && rj.message) || '设置失败','error'); } } catch(_) { uiToast('设置失败','error'); } };
+    if (uploadServer) uploadServer.onclick = () => { hideBgMenu(); const fileInput = document.getElementById('bgUploadFile'); fileInput && fileInput.click(); };
+    if (clearBg) clearBg.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/clear', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser }) }); if (rs.ok) { applyBoardBackground(''); uiToast('已清除背景','success'); } else { const rj = await rs.json().catch(()=>({})); uiToast((rj && rj.message) || '清除失败','error'); } } catch (err) { uiToast('清除失败','error'); } };
+    if (!bgMenuOutsideClickHandler) {
+        bgMenuOutsideClickHandler = (ev) => {
+            const m = document.getElementById('bgMenu');
+            const b = document.getElementById('bgBtn');
+            if (m && !m.classList.contains('hidden')) {
+                if (!m.contains(ev.target) && (!b || !b.contains(ev.target))) hideBgMenu();
+            }
+        };
+        document.addEventListener('click', bgMenuOutsideClickHandler);
+    }
+    if (!bgMenuKeyHandler) {
+        bgMenuKeyHandler = (ev) => { if (ev.key === 'Escape') { hideBgMenu(); } };
+        document.addEventListener('keydown', bgMenuKeyHandler, true);
+    }
+}
+
+function hideBgMenu(){
+    const menu = document.getElementById('bgMenu');
+    if (menu) menu.classList.add('hidden');
 }
 
 // 页面显示函数前添加清理浮层的工具函数
@@ -2273,12 +2301,7 @@ function renderAddListEntry(container){
     const input = form.querySelector('input');
     const cancel = form.querySelector('.add-list-cancel');
 
-    // Normalize CTA: always show centered plus, same size as normal
-    try {
-        openBtn.textContent = '+';
-        openBtn.setAttribute('aria-label', '添加列表');
-        add.classList.remove('is-empty-state');
-    } catch(_){}
+    // Keep default button content; empty-board appearance handled via CSS only
 
     openBtn.onclick = ()=>{ openBtn.hidden = true; form.hidden = false; input.focus(); };
     cancel.onclick = ()=>{ form.hidden = true; openBtn.hidden = false; input.value=''; keepAddingLists = false; try{ openBtn.focus(); }catch(_){} };

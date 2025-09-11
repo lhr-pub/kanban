@@ -3807,6 +3807,7 @@ body {
     --border:#e5e7eb;
     --bg:#f6f7f9;
     --card-bg:#fff;
+    --board-bg-url: none;
 }
 
 /* === Wallpaper: apply to whole board page (header + content) === */
@@ -4819,8 +4820,7 @@ body {
     background: transparent !important;
 }
 
-/* Removed frosted empty-state CTA to keep size equal to normal */
-/* Empty-board only: center the plus inside the button, keep normal size */
+/* Empty-board only: center/opacity tweaks without affecting layout */
 #boardPage .board-container.empty-board #addListEntry .add-list-open:hover {
     text-align: center;
     background: rgba(236,238,240,.40) !important; /* semi-transparent whole button */
@@ -4829,7 +4829,7 @@ body {
 }
 #boardPage .board-container.empty-board #addListEntry .add-list-open,
 #boardPage .board-container.empty-board #addListEntry .add-list-open:focus-visible {
-    background: rgba(236,238,240,.3) !important;
+    background: rgba(236,238,240,.6) !important;
     text-align: center;
 
 }

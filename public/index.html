@@ -172,8 +172,7 @@
                     <input type="file" id="importFile" accept=".md,.json" hidden>
                     <input type="file" id="bgUploadFile" accept="image/*" hidden>
                     <button id="ioMenuBtn">导入/导出 ▾</button>
-                    <button id="bgBtn" title="更换背景">背景</button>
-                    <button id="bgClearBtn" title="清除背景">清除背景</button>
+                    <button id="bgBtn" title="更换背景">背景 ▾</button>
                     <button id="archiveBtn">归档管理</button>
                     <button id="backToBoardSelect">返回</button>
                     <button id="logoutBtn">退出</button>
@@ -187,6 +186,14 @@
                 <div class="board-switcher-item" id="ioImportText">从文本导入</div>
                 <div class="board-switcher-item" id="ioExportMarkdown">导出为 Markdown</div>
                 <div class="board-switcher-item" id="ioExportJSON">导出为 JSON</div>
+            </div>
+        </div>
+
+        <div id="bgMenu" class="board-switcher-menu hidden" style="position:absolute; min-width: 200px;">
+            <div class="board-switcher-list">
+                <div class="board-switcher-item" id="bgUseDefault">默认背景</div>
+                <div class="board-switcher-item" id="bgUploadServer">上传背景</div>
+                <div class="board-switcher-item" id="bgClear">清除背景</div>
             </div>
         </div>
 
