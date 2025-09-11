@@ -3952,7 +3952,7 @@ body {
 .card-quick { top: 2px; line-height: 1; }
 
 /* tighten card spacing and list paddings */
-.board-container { gap: var(--list-gap); padding: 12px !important; }
+.board-container { gap: var(--list-gap); } /* padding: 12px !important; */
 .list { padding: 6px; gap: 6px; }
 .cards { gap: 6px; }
 .card { padding: 8px 10px; margin-bottom: 6px; }

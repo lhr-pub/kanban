@@ -5471,7 +5471,7 @@ function uiAlert(message, title) {
         const ok = document.createElement('button');
         ok.className = 'btn-primary';
         ok.textContent = '确定';
-        ok.onclick = () => { document.body.removeChild(overlay); resolve(); };
+        ok.onclick = () => { try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; document.body.removeChild(overlay); resolve(); };
         close.onclick = ok.onclick;
         footer.appendChild(ok);
         document.body.appendChild(overlay);
@@ -5479,7 +5479,7 @@ function uiAlert(message, title) {
         overlay.addEventListener('keydown', (e) => {
             const composing = e.isComposing || e.keyCode === 229;
             if (!composing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){} }
-            if (!composing && (e.key === 'Escape' || e.key === 'Enter')) ok.click();
+            if (!composing && (e.key === 'Escape' || e.key === 'Enter')) { try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; ok.click(); }
         }, true);
     });
 }
@@ -5497,7 +5497,7 @@ function uiConfirm(message, title) {
         const ok = document.createElement('button');
         ok.className = 'btn-danger';
         ok.textContent = '确认';
-        ok.onclick = () => { document.body.removeChild(overlay); resolve(true); };
+        ok.onclick = () => { try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; document.body.removeChild(overlay); resolve(true); };
         close.onclick = cancel.onclick;
         footer.appendChild(cancel);
         footer.appendChild(ok);
@@ -5506,7 +5506,7 @@ function uiConfirm(message, title) {
         overlay.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
             if (e.key === 'Escape') cancel.click();
-            if (e.key === 'Enter') ok.click();
+            if (e.key === 'Enter') { try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; ok.click(); }
         }, true);
     });
 }
@@ -5534,7 +5534,7 @@ function uiPrompt(message, defaultValue, title) {
         const ok = document.createElement('button');
         ok.className = 'btn-primary';
         ok.textContent = '确定';
-        ok.onclick = () => { const v = (input.value || '').trim(); if (!v) return; document.body.removeChild(overlay); resolve(v); };
+        ok.onclick = () => { const v = (input.value || '').trim(); if (!v) return; try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; document.body.removeChild(overlay); resolve(v); };
         close.onclick = cancel.onclick;
         footer.appendChild(cancel);
         footer.appendChild(ok);
@@ -5545,13 +5545,13 @@ function uiPrompt(message, defaultValue, title) {
             const composing = e.isComposing || e.keyCode === 229;
             if (composing) return;
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}; cancel.click(); }
-            if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}; ok.click(); }
+            if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){}; try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; ok.click(); }
         }, true);
         overlay.addEventListener('keydown', (e) => {
             const composing = e.isComposing || e.keyCode === 229;
             if (!composing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); e.stopPropagation(); try { e.stopImmediatePropagation && e.stopImmediatePropagation(); } catch(_){} }
             if (!composing && e.key === 'Escape') cancel.click();
-            if (!composing && e.key === 'Enter') ok.click();
+            if (!composing && e.key === 'Enter') { try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; ok.click(); }
         }, true);
     });
 }
