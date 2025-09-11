@@ -572,6 +572,17 @@ classDiagram
 - POST `/api/regenerate-invite-code` { projectId, actor }
 - POST `/api/request-add-member` { projectId, username, actor } （项目内发起添加请求）
 
+### 背景管理（每用户）
+- GET `/api/default-backgrounds` → `{ defaults: string[] }`（返回至多 3 个默认背景 URL）
+- GET `/api/user-background/:username` → `{ url: string }`（未设置时为空串）
+- POST `/api/user-background/set-default` `{ username, index }` → `{ url }`
+- POST `/api/user-background/upload` `{ username, imageData }` → `{ url }`
+  - `imageData` 为 DataURL（PNG/JPEG/WEBP，≤10MB），成功返回形如 `/uploads/wallpapers/<username>.<ext>` 的 URL
+- POST `/api/user-background/clear` `{ username }` → `{ success: true }`
+
+注意：上传/清除会删除该用户名下不同扩展的旧文件（png/jpg/jpeg/webp）。前端对同源 URL 自动追加时间戳，避免浏览器缓存导致的刷新才能生效问题。
+
+<a id="stars-move-front"></a>
 ### 星标与置前
 - GET `/api/user-stars/:username` → { stars }
 - POST `/api/user-stars/toggle` { username, projectId, boardName, projectName } → { stars, starred }
@@ -627,15 +638,13 @@ classDiagram
   "done": [],
   "archived": [],
   "lists": {
-    "listIds": ["todo", "doing", "done"],
-    "lists": {
-      "todo": { "id": "todo", "title": "待办", "pos": 0, "status": "todo" },
-      "doing": { "id": "doing", "title": "进行中", "pos": 1, "status": "doing" },
-      "done": { "id": "done", "title": "已完成", "pos": 2, "status": "done" }
-    }
+    "listIds": [],
+    "lists": {}
   }
 }
 ```
+
+说明：新建看板默认不再生成固定列（空 `lists`）。读取旧版/导入数据时若存在 `todo/doing/done` 等固定数组，会自动推断为对应列表元信息；否则保持为空，由用户自行添加卡组。
 
 ### 卡片（可能包含的可选字段）
 - labels: string[]
@@ -670,6 +679,8 @@ kanban/
 │   ├── projects.json
 │   ├── {projectId}_{board}.json
 │   └── backups/
+│   └── uploads/
+│       └── wallpapers/        # 用户上传的背景图（<username>.<ext>）
 ├── web/                    # 前端重构（React + TypeScript + Vite，进行中）
 ├── Dockerfile              # 容器镜像（生产）
 ├── docker-compose.dev.yml  # 本地开发（OrbStack/volume）
@@ -727,6 +738,28 @@ PORT=3001 node server.js
 ```
 访问 `http://localhost:3000`
 
+### 背景相关环境变量（可选）
+支持为“默认背景”提供 1–3 个候选项，并作为用户级持久背景使用：
+
+```env
+# 单个默认背景（回退值）
+DEFAULT_BG_URL=https://example.com/bg.webp
+
+# 提供多个默认背景（最多取前三个，优先级高于下方 _1/_2/_3）
+DEFAULT_BG_URLS=https://a.jpg, https://b.webp, https://c.png
+
+# 或者按序提供（当未设置 DEFAULT_BG_URLS 时生效）
+DEFAULT_BG_URL_1=
+DEFAULT_BG_URL_2=
+DEFAULT_BG_URL_3=
+```
+
+说明：
+- 前端“背景 ▾”菜单提供“默认背景 / 上传背景 / 清除背景”。
+- 背景为“每用户”设置，服务端持久化于 `users.json` 的 `backgroundUrl` 字段；不再使用本地存储。
+- 同源上传后即时生效（自动追加时间戳防缓存），支持 PNG/JPEG/WEBP，最大 10MB。
+- 服务器保存路径：`data/uploads/wallpapers/<username>.<ext>`；上传/清除时会清理该用户名下其它扩展，避免“同名不同扩展”冲突。
+
 ## 🐳 使用 Docker（可选）
 - 开发（本机调试、挂载代码卷）
 ```bash
@@ -781,6 +814,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## 📄 许可
 MIT
+<a id="recent-changes"></a>
 ### 最近改动要点（交互对齐）
 
 - 命名：主页统一称为“工作台”。
@@ -800,6 +834,13 @@ MIT
   - 首页看板卡片不显示左侧图标；
   - “所有看板”标题仍显示 boards 图标。
 - 导航对齐：看板页导航与项目页在桌面断点（≥1024px）使用相同容器宽度（1200）与左右间距（2rem），底部边框与间距一致；箭头 hover 位移、展开旋转动画一致。
+
+新增（本次）：
+- 新建看板不再自动生成默认列；空看板时“+ 添加卡组”按钮水平居中，空状态下半透明，但尺寸与常规一致。
+- “添加卡组”输入：单次 Esc 即可关闭；点击外部/失焦关闭；不改变输入框布局；连续添加体验保持。
+- 归档页：卡片更紧凑、左对齐网格布局；“还原”按钮移动到标题行左侧；搜索计数与展开状态保持一致。
+- 背景管理：背景下拉改为“默认/上传/清除”，由服务端持久化（每用户）；支持通过环境变量提供 1–3 个默认背景；上传非 PNG 的壁纸无需刷新立即生效；清除/上传会清理旧扩展避免冲突。
+<a id="roadmap"></a>
 ## 🗺️ Roadmap（规划）
 
 - 置顶（Pin Group）：已实现（见上文）。

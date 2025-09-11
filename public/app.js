@@ -609,6 +609,8 @@ function startInlineBoardRename(e){
 
     // Bind popstate router once
     bindPopstateRouter();
+
+    // No header text auto-adjust; navbar style is background-independent
 });
 
 function fileToDataURL(file) {
@@ -642,7 +644,10 @@ function applyBoardBackground(url) {
         v = 'none';
     }
     try { document.documentElement.style.setProperty('--board-bg-url', v); } catch(_){}
+    // Navbar text does not adapt to background; fixed styles
 }
+
+// Auto header text detection removed per design: navbar colors are fixed
 
 async function loadUserBackground() {
     if (!currentUser) return;
@@ -703,6 +708,7 @@ function bindBgMenuOnce(){
         } catch(_){}
     }
     if (useDefault) useDefault.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/set-default', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, index: 0 }) }); const rj = await rs.json().catch(()=>({})); if (rs.ok && rj && rj.url) { applyBoardBackground(rj.url); uiToast('已应用默认背景','success'); } else { uiToast((rj && rj.message) || '设置失败','error'); } } catch(_) { uiToast('设置失败','error'); } };
+    // no manual text color options
     if (uploadServer) uploadServer.onclick = () => { hideBgMenu(); const fileInput = document.getElementById('bgUploadFile'); fileInput && fileInput.click(); };
     if (clearBg) clearBg.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/clear', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser }) }); if (rs.ok) { applyBoardBackground(''); uiToast('已清除背景','success'); } else { const rj = await rs.json().catch(()=>({})); uiToast((rj && rj.message) || '清除失败','error'); } } catch (err) { uiToast('清除失败','error'); } };
     if (!bgMenuOutsideClickHandler) {
@@ -725,6 +731,8 @@ function hideBgMenu(){
     const menu = document.getElementById('bgMenu');
     if (menu) menu.classList.add('hidden');
 }
+
+// manual text preference removed; header text mode is auto-detected
 
 // 页面显示函数前添加清理浮层的工具函数
 function cleanupTransientOverlays() {
