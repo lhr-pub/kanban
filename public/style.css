@@ -4821,14 +4821,17 @@ body {
 
 /* Removed frosted empty-state CTA to keep size equal to normal */
 /* Empty-board only: center the plus inside the button, keep normal size */
-#boardPage .board-container.empty-board #addListEntry .add-list-open {
+#boardPage .board-container.empty-board #addListEntry .add-list-open:hover {
     text-align: center;
-    opacity: 0.75;
-    transition: opacity .12s ease;
+    background: rgba(236,238,240,.40) !important; /* semi-transparent whole button */
+    border-color: #dfe1e6 !important;
+    transition: background-color .15s ease;
 }
-#boardPage .board-container.empty-board #addListEntry .add-list-open:hover,
+#boardPage .board-container.empty-board #addListEntry .add-list-open,
 #boardPage .board-container.empty-board #addListEntry .add-list-open:focus-visible {
-    opacity: 1;
+    background: rgba(236,238,240,.3) !important;
+    text-align: center;
+
 }
 
 /* Project page navbar invites button match style */
