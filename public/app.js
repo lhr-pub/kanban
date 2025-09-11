@@ -53,6 +53,8 @@ let projectBoardsLoadToken = 0;
 let lastLoadedProjectIdForBoards = null;
 let projectBoardsAbortController = null;
 let boardSelectPendingShow = false;
+// Keep add-list form open for consecutive list creation
+let keepAddingLists = false;
 
 // 拖拽状态（支持跨列）
 let draggingCardId = null;
@@ -2194,14 +2196,18 @@ function renderAddListEntry(container){
     const cancel = form.querySelector('.add-list-cancel');
 
     openBtn.onclick = ()=>{ openBtn.hidden = true; form.hidden = false; input.focus(); };
-    cancel.onclick = ()=>{ form.hidden = true; openBtn.hidden = false; input.value=''; };
+    cancel.onclick = ()=>{ form.hidden = true; openBtn.hidden = false; input.value=''; keepAddingLists = false; };
+    // If user was in consecutive add mode, reopen immediately
+    if (keepAddingLists) { openBtn.hidden = true; form.hidden = false; try { input.focus(); input.select(); } catch(_){} }
     form.addEventListener('submit', (e)=>{
-                    e.preventDefault();
+        e.preventDefault();
         const name = (input.value||'').trim();
         if(!name) return;
+        // keep adding next list; also suppress global Enter keyup side-effects
+        keepAddingLists = true;
+        try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){ }
         addClientList(name);
-        input.value='';
-        form.hidden = true; openBtn.hidden = false;
+        // note: renderBoard() will rerender add entry and reopen due to keepAddingLists
     });
 }
 
