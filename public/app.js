@@ -4,7 +4,7 @@ let currentUser = null;
 let currentProjectId = null;
 let currentProjectName = null;
 let currentBoardName = null;
-let boardData = { todo: [], doing: [], done: [], archived: [] };
+let boardData = { archived: [], lists: { listIds: [], lists: {} } };
 let editingCardId = null;
 let previousPage = null; // 记录上一个页面
 let lastEditTime = 0;
@@ -148,14 +148,35 @@ function saveClientListsToStorage(){
 
 function ensureClientLists() {
     if (clientLists) return clientLists;
+    // Prefer server-provided lists metadata if present
+    if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
+        clientLists = boardData.lists;
+        saveClientListsToStorage();
+        return clientLists;
+    }
+    // Try restore from localStorage
     const restored = loadClientListsFromStorage();
     if (restored) { clientLists = restored; return clientLists; }
-    const defaults = [
-        { id: 'todo', title: '待办', pos: 0, status: 'todo' },
-        { id: 'doing', title: '进行中', pos: 1, status: 'doing' },
-        { id: 'done', title: '已完成', pos: 2, status: 'done' }
-    ];
-    clientLists = { listIds: defaults.map(l=>l.id), lists: Object.fromEntries(defaults.map(l=>[l.id,l])) };
+    // Fallback: infer from legacy arrays on the client (if any), else start empty
+    try {
+        const keys = Object.keys(boardData || {});
+        const statuses = keys.filter(k => Array.isArray(boardData[k]) && k !== 'archived');
+        if (statuses.length) {
+            const order = ['todo','doing','done'];
+            const ord = [];
+            order.forEach(k => { if (statuses.includes(k)) ord.push(k); });
+            statuses.forEach(k => { if (!ord.includes(k)) ord.push(k); });
+            const lists = {};
+            ord.forEach((st, idx) => {
+                const titleMap = { todo: '待办', doing: '进行中', done: '已完成' };
+                lists[st] = { id: st, title: titleMap[st] || st, pos: idx, status: st };
+            });
+            clientLists = { listIds: ord, lists };
+            saveClientListsToStorage();
+            return clientLists;
+        }
+    } catch(_){}
+    clientLists = { listIds: [], lists: {} };
     saveClientListsToStorage();
     return clientLists;
 }
@@ -2120,6 +2141,8 @@ function renderBoard() {
 
     container.innerHTML = '';
 
+    const listCount = clientLists.listIds.length;
+
     clientLists.listIds
         .map(id => clientLists.lists[id])
         .sort((a,b)=>a.pos-b.pos)
@@ -2166,6 +2189,8 @@ function renderBoard() {
             container.appendChild(section);
             // binders and drag set later below
         });
+
+    // no-op: centering handled in adjustBoardCentering()
 
     // restore scroll positions per column and container
     try {
@@ -2561,17 +2586,16 @@ function createCardElement(card, status) {
         ? `<button class="card-quick-delete" onclick="event.stopPropagation(); deleteArchivedCard('${card.id}')" aria-label="删除"></button>`
         : '';
 
-    const restoreChip = (status === 'archived')
-        ? `<div class="card-actions-row"><div class="actions-inline"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button></div></div>`
-        : '';
+    const headerRow = (status === 'archived')
+        ? `<div class="card-header"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button><div class="card-title">${escapeHtml(card.title || '未命名')}</div></div>`
+        : `<div class="card-title">${escapeHtml(card.title || '未命名')}</div>`;
 
     const badges = `${descIcon}${commentsBadge}${deadlineHtml}${assigneeHtml}`;
 
     cardElement.innerHTML = `
         <div class="card-labels">${labelDots}</div>
-        <div class="card-title">${escapeHtml(card.title || '未命名')}</div>
+        ${headerRow}
         ${badges ? `<div class="card-badges">${badges}</div>` : ''}
-        ${restoreChip}
         ${archiveBtn}
         ${deleteBtn}
         ${moreBtn}
@@ -3513,7 +3537,7 @@ function logout() {
     currentProjectId = null;
     currentProjectName = null;
     currentBoardName = null;
-    boardData = { todo: [], doing: [], done: [], archived: [] };
+    boardData = { archived: [], lists: { listIds: [], lists: {} } };
 
     localStorage.removeItem('kanbanUser');
     localStorage.removeItem('kanbanPageState');
@@ -5803,8 +5827,20 @@ function adjustBoardCentering() {
 
     const lists = container.querySelectorAll('.list:not(#addListEntry)');
     const n = lists.length;
+    // When there are no lists, center the add-list entry horizontally
     if (n === 0) {
-        container.style.paddingLeft = '0px';
+        const add = document.getElementById('addListEntry');
+        // fallback width if measurement fails
+        let addWidth = 272;
+        try {
+            if (add) {
+                const rect = add.getBoundingClientRect();
+                if (rect && rect.width) addWidth = rect.width;
+            }
+        } catch(_){}
+        const viewportWidth = container.clientWidth || 0;
+        const leftPad = Math.max(0, Math.floor((viewportWidth - addWidth) / 2));
+        container.style.paddingLeft = `${leftPad}px`;
         return;
     }
 

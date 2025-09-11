@@ -1530,10 +1530,9 @@ app.post('/api/create-board', (req, res) => {
     // 创建看板文件
     const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
     const defaultBoard = {
-        todo: [],
-        doing: [],
-        done: [],
-        archived: []
+        archived: [],
+        // initialize empty dynamic lists (no default columns)
+        lists: { listIds: [], lists: {} }
     };
 
     project.boards.unshift(boardName);
@@ -1672,7 +1671,7 @@ app.post('/api/rename-board', (req, res) => {
         if (fs.existsSync(oldFile)) {
             fs.renameSync(oldFile, newFile);
         } else {
-            writeJsonFile(newFile, readJsonFile(oldFile, { todo: [], doing: [], done: [], archived: [] }));
+            writeJsonFile(newFile, readJsonFile(oldFile, { archived: [], lists: { listIds: [], lists: {} } }));
         }
 
         // 更新项目中的名称
@@ -1775,8 +1774,8 @@ app.post('/api/move-board', (req, res) => {
         if (fs.existsSync(oldFile)) {
             fs.renameSync(oldFile, newFile);
         } else {
-            // 源文件不存在则创建空板数据
-            writeJsonFile(newFile, { todo: [], doing: [], done: [], archived: [], lists: null });
+            // 源文件不存在则创建空板数据（不含默认列表）
+            writeJsonFile(newFile, { archived: [], lists: { listIds: [], lists: {} } });
         }
 
         // 同步重命名已有的备份文件前缀
@@ -1861,23 +1860,13 @@ app.get('/api/board/:projectId/:boardName', (req, res) => {
     const boardFile = path.join(dataDir, `${projectId}_${decodeURIComponent(boardName)}.json`);
 
     const boardData = readJsonFile(boardFile, {
-        todo: [],
-        doing: [],
-        done: [],
         archived: [],
-        lists: null
+        lists: { listIds: [], lists: {} }
     });
 
-    // Ensure lists metadata and arrays exist for dynamic lists
+    // Ensure lists metadata exists; if missing, infer from legacy arrays, otherwise keep empty
     if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
-        boardData.lists = {
-            listIds: ['todo','doing','done'],
-            lists: {
-                todo:  { id:'todo',  title:'待办',   pos:0, status:'todo' },
-                doing: { id:'doing', title:'进行中', pos:1, status:'doing' },
-                done:  { id:'done',  title:'已完成', pos:2, status:'done' }
-            }
-        };
+        boardData.lists = inferListsFromArrays(boardData);
     }
     ensureListStatusArrays(boardData);
     writeBoardData(projectId, decodeURIComponent(boardName), boardData);
@@ -1892,11 +1881,8 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
     const boardFile = path.join(dataDir, `${projectId}_${decodedBoardName}.json`);
 
     const boardData = readJsonFile(boardFile, {
-        todo: [],
-        doing: [],
-        done: [],
         archived: [],
-        lists: null
+        lists: { listIds: [], lists: {} }
     });
 
     let markdown = `# ${decodedBoardName}\n\n`;
@@ -1957,11 +1943,8 @@ app.get('/api/export-json/:projectId/:boardName', (req, res) => {
     const boardFile = path.join(dataDir, `${projectId}_${decodedBoardName}.json`);
 
     const boardData = readJsonFile(boardFile, {
-        todo: [],
-        doing: [],
-        done: [],
         archived: [],
-        lists: null
+        lists: { listIds: [], lists: {} }
     });
 
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -2061,23 +2044,13 @@ function handleJoin(ws, data) {
     // 发送当前看板数据
     const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
     const boardData = readJsonFile(boardFile, {
-        todo: [],
-        doing: [],
-        done: [],
         archived: [],
-        lists: null
+        lists: { listIds: [], lists: {} }
     });
 
-    // Ensure lists metadata exists for dynamic columns
+    // Ensure lists metadata exists; if missing, infer from legacy arrays
     if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
-        boardData.lists = {
-            listIds: ['todo','doing','done'],
-            lists: {
-                todo:  { id:'todo',  title:'待办',   pos:0, status:'todo' },
-                doing: { id:'doing', title:'进行中', pos:1, status:'doing' },
-                done:  { id:'done',  title:'已完成', pos:2, status:'done' }
-            }
-        };
+        boardData.lists = inferListsFromArrays(boardData);
         writeBoardData(projectId, boardName, boardData);
     }
 
@@ -2490,14 +2463,15 @@ function handleSaveLists(ws, data) {
 // 辅助函数
 function readBoardData(projectId, boardName) {
     const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
-    return readJsonFile(boardFile, {
-        todo: [],
-        doing: [],
-        done: [],
+    const boardData = readJsonFile(boardFile, {
         archived: [],
-        // lists metadata optional; will be ensured on join if absent
-        lists: null
+        lists: { listIds: [], lists: {} }
     });
+    if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
+        boardData.lists = inferListsFromArrays(boardData);
+    }
+    ensureListStatusArrays(boardData);
+    return boardData;
 }
 
 function writeBoardData(projectId, boardName, data) {
@@ -2516,6 +2490,29 @@ function ensureListStatusArrays(boardData) {
         }
         if (!Array.isArray(boardData.archived)) boardData.archived = [];
     } catch (e) {}
+}
+
+// Infer lists metadata from legacy fixed arrays if present; otherwise return empty lists meta
+function inferListsFromArrays(boardData) {
+    try {
+        const keys = Object.keys(boardData || {});
+        // statuses are keys mapping to arrays, excluding archived/lists
+        const statuses = keys.filter(k => Array.isArray(boardData[k]) && k !== 'archived');
+        if (!statuses.length) return { listIds: [], lists: {} };
+        // Prefer standard order if classic columns present
+        const order = ['todo', 'doing', 'done'];
+        const ordered = [];
+        order.forEach(k => { if (statuses.includes(k)) ordered.push(k); });
+        statuses.forEach(k => { if (!ordered.includes(k)) ordered.push(k); });
+        const lists = {};
+        ordered.forEach((st, idx) => {
+            const titleMap = { todo: '待办', doing: '进行中', done: '已完成' };
+            lists[st] = { id: st, title: titleMap[st] || st, pos: idx, status: st };
+        });
+        return { listIds: ordered, lists };
+    } catch (_) {
+        return { listIds: [], lists: {} };
+    }
 }
 
 function broadcastToBoard(projectId, boardName, message, excludeWs = null) {
