@@ -2217,6 +2217,12 @@ function renderBoard() {
 
     // add-list entry (UI only, maps to new status placeholders if needed)
     renderAddListEntry(container);
+    // Toggle a style hook for empty-board visuals (centering handled in JS)
+    try {
+        const listCount = (clientLists && Array.isArray(clientLists.listIds)) ? clientLists.listIds.length : 0;
+        if (listCount === 0) container.classList.add('empty-board');
+        else container.classList.remove('empty-board');
+    } catch(_){}
 
     if (!archivePage.classList.contains('hidden')) {
         renderArchive();
@@ -2266,6 +2272,13 @@ function renderAddListEntry(container){
     const form = add.querySelector('.add-list-form');
     const input = form.querySelector('input');
     const cancel = form.querySelector('.add-list-cancel');
+
+    // Normalize CTA: always show centered plus, same size as normal
+    try {
+        openBtn.textContent = '+';
+        openBtn.setAttribute('aria-label', '添加列表');
+        add.classList.remove('is-empty-state');
+    } catch(_){}
 
     openBtn.onclick = ()=>{ openBtn.hidden = true; form.hidden = false; input.focus(); };
     cancel.onclick = ()=>{ form.hidden = true; openBtn.hidden = false; input.value=''; keepAddingLists = false; try{ openBtn.focus(); }catch(_){} };

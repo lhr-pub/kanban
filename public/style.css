@@ -4804,9 +4804,6 @@ body {
     cursor: pointer;
     width: 100%;
     height: 40px;
-    /* display: flex; */
-    /* align-items: center; */
-    /* justify-content: center; */
 }
 
 .add-list-open:hover { background: rgba(236,238,240,.5) !important; border-color: #dfe1e6 !important; }
@@ -4820,6 +4817,18 @@ body {
 }
 #boardPage .add-list.column:hover {
     background: transparent !important;
+}
+
+/* Removed frosted empty-state CTA to keep size equal to normal */
+/* Empty-board only: center the plus inside the button, keep normal size */
+#boardPage .board-container.empty-board #addListEntry .add-list-open {
+    text-align: center;
+    opacity: 0.75;
+    transition: opacity .12s ease;
+}
+#boardPage .board-container.empty-board #addListEntry .add-list-open:hover,
+#boardPage .board-container.empty-board #addListEntry .add-list-open:focus-visible {
+    opacity: 1;
 }
 
 /* Project page navbar invites button match style */
