@@ -680,7 +680,29 @@ function bindBgMenuOnce(){
     const useDefault = document.getElementById('bgUseDefault');
     const clearBg = document.getElementById('bgClear');
     const uploadServer = document.getElementById('bgUploadServer');
-    if (useDefault) useDefault.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/set-default', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser }) }); const rj = await rs.json().catch(()=>({})); if (rs.ok && rj && rj.url) { applyBoardBackground(rj.url); uiToast('已应用默认背景','success'); } else { uiToast((rj && rj.message) || '设置失败','error'); } } catch(_) { uiToast('设置失败','error'); } };
+    // Expand default options if multiple defaults available
+    if (!menu._defaultsBound) {
+        menu._defaultsBound = true;
+        try {
+            fetch('/api/default-backgrounds').then(r => r.json()).then(data => {
+                const defs = (data && Array.isArray(data.defaults)) ? data.defaults : [];
+                if (defs.length > 1) {
+                    // Rename the base item and add more
+                    if (useDefault) useDefault.textContent = '默认背景 1';
+                    const list = menu.querySelector('.board-switcher-list');
+                    for (let i = 1; i < Math.min(defs.length, 3); i++) {
+                        const item = document.createElement('div');
+                        item.className = 'board-switcher-item';
+                        item.textContent = `默认背景 ${i+1}`;
+                        item.dataset.index = String(i);
+                        item.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/set-default', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, index: i }) }); const rj = await rs.json().catch(()=>({})); if (rs.ok && rj && rj.url) { applyBoardBackground(rj.url); uiToast('已应用默认背景','success'); } else { uiToast((rj && rj.message) || '设置失败','error'); } } catch(_) { uiToast('设置失败','error'); } };
+                        list && list.insertBefore(item, uploadServer);
+                    }
+                }
+            }).catch(()=>{});
+        } catch(_){}
+    }
+    if (useDefault) useDefault.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/set-default', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser, index: 0 }) }); const rj = await rs.json().catch(()=>({})); if (rs.ok && rj && rj.url) { applyBoardBackground(rj.url); uiToast('已应用默认背景','success'); } else { uiToast((rj && rj.message) || '设置失败','error'); } } catch(_) { uiToast('设置失败','error'); } };
     if (uploadServer) uploadServer.onclick = () => { hideBgMenu(); const fileInput = document.getElementById('bgUploadFile'); fileInput && fileInput.click(); };
     if (clearBg) clearBg.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/clear', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser }) }); if (rs.ok) { applyBoardBackground(''); uiToast('已清除背景','success'); } else { const rj = await rs.json().catch(()=>({})); uiToast((rj && rj.message) || '清除失败','error'); } } catch (err) { uiToast('清除失败','error'); } };
     if (!bgMenuOutsideClickHandler) {

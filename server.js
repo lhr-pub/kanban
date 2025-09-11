@@ -36,7 +36,27 @@ if (!fs.existsSync(wallpapersDir)) fs.mkdirSync(wallpapersDir, { recursive: true
 app.use('/uploads', express.static(uploadsRoot));
 
 // Default board background (used when a user hasn't set one)
-const DEFAULT_BACKGROUND_URL = 'https://snlz-1322843231.cos.ap-nanjing.myqcloud.com/uPic/photo-1742156345582-b857d994c84e.webp';
+const DEFAULT_BACKGROUND_URL = process.env.DEFAULT_BG_URL || 'https://snlz-1322843231.cos.ap-nanjing.myqcloud.com/uPic/photo-1742156345582-b857d994c84e.webp';
+
+function getDefaultBackgrounds() {
+    try {
+        // Support comma-separated list
+        const csv = process.env.DEFAULT_BG_URLS;
+        let urls = [];
+        if (csv && typeof csv === 'string') {
+            urls = csv.split(',').map(s => s.trim()).filter(Boolean);
+        } else {
+            const a = process.env.DEFAULT_BG_URL_1;
+            const b = process.env.DEFAULT_BG_URL_2;
+            const c = process.env.DEFAULT_BG_URL_3;
+            urls = [a, b, c].filter(u => typeof u === 'string' && u.trim());
+        }
+        if (!urls.length && DEFAULT_BACKGROUND_URL) urls = [DEFAULT_BACKGROUND_URL];
+        return urls.slice(0, 3);
+    } catch (_) {
+        return DEFAULT_BACKGROUND_URL ? [DEFAULT_BACKGROUND_URL] : [];
+    }
+}
 
 // 内存中的WebSocket连接管理
 const connections = new Map();
@@ -1161,18 +1181,29 @@ app.get('/api/user-background/:username', (req, res) => {
 
 // Set default background for user
 app.post('/api/user-background/set-default', (req, res) => {
-    const { username } = req.body || {};
+    const { username, index } = req.body || {};
     if (!username) return res.status(400).json({ message: '缺少参数' });
     try {
         const usersFile = path.join(dataDir, 'users.json');
         const users = readJsonFile(usersFile, {});
         const user = users[username];
         if (!user) return res.status(404).json({ message: '用户不存在' });
-        user.backgroundUrl = DEFAULT_BACKGROUND_URL;
+        const defaults = getDefaultBackgrounds();
+        const i = (typeof index === 'number' && index >= 0 && index < defaults.length) ? index : 0;
+        user.backgroundUrl = defaults[i] || DEFAULT_BACKGROUND_URL || '';
         writeJsonFile(usersFile, users);
-        return res.json({ url: DEFAULT_BACKGROUND_URL });
+        return res.json({ url: user.backgroundUrl });
     } catch (e) {
         return res.status(500).json({ message: '设置失败' });
+    }
+});
+
+// Provide available default backgrounds
+app.get('/api/default-backgrounds', (req, res) => {
+    try {
+        return res.json({ defaults: getDefaultBackgrounds() });
+    } catch (_) {
+        return res.json({ defaults: [] });
     }
 });
 
