@@ -12,27 +12,42 @@
     <!-- 登录页面 -->
     <div id="loginPage" class="page hidden">
         <div class="container">
-            <h1>多人协作看板</h1>
-            <div class="login-form">
-                <h2 id="formTitle">登录</h2>
-                <div id="authMessage"></div>
-                <div id="resendContainer" style="display:none; font-size: 0.9em; color: #666;">
-                    未收到邮件？<a href="#" id="resendLink">重新发送验证邮件</a>
-                    <span id="resendStatus" style="margin-left:.5rem;"></span>
+            <div class="login-card">
+                <div class="login-hero">
+                    <span class="brand-badge">KANBAN</span>
+                    <h1>多人协作看板</h1>
+                    <p class="hero-intro">和团队一起即时共建任务，清晰掌控项目节奏。</p>
+                    <ul class="login-highlights">
+                        <li>看板更新实时同步</li>
+                        <li>任务评论、提醒一站搞定</li>
+                        <li>星标关注关键项目</li>
+                    </ul>
                 </div>
-                <form id="authForm">
-                    <input type="text" id="username" placeholder="用户名或邮箱" required>
-                    <input type="email" id="email" placeholder="邮箱（用于验证）" style="display:none">
-                    <input type="password" id="password" placeholder="密码" required>
-                    <button type="submit" id="submitBtn">登录</button>
-                </form>
-                <p>
-                    <span id="switchText">还没有账号？</span>
-                    <a href="#" id="switchMode">注册</a>
-                </p>
-                <p>
-                    <a href="#" id="forgotPasswordLink">忘记密码？</a>
-                </p>
+                <div class="login-panel">
+                    <div class="login-form">
+                        <h2 id="formTitle">登录</h2>
+                        <div id="authMessage" class="auth-message"></div>
+                        <div id="resendContainer" class="resend-row" style="display:none;">
+                            未收到邮件？<a href="#" id="resendLink">重新发送验证邮件</a>
+                            <span id="resendStatus"></span>
+                        </div>
+                        <form id="authForm">
+                            <input type="text" id="username" placeholder="用户名或邮箱" required>
+                            <input type="email" id="email" placeholder="邮箱（用于验证）" style="display:none">
+                            <input type="password" id="password" placeholder="密码" required>
+                            <button type="submit" id="submitBtn">登录</button>
+                        </form>
+                        <div class="login-footnotes">
+                            <p>
+                                <span id="switchText">还没有账号？</span>
+                                <a href="#" id="switchMode">注册</a>
+                            </p>
+                            <p>
+                                <a href="#" id="forgotPasswordLink">忘记密码？</a>
+                            </p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
