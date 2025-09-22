@@ -12,29 +12,31 @@
     <!-- 登录页面 -->
     <div id="loginPage" class="page hidden">
         <div class="container">
-            <div class="login-card">
-                <div class="login-hero">
-                    <span class="brand-badge">KANBAN</span>
-                    <h1>多人协作看板</h1>
-                    <p class="hero-intro">和团队一起即时共建任务，清晰掌控项目节奏。</p>
-                    <ul class="login-highlights">
-                        <li>看板更新实时同步</li>
-                        <li>任务评论、提醒一站搞定</li>
-                        <li>星标关注关键项目</li>
-                    </ul>
-                </div>
-                <div class="login-panel">
-                    <div class="login-form">
-                        <h2 id="formTitle">登录</h2>
+            <div class="login-shell">
+                <div class="login-card">
+                    <div class="login-card-body">
+                        <div class="login-card-header">
+                            <h1 id="formTitle">登录</h1>
+                            <p class="login-subtitle" id="loginSubtitle">欢迎使用协作看板，一起提升团队效率。</p>
+                        </div>
                         <div id="authMessage" class="auth-message"></div>
                         <div id="resendContainer" class="resend-row" style="display:none;">
                             未收到邮件？<a href="#" id="resendLink">重新发送验证邮件</a>
                             <span id="resendStatus"></span>
                         </div>
-                        <form id="authForm">
-                            <input type="text" id="username" placeholder="用户名或邮箱" required>
-                            <input type="email" id="email" placeholder="邮箱（用于验证）" style="display:none">
-                            <input type="password" id="password" placeholder="密码" required>
+                        <form id="authForm" class="login-form">
+                            <div class="input-field">
+                                <span class="input-icon" aria-hidden="true" data-icon="user"></span>
+                                <input type="text" id="username" placeholder="用户名或邮箱" required>
+                            </div>
+                            <div class="input-field" id="emailField" style="display:none;">
+                                <span class="input-icon" aria-hidden="true" data-icon="mail"></span>
+                                <input type="email" id="email" placeholder="邮箱（用于验证）">
+                            </div>
+                            <div class="input-field">
+                                <span class="input-icon" aria-hidden="true" data-icon="lock"></span>
+                                <input type="password" id="password" placeholder="密码" required>
+                            </div>
                             <button type="submit" id="submitBtn">登录</button>
                         </form>
                         <div class="login-footnotes">
@@ -45,6 +47,17 @@
                             <p>
                                 <a href="#" id="forgotPasswordLink">忘记密码？</a>
                             </p>
+                        </div>
+                    </div>
+                    <div class="login-illustration" aria-hidden="true">
+                        <div class="scene sky"></div>
+                        <div class="scene mountains"></div>
+                        <div class="scene ground">
+                            <span class="tree tree--1"></span>
+                            <span class="tree tree--2"></span>
+                            <span class="tree tree--3"></span>
+                            <span class="tree tree--4"></span>
+                            <span class="tree tree--5"></span>
                         </div>
                     </div>
                 </div>

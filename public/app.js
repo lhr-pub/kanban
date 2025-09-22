@@ -117,7 +117,9 @@ const boardPage = document.getElementById('boardPage');
 const archivePage = document.getElementById('archivePage');
 const authForm = document.getElementById('authForm');
 const formTitle = document.getElementById('formTitle');
+const loginSubtitle = document.getElementById('loginSubtitle');
 const submitBtn = document.getElementById('submitBtn');
+const emailField = document.getElementById('emailField');
 const switchMode = document.getElementById('switchMode');
 const switchText = document.getElementById('switchText');
 const editModal = document.getElementById('editModal');
@@ -939,20 +941,31 @@ function toggleAuthMode(e) {
     e.preventDefault();
     const isLogin = formTitle.textContent === '登录';
 
+    const emailInput = document.getElementById('email');
+
     if (isLogin) {
         formTitle.textContent = '注册';
         submitBtn.textContent = '注册';
         switchText.textContent = '已有账号？';
         switchMode.textContent = '登录';
-        const emailInput = document.getElementById('email');
-        if (emailInput) emailInput.style.display = '';
+        if (loginSubtitle) loginSubtitle.textContent = '创建账号即可随时开始协作。';
+        if (emailField) emailField.style.display = '';
+        if (emailInput) {
+            emailInput.style.display = '';
+            emailInput.required = true;
+        }
     } else {
         formTitle.textContent = '登录';
         submitBtn.textContent = '登录';
         switchText.textContent = '还没有账号？';
         switchMode.textContent = '注册';
-        const emailInput = document.getElementById('email');
-        if (emailInput) emailInput.style.display = 'none';
+        if (loginSubtitle) loginSubtitle.textContent = '欢迎使用协作看板，一起提升团队效率。';
+        if (emailField) emailField.style.display = 'none';
+        if (emailInput) {
+            emailInput.style.display = 'none';
+            emailInput.required = false;
+            emailInput.value = '';
+        }
     }
 }
 
@@ -1006,7 +1019,13 @@ async function handleAuth(e) {
                 submitBtn.textContent = '登录';
                 switchText.textContent = '还没有账号？';
                 switchMode.textContent = '注册';
-                if (emailInput) emailInput.style.display = 'none';
+                if (loginSubtitle) loginSubtitle.textContent = '欢迎使用协作看板，一起提升团队效率。';
+                if (emailField) emailField.style.display = 'none';
+                if (emailInput) {
+                    emailInput.style.display = 'none';
+                    emailInput.required = false;
+                    emailInput.value = '';
+                }
             }
         } else {
             const msg = result && result.message ? result.message : `${isLogin ? '登录' : '注册'}失败`;
@@ -3697,6 +3716,14 @@ function logout() {
     submitBtn.textContent = '登录';
     switchText.textContent = '还没有账号？';
     switchMode.textContent = '注册';
+    if (loginSubtitle) loginSubtitle.textContent = '欢迎使用协作看板，一起提升团队效率。';
+    const emailInput = document.getElementById('email');
+    if (emailField) emailField.style.display = 'none';
+    if (emailInput) {
+        emailInput.style.display = 'none';
+        emailInput.required = false;
+        emailInput.value = '';
+    }
 }
 
 // === Project switcher (like board switcher) ===
