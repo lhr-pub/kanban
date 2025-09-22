@@ -1946,7 +1946,10 @@ h1 {
 #boardPage .board-breadcrumb #currentBoardName {
   font-weight: 700;
   letter-spacing: -0.01em;
-  color: var(--header-fg);
+  /* color: var(--header-fg); */
+  color: var(--gray-800);
+  /* mix-blend-mode: darken; */
+  /* color: #000000; */
 }
 
 .logout-btn {
@@ -3812,6 +3815,11 @@ body {
 
 /* === Wallpaper: apply to whole board page (header + content) === */
 #boardPage {
+    background-image: none !important;
+    background-color: var(--bg) !important;
+}
+
+#boardPage.has-wallpaper {
     background-image: var(--board-bg-url) !important;
     background-position: center center !important;
     background-size: cover !important;
@@ -3820,13 +3828,18 @@ body {
 }
 
 /* Let content area be transparent so page wallpaper shows through */
-#boardPage .board-container {
+#boardPage.has-wallpaper .board-container {
     background-color: transparent !important;
     background-image: none !important;
 }
 
+#boardPage:not(.has-wallpaper) .board-container {
+    background-color: var(--bg) !important;
+    background-image: none !important;
+}
+
 /* Frosted glass header over wallpaper */
-#boardPage .header {
+#boardPage.has-wallpaper .header {
     background: rgba(255,255,255,0.55) !important;
     -webkit-backdrop-filter: saturate(1.2) blur(12px);
     backdrop-filter: saturate(1.2) blur(70px);
@@ -3834,9 +3847,34 @@ body {
     border-bottom: 1px solid rgba(255,255,255,0.35) !important;
 }
 
+#boardPage:not(.has-wallpaper) .header {
+    background: transparent !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+    /* box-shadow: none !important; */
+    border-bottom: 1px solid var(--gray-200) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
 /* Adaptive header text via CSS vars (dark/light) */
 #boardPage .header.header-text-light { --header-fg:#ffffff; --header-link:#e5edff; }
 #boardPage .header.header-text-dark { --header-fg:#374151; --header-link:#3b82f6; }
+
+#boardPage .board-breadcrumb #breadcrumbHome,
+#boardPage .board-breadcrumb .project-link {
+    color: var(--header-fg) !important;
+    /* color: #000000 !important; */
+    backdrop-filter: none !important;
+    /* mix-blend-mode: difference; */
+    /* border-bottom-color: rgba(255,255,255,0.4) !important; */
+}
+
+#boardPage .board-breadcrumb #breadcrumbHome:hover,
+#boardPage .board-breadcrumb .project-link:hover {
+    /* color: #000000 !important; */
+    border-bottom-color: rgba(255,255,255,0.6) !important;
+    /* mix-blend-mode: exclusion; */
+}
 
 
 /* board/list */
@@ -4086,12 +4124,9 @@ body {
 .card .card-title { margin-top: 6px; }
 
 #boardPage .header {
-    background: transparent;
-    box-shadow: none;
     padding: 0 !important;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-    border-bottom: 1px solid var(--gray-200) !important;
 }
 #boardPage .header > .container {
     max-width: 1200px !important;
@@ -4962,7 +4997,6 @@ body {
 #boardPage .header {
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-    border-bottom: 1px solid rgba(255,255,255,0.3) !important; /* lighter hairline on wallpaper */
     padding: 0 !important; /* rely on inner container */
 }
 #boardPage .header > .container {

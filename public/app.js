@@ -624,7 +624,8 @@ function fileToDataURL(file) {
 
 function applyBoardBackground(url) {
     let v = 'none';
-    if (url && typeof url === 'string' && url.trim()) {
+    const hasWallpaper = !!(url && typeof url === 'string' && url.trim());
+    if (hasWallpaper) {
         let raw = url.trim();
         // Add cache-buster for same-origin or local uploads to ensure immediate refresh
         const isData = /^data:/i.test(raw);
@@ -644,6 +645,13 @@ function applyBoardBackground(url) {
         v = 'none';
     }
     try { document.documentElement.style.setProperty('--board-bg-url', v); } catch(_){}
+    try {
+        const boardRoot = document.getElementById('boardPage');
+        if (boardRoot) {
+            if (hasWallpaper) boardRoot.classList.add('has-wallpaper');
+            else boardRoot.classList.remove('has-wallpaper');
+        }
+    } catch(_){}
     // Navbar text does not adapt to background; fixed styles
 }
 
@@ -3372,20 +3380,89 @@ function directDownload(url){
     }
 }
 
+function sanitizeFilenamePart(name) {
+    if (!name || typeof name !== 'string') return '未命名';
+    const cleaned = name.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim();
+    return cleaned || '未命名';
+}
+
+function getBoardExportContext() {
+    let projectId = currentProjectId;
+    let projectName = currentProjectName;
+    let boardName = currentBoardName;
+
+    try {
+        if (!projectId) {
+            const storedId = localStorage.getItem('kanbanCurrentProjectId');
+            if (storedId) projectId = storedId;
+        }
+    } catch(_){}
+    try {
+        if (!projectName) {
+            const storedProjectName = localStorage.getItem('kanbanCurrentProjectName');
+            if (storedProjectName) projectName = storedProjectName;
+        }
+    } catch(_){}
+    try {
+        if (!boardName) {
+            const storedBoardName = localStorage.getItem('kanbanCurrentBoardName');
+            if (storedBoardName) boardName = storedBoardName;
+        }
+    } catch(_){}
+
+    if ((!projectName || !String(projectName).trim())) {
+        try {
+            const projectEl = document.getElementById('currentProjectName');
+            if (projectEl && projectEl.textContent) {
+                projectName = projectEl.textContent.trim();
+            }
+        } catch(_){}
+    }
+    if ((!boardName || !String(boardName).trim())) {
+        try {
+            const boardEl = document.getElementById('currentBoardName');
+            if (boardEl && boardEl.textContent) {
+                boardName = boardEl.textContent.trim();
+            }
+        } catch(_){}
+    }
+
+    return {
+        projectId: projectId ? String(projectId).trim() : '',
+        projectName: projectName ? String(projectName).trim() : '',
+        boardName: boardName ? String(boardName).trim() : ''
+    };
+}
+
+function ensureBoardExportContext() {
+    const ctx = getBoardExportContext();
+    if (!ctx.projectId || !ctx.boardName) {
+        uiToast('当前看板信息缺失，无法导出','error');
+        return null;
+    }
+    if (!ctx.projectName) ctx.projectName = '未命名项目';
+    return ctx;
+}
+
 // 导出Markdown
 async function exportMarkdown() {
+    const ctx = ensureBoardExportContext();
+    if (!ctx) return;
+    const { projectId, projectName, boardName } = ctx;
+    const fileName = `${sanitizeFilenamePart(projectName)}-${sanitizeFilenamePart(boardName)}.md`;
+    const url = `/api/export/${projectId}/${encodeURIComponent(boardName)}`;
     // 直接通过 <a> 触发下载（更稳定，点击即下载）
-    const url = `/api/export/${currentProjectId}/${encodeURIComponent(currentBoardName)}`;
-    if (anchorDownload(url, `${currentProjectName}-${currentBoardName}.md`)) return;
+    if (anchorDownload(url, fileName)) return;
     if (navigateDownload(url)) return;
     // 回退：隐藏 iframe
     if (directDownload(url)) return;
     // 最后回退到 Blob 方式
     try {
-        const response = await fetch(url);
+        const finalUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        const response = await fetch(finalUrl, { credentials: 'include' });
         if (response.ok) {
             const blob = await response.blob();
-            triggerBlobDownload(blob, `${currentProjectName}-${currentBoardName}.md`);
+            triggerBlobDownload(blob, fileName);
         } else {
             const text = await response.text().catch(()=> '');
             console.error('Export error:', response.status, text);
@@ -7155,16 +7232,21 @@ function syncStarButtons(){
 
 // 导出JSON
 async function exportJSON() {
-    const url = `/api/export-json/${currentProjectId}/${encodeURIComponent(currentBoardName)}`;
-    if (anchorDownload(url, `${currentProjectName}-${currentBoardName}.json`)) return;
+    const ctx = ensureBoardExportContext();
+    if (!ctx) return;
+    const { projectId, projectName, boardName } = ctx;
+    const fileName = `${sanitizeFilenamePart(projectName)}-${sanitizeFilenamePart(boardName)}.json`;
+    const url = `/api/export-json/${projectId}/${encodeURIComponent(boardName)}`;
+    if (anchorDownload(url, fileName)) return;
     if (navigateDownload(url)) return;
     if (directDownload(url)) return;
     // 回退到 Blob 方式
     try {
-        const response = await fetch(url);
+        const finalUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        const response = await fetch(finalUrl, { credentials: 'include' });
         if (response.ok) {
             const blob = await response.blob();
-            triggerBlobDownload(blob, `${currentProjectName}-${currentBoardName}.json`);
+            triggerBlobDownload(blob, fileName);
         } else {
             const text = await response.text().catch(()=> '');
             console.error('Export JSON error:', response.status, text);
