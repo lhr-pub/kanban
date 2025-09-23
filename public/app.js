@@ -748,8 +748,18 @@ function hideBgMenu(){
 function cleanupTransientOverlays() {
     try { hideBoardSwitcher(); } catch (_) {}
     try { hideProjectSwitcher(); } catch (_) {}
+    try { hideIOMenu(); } catch (_) {}
+    try { hideBgMenu(); } catch (_) {}
     try {
-        document.querySelectorAll('.assignee-dropdown, .board-switcher-menu, .project-switcher-menu').forEach(el => el.remove());
+        document.querySelectorAll('.assignee-dropdown, .board-switcher-menu, .project-switcher-menu').forEach(el => {
+            if (!el) return;
+            const id = el.id;
+            if (id === 'ioMenu' || id === 'bgMenu') {
+                el.classList.add('hidden');
+                return;
+            }
+            el.remove();
+        });
     } catch (_) {}
 }
 
