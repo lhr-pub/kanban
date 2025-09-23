@@ -20,6 +20,12 @@ services:
       - SMTP_PASS=${SMTP_PASS:-}
       - MAIL_FROM=${MAIL_FROM:-}
       - USE_ETHEREAL=${USE_ETHEREAL:-true}
+      - BASE_URL=${BASE_URL:-}
+      - DEFAULT_BG_URL=${DEFAULT_BG_URL:-}
+      - DEFAULT_BG_URLS=${DEFAULT_BG_URLS:-}
+      - DEFAULT_BG_URL_1=${DEFAULT_BG_URL_1:-}
+      - DEFAULT_BG_URL_2=${DEFAULT_BG_URL_2:-}
+      - DEFAULT_BG_URL_3=${DEFAULT_BG_URL_3:-}
     ports:
       - "3000:3000"
     volumes:
