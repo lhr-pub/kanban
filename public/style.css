@@ -4265,7 +4265,7 @@ body {
     top: 50%;
     border: none;
     background: transparent;
-    color: #cbd5f5;
+    color: transparent;
     font-size: 22px;
     font-weight: 600;
     line-height: 1;
@@ -4280,13 +4280,16 @@ body {
     pointer-events: none;
     transition: opacity .12s ease, color .12s ease;
     z-index: 2;
-    text-shadow: 0 0 3px rgba(255,255,255,0.8);
+    text-shadow: none;
 }
 .card:hover .card-move-button {
-    opacity: 1;
     pointer-events: auto;
 }
-.card-move-button:hover { color: #0f172a; }
+.card-move-button:hover {
+    opacity: 1;
+    color: #94a3b8;
+    text-shadow: 0 0 6px rgba(255,255,255,0.9);
+}
 .card-move-left { left: -20px; }
 .card-move-right { right: -20px; }
 
