@@ -18,6 +18,7 @@ let pendingFocusCaretIndex = null;
 // Guard to avoid double initial render and provide WS fallback
 let initialBoardRendered = false;
 let initialBoardTimeout = null;
+const inlineEditingCardIds = new Set();
 
 // Snapshot & WS join tracking to reduce flicker and redundant loads
 let lastLoadedBoardKey = null;
@@ -2661,6 +2662,7 @@ function inlineEditCardTitle(cardEl){
     try { autoResizeTextarea(input); } catch(e) {}
     input.focus();
     try { input.setSelectionRange(old.length, old.length); } catch(e) {}
+    setCardInlineEditingState(cardEl.dataset.cardId, true);
     let canceled = false;
     input.addEventListener('keydown',(e)=>{
         if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); input.blur(); }
@@ -2672,6 +2674,7 @@ function inlineEditCardTitle(cardEl){
         const t = document.createElement('div'); t.className='card-title'; t.textContent = next; t.tabIndex = 0;
         input.replaceWith(t);
         if (!canceled && val && val !== old) { saveCardTitle(cardEl.dataset.cardId, val); }
+        setCardInlineEditingState(cardEl.dataset.cardId, false);
     });
 }
 
@@ -2713,6 +2716,9 @@ function createCardElement(card, status) {
     const cardElement = document.createElement('div');
     cardElement.className = 'card';
     cardElement.dataset.cardId = card.id;
+    if (inlineEditingCardIds.has(card.id)) {
+        cardElement.classList.add('inline-editing');
+    }
 
     const labels = Array.isArray(card.labels) ? card.labels.slice(0, 5) : [];
     const labelDots = labels.map(color => `<span class="label label-${color}"></span>`).join('');
@@ -2728,7 +2734,8 @@ function createCardElement(card, status) {
         ? `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">${card.deadline}</span>`
         : '';
 
-    const moreBtn = `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
+    const isInlineEditing = inlineEditingCardIds.has(card.id);
+    const moreBtn = isInlineEditing ? '' : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
 
     const archiveBtn = (status !== 'archived')
         ? ``
@@ -4644,12 +4651,24 @@ function scheduleDeferredRender() {
 
 // 管理卡片的内联编辑状态
 function setCardInlineEditingState(cardId, isEditing) {
+    if (isEditing) inlineEditingCardIds.add(cardId);
+    else inlineEditingCardIds.delete(cardId);
     const cardElement = document.querySelector(`[data-card-id="${cardId}"]`);
     if (cardElement) {
         if (isEditing) {
             cardElement.classList.add('inline-editing');
         } else {
             cardElement.classList.remove('inline-editing');
+        }
+        const quickBtn = cardElement.querySelector('.card-quick');
+        if (quickBtn) {
+            if (isEditing) {
+                quickBtn.dataset.inlineHidden = 'true';
+                quickBtn.style.display = 'none';
+            } else {
+                delete quickBtn.dataset.inlineHidden;
+                quickBtn.style.display = '';
+            }
         }
     }
 }

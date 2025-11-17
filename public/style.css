@@ -4265,7 +4265,7 @@ body {
     top: 50%;
     border: none;
     background: transparent;
-    color: #1f2937;
+    color: #cbd5f5;
     font-size: 22px;
     font-weight: 600;
     line-height: 1;
@@ -4286,9 +4286,7 @@ body {
     opacity: 1;
     pointer-events: auto;
 }
-.card-move-button:hover {
-    color: #0f172a;
-}
+.card-move-button:hover { color: #0f172a; }
 .card-move-left { left: -20px; }
 .card-move-right { right: -20px; }
 
@@ -4310,6 +4308,8 @@ body {
 .badge-due.soon{ color:#f59e0b; }
 
 .card-quick{ position:absolute; top:6px; right:6px; opacity:0; transition:opacity .12s; border:0; background:transparent; font-size:18px; line-height:1; cursor:pointer; }
+.card.inline-editing .card-quick,
+.card.inline-editing:hover .card-quick { display: none !important; }
 .card:hover .card-quick{ opacity:1; }
 
 /* drawer modal (right panel) */
