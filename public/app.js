@@ -193,6 +193,52 @@ function getAllStatusKeys(){
     return Object.keys(boardData).filter(k => Array.isArray(boardData[k]));
 }
 
+function getOrderedStatusKeys() {
+    ensureClientLists();
+    if (clientLists && Array.isArray(clientLists.listIds)) {
+        return clientLists.listIds
+            .map(id => clientLists.lists[id])
+            .filter(meta => meta && meta.status && meta.status !== 'archived')
+            .sort((a, b) => (a.pos || 0) - (b.pos || 0))
+            .map(meta => meta.status);
+    }
+    return getAllStatusKeys().filter(st => st !== 'archived');
+}
+
+function getAdjacentStatusKey(currentStatus, direction) {
+    if (!currentStatus) return null;
+    const ordered = getOrderedStatusKeys();
+    const idx = ordered.indexOf(currentStatus);
+    if (idx === -1) return null;
+    if (direction === 'prev') return ordered[idx - 1] || null;
+    if (direction === 'next') return ordered[idx + 1] || null;
+    return null;
+}
+
+function moveCardToAdjacent(cardId, fromStatus, direction) {
+    if (!cardId || !fromStatus) return;
+    const toStatus = getAdjacentStatusKey(fromStatus, direction);
+    if (!toStatus || toStatus === fromStatus) return;
+    const fromList = Array.isArray(boardData[fromStatus]) ? boardData[fromStatus] : null;
+    if (!fromList) return;
+    const index = fromList.findIndex(card => card.id === cardId);
+    if (index === -1) return;
+    const [card] = fromList.splice(index, 1);
+    if (!Array.isArray(boardData[toStatus])) boardData[toStatus] = [];
+    boardData[toStatus].push(card);
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'move-card',
+            projectId: currentProjectId,
+            boardName: currentBoardName,
+            cardId,
+            fromStatus,
+            toStatus
+        }));
+    }
+    renderBoard();
+}
+
 // History navigation state
 let isHandlingPopstate = false;
 function updateHistory(page, replace) {
@@ -2706,6 +2752,35 @@ function createCardElement(card, status) {
         ${deleteBtn}
         ${moreBtn}
     `;
+
+    if (status !== 'archived') {
+        const prevStatus = getAdjacentStatusKey(status, 'prev');
+        const nextStatus = getAdjacentStatusKey(status, 'next');
+        if (prevStatus) {
+            const leftBtn = document.createElement('button');
+            leftBtn.type = 'button';
+            leftBtn.className = 'card-move-button card-move-left';
+            leftBtn.setAttribute('aria-label', '移动到左侧卡组');
+            leftBtn.textContent = '‹';
+            leftBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                moveCardToAdjacent(card.id, status, 'prev');
+            });
+            cardElement.appendChild(leftBtn);
+        }
+        if (nextStatus) {
+            const rightBtn = document.createElement('button');
+            rightBtn.type = 'button';
+            rightBtn.className = 'card-move-button card-move-right';
+            rightBtn.setAttribute('aria-label', '移动到右侧卡组');
+            rightBtn.textContent = '›';
+            rightBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                moveCardToAdjacent(card.id, status, 'next');
+            });
+            cardElement.appendChild(rightBtn);
+        }
+    }
 
     cardElement.addEventListener('click', (e) => {
         if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.restore-chip')) return;
