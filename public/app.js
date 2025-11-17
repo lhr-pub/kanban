@@ -4970,14 +4970,38 @@ function enableListsDrag() {
             title.addEventListener('dragend', endDrag);
         }
 
-        // list-level dragover/drop to improve reliability
-        listEl.ondragover = reposition;
-        listEl.ondrop = (e) => { if (e && e.preventDefault) e.preventDefault(); finalizeDrop(); };
+        // list-level dragover/drop to improve reliability (but only when a list is being dragged)
+        const handleListDragOver = (e) => {
+            if (!draggingListId) return;
+            reposition(e);
+        };
+        const handleListDrop = (e) => {
+            if (!draggingListId) return;
+            if (e && e.preventDefault) e.preventDefault();
+            finalizeDrop();
+        };
+        listEl.addEventListener('dragover', handleListDragOver);
+        listEl.addEventListener('drop', handleListDrop);
     });
 
-    // container-level handlers
-    container.ondragover = reposition;
-    container.ondrop = (e) => { if (e && e.preventDefault) e.preventDefault(); finalizeDrop(); };
+    // container-level handlers (guarded to avoid interfering with card drag/drop)
+    if (container.__listDragOverHandler) {
+        container.removeEventListener('dragover', container.__listDragOverHandler);
+    }
+    if (container.__listDropHandler) {
+        container.removeEventListener('drop', container.__listDropHandler);
+    }
+    container.__listDragOverHandler = (e) => {
+        if (!draggingListId) return;
+        reposition(e);
+    };
+    container.__listDropHandler = (e) => {
+        if (!draggingListId) return;
+        if (e && e.preventDefault) e.preventDefault();
+        finalizeDrop();
+    };
+    container.addEventListener('dragover', container.__listDragOverHandler);
+    container.addEventListener('drop', container.__listDropHandler);
 }
 // ===== End Lists drag =====
 
