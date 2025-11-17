@@ -108,6 +108,8 @@ try { bindAddListOutsideClose(); } catch(_){}
 // 拖拽状态（支持跨列）
 let draggingCardId = null;
 let draggingFromStatus = null;
+let draggingOriginContainer = null;
+let draggingCurrentContainer = null;
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -2265,6 +2267,7 @@ function renderBoard() {
 
             const cards = getCardsByStatus(list.status);
             cards.forEach(c => cardsEl.appendChild(createCardElement(c, list.status)));
+            updateContainerEmptyState(cardsEl);
 
             // composer
             const composerWrap = document.createElement('div');
@@ -4775,6 +4778,16 @@ function getCaretIndexFromSpan(spanEl, clientX, clientY) {
     return Math.max(0, Math.min(textLen, index));
 }
 
+function updateContainerEmptyState(container) {
+    if (!container) return;
+    const hasCards = container.querySelector('.card');
+    if (hasCards) {
+        delete container.dataset.empty;
+    } else {
+        container.dataset.empty = 'true';
+    }
+}
+
 // 列内拖拽排序
 function enableColumnDrag(status) {
     // Support legacy ids and new dynamic containers
@@ -4790,17 +4803,24 @@ function enableColumnDrag(status) {
     const handleDragOver = (e) => {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        const afterEl = getDragAfterElement(container, e.clientY);
         const dragging = document.querySelector('.card.dragging');
         if (!dragging) return;
+        const previousContainer = (draggingCurrentContainer && draggingCurrentContainer !== container) ? draggingCurrentContainer : null;
+        delete container.dataset.empty;
+        const afterEl = getDragAfterElement(container, e.clientY);
         if (afterEl == null) {
             container.appendChild(dragging);
         } else {
             container.insertBefore(dragging, afterEl);
         }
+        draggingCurrentContainer = container;
+        if (previousContainer && previousContainer !== container) {
+            updateContainerEmptyState(previousContainer);
+        }
     };
 
     const handleDrop = () => {
+        delete container.dataset.empty;
         const toStatus = status;
         const fromStatus = draggingFromStatus;
         const movedCardId = draggingCardId;
@@ -4814,6 +4834,10 @@ function enableColumnDrag(status) {
         draggingCardId = null;
         draggingFromStatus = null;
         document.body.classList.remove('dragging-cards');
+        if (draggingOriginContainer && draggingOriginContainer !== container) {
+            updateContainerEmptyState(draggingOriginContainer);
+        }
+        draggingCurrentContainer = container;
     };
 
     container.ondragover = handleDragOver;
@@ -4829,14 +4853,27 @@ function makeDraggable(cardEl) {
         const col = cardEl.closest('.column, .list');
         draggingFromStatus = col ? col.getAttribute('data-status') : null;
         draggingCardId = cardEl.dataset.cardId;
+        draggingOriginContainer = cardEl.closest('.cards');
+        draggingCurrentContainer = draggingOriginContainer;
+        if (draggingOriginContainer) delete draggingOriginContainer.dataset.empty;
         document.body.classList.add('dragging-cards');
         try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); e.dataTransfer.effectAllowed = 'move'; } catch (e) {}
     };
     cardEl.ondragend = () => {
         cardEl.classList.remove('dragging');
         document.body.classList.remove('dragging-cards');
+        const currentContainer = cardEl.closest('.cards');
+        updateContainerEmptyState(currentContainer);
+        if (draggingOriginContainer && draggingOriginContainer !== currentContainer) {
+            updateContainerEmptyState(draggingOriginContainer);
+        }
+        if (draggingCurrentContainer && draggingCurrentContainer !== currentContainer && draggingCurrentContainer !== draggingOriginContainer) {
+            updateContainerEmptyState(draggingCurrentContainer);
+        }
         draggingCardId = null;
         draggingFromStatus = null;
+        draggingOriginContainer = null;
+        draggingCurrentContainer = null;
     };
 }
 
