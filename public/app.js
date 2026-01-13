@@ -7884,12 +7884,17 @@ async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
             if (Array.isArray(projectBoardsCache[fromProjectId])) {
                 projectBoardsCache[fromProjectId] = projectBoardsCache[fromProjectId].filter(b => b !== boardName);
             }
-            // 如果目标项目有缓存，也添加进去
-            if (Array.isArray(projectBoardsCache[toProjectId])) {
-                if (!projectBoardsCache[toProjectId].includes(boardName)) {
-                    projectBoardsCache[toProjectId].unshift(boardName);
-                }
+            // 清除目标项目的缓存，强制下次进入时重新加载
+            delete projectBoardsCache[toProjectId];
+        } catch(e) {}
+        // 标记目标项目需要重新加载看板列表
+        try {
+            // 如果当前缓存的项目key是目标项目，重置它以强制刷新
+            if (window.boardSelectProjectKey === String(toProjectId)) {
+                window.boardSelectProjectKey = null;
             }
+            // 标记看板列表为脏数据
+            window.boardSelectDirty = true;
         } catch(e) {}
 
         // 如果在项目看板列表页，刷新看板列表
