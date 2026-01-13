@@ -2056,8 +2056,12 @@ function connectWebSocket() {
     };
 
     socket.onmessage = function(event) {
-        const data = JSON.parse(event.data);
-        handleWebSocketMessage(data);
+        try {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        } catch (e) {
+            console.error('WebSocket message parse error:', e);
+        }
     };
 
     socket.onclose = function() {
@@ -2737,6 +2741,12 @@ function createCardElement(card, status) {
     const isInlineEditing = inlineEditingCardIds.has(card.id);
     const moreBtn = isInlineEditing ? '' : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
     const copyBtn = isInlineEditing ? '' : `<button class="card-quick-copy" onclick="event.stopPropagation(); copyCardText('${card.id}')" aria-label="复制" title="复制卡片内容"></button>`;
+    const archiveBtnHtml = (status !== 'archived' && !isInlineEditing)
+        ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}')" aria-label="归档" title="完成归档"></button>`
+        : '';
+    const deleteBtnHtml = (status !== 'archived' && !isInlineEditing)
+        ? `<button class="card-quick-trash" onclick="event.stopPropagation(); deleteCardById('${card.id}')" aria-label="删除" title="删除卡片"></button>`
+        : '';
 
     const archiveBtn = (status !== 'archived')
         ? ``
@@ -2758,6 +2768,8 @@ function createCardElement(card, status) {
         ${badges ? `<div class="card-badges">${badges}</div>` : ''}
         ${archiveBtn}
         ${deleteBtn}
+        ${deleteBtnHtml}
+        ${archiveBtnHtml}
         ${copyBtn}
         ${moreBtn}
     `;
@@ -2792,7 +2804,7 @@ function createCardElement(card, status) {
     }
 
     cardElement.addEventListener('click', (e) => {
-        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.card-quick-copy') || e.target.closest('.restore-chip')) return;
+        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.card-quick-copy') || e.target.closest('.card-quick-trash') || e.target.closest('.restore-chip')) return;
         if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
         // If inline editors are open within this card, keep editing instead of opening details
         const inlineEditor = cardElement.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
@@ -2836,6 +2848,33 @@ function copyCardText(cardId) {
         console.error('复制失败:', err);
         uiToast('复制失败', 'error');
     });
+}
+
+// 通过 ID 删除卡片
+async function deleteCardById(cardId) {
+    const ok = await uiConfirm('确定要删除这个任务吗？', '删除任务');
+    if (!ok) return;
+
+    // 从本地数据中移除
+    for (const status of getAllStatusKeys()) {
+        const idx = (boardData[status] || []).findIndex(c => c.id === cardId);
+        if (idx !== -1) {
+            boardData[status].splice(idx, 1);
+            break;
+        }
+    }
+
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'delete-card',
+            projectId: currentProjectId,
+            boardName: currentBoardName,
+            cardId: cardId
+        }));
+    }
+
+    renderBoard();
+    uiToast('卡片已删除', 'success');
 }
 
 function initials(name){
@@ -4733,7 +4772,14 @@ function escapeHtml(text) {
 
 // JS字符串转义（用于onclick等）
 function escapeJs(text) {
-    return text.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    if (text == null) return '';
+    return String(text)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r')
+        .replace(/\t/g, '\\t');
 }
 
 // SVG 图标：看板

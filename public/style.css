@@ -4304,9 +4304,9 @@ body {
 @media (prefers-color-scheme: dark) {
     .card-move-button {
         background: rgba(30,41,59,0.9);
-        color: #94a3b8;
+    color: #94a3b8;
         box-shadow: 0 2px 8px rgba(0,0,0,0.35);
-    }
+}
     .card-move-button:hover {
         color: #93c5fd;
         background: #1e293b;
@@ -4846,7 +4846,7 @@ body {
 
 /* Archive (check) */
 .card-quick-archive {
-    right: 38px; /* gap from edit */
+    right: 85px; /* positioned to the left of copy button */
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.17l-3.88-3.88-1.41 1.41L9 19 20.29 7.71l-1.41-1.41z"/></svg>');
     background-repeat: no-repeat;
     background-position: center;
@@ -4909,6 +4909,44 @@ body {
 .card.inline-editing .card-quick-copy,
 .card.inline-editing:hover .card-quick-copy { display: none !important; }
 .card:hover .card-quick-copy { opacity: 1; }
+.card.inline-editing .card-quick-archive,
+.card.inline-editing:hover .card-quick-archive { display: none !important; }
+.card.inline-editing .card-quick-trash,
+.card.inline-editing:hover .card-quick-trash { display: none !important; }
+
+/* Delete (trash) button for card */
+.card-quick-trash {
+    position: absolute;
+    top: 5px;
+    right: 120px; /* positioned to the left of archive button */
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background-color: transparent;
+    opacity: 0;
+    transition: opacity .12s, background-color .15s, border-color .15s, box-shadow .15s;
+    cursor: pointer;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%2364748b" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 15px 15px;
+}
+.card:hover .card-quick-trash { opacity: 1; }
+.card:hover .card-quick-trash { background-color: #fef2f2; border-color: #fecaca; }
+.card-quick-trash:hover { background-color: #fee2e2; border-color: #fca5a5; box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+.card-quick-trash:focus,
+.card-quick-trash:focus-visible { outline: none; background-color: #fecaca; border-color: #f87171; box-shadow: 0 0 0 3px rgba(239,68,68,0.18); }
+
+@media (prefers-color-scheme: dark) {
+    .card-quick-trash {
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23cbd5e1" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>');
+    }
+    .card:hover .card-quick-trash { background-color: rgba(239,68,68,0.15); border-color: rgba(248,113,113,0.3); }
+    .card-quick-trash:hover { background-color: rgba(239,68,68,0.25); border-color: rgba(248,113,113,0.5); }
+    .card-quick-trash:focus,
+    .card-quick-trash:focus-visible { background-color: rgba(239,68,68,0.2); border-color: rgba(248,113,113,0.4); box-shadow: 0 0 0 3px rgba(239,68,68,0.28); }
+}
 .card:hover .card-quick-copy { background-color: #eef2ff; border-color: #dbeafe; box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
 .card-quick-copy:hover { background-color: #e0e7ff; border-color: #c7d2fe; box-shadow: 0 2px 6px rgba(0,0,0,0.18); }
 .card-quick-copy:focus,
