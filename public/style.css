@@ -4867,6 +4867,42 @@ body {
     .card:hover .card-quick-archive:focus-visible { background-color: rgba(255,255,255,0.10); border-color: var(--gray-300); box-shadow: 0 0 0 3px rgba(99,102,241,0.28); color: #bfdbfe; }
 }
 
+/* Copy button for card */
+.card-quick-copy {
+    position: absolute;
+    top: 6px;
+    right: 42px; /* positioned to the left of edit button */
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background-color: transparent;
+    opacity: 0;
+    transition: opacity .12s, background-color .15s, border-color .15s, box-shadow .15s;
+    cursor: pointer;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%2344546f" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 14px 14px;
+}
+.card.inline-editing .card-quick-copy,
+.card.inline-editing:hover .card-quick-copy { display: none !important; }
+.card:hover .card-quick-copy { opacity: 1; }
+.card:hover .card-quick-copy { background-color: #eef2ff; border-color: #dbeafe; box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+.card-quick-copy:hover { background-color: #e0e7ff; border-color: #c7d2fe; box-shadow: 0 2px 6px rgba(0,0,0,0.18); }
+.card-quick-copy:focus,
+.card-quick-copy:focus-visible { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); }
+
+@media (prefers-color-scheme: dark) {
+    .card-quick-copy {
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%23cbd5e1" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>');
+    }
+    .card:hover .card-quick-copy { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); }
+    .card-quick-copy:hover { background-color: rgba(255,255,255,0.12); border-color: var(--gray-300); }
+    .card-quick-copy:focus,
+    .card-quick-copy:focus-visible { background-color: rgba(255,255,255,0.10); border-color: var(--gray-300); box-shadow: 0 0 0 3px rgba(99,102,241,0.28); }
+}
+
 /* === Archive page visual polish === */
 #archivePage .archive-container { max-width: 1200px; margin: 0 auto; padding: 16px 12px; }
 #archivePage .archive-column { padding: 16px; border-radius: 12px; border: 1px solid var(--gray-200); background: #fff; box-shadow: var(--shadow-sm); }

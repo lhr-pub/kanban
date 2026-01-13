@@ -2736,6 +2736,7 @@ function createCardElement(card, status) {
 
     const isInlineEditing = inlineEditingCardIds.has(card.id);
     const moreBtn = isInlineEditing ? '' : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
+    const copyBtn = isInlineEditing ? '' : `<button class="card-quick-copy" onclick="event.stopPropagation(); copyCardText('${card.id}')" aria-label="复制" title="复制卡片内容"></button>`;
 
     const archiveBtn = (status !== 'archived')
         ? ``
@@ -2757,6 +2758,7 @@ function createCardElement(card, status) {
         ${badges ? `<div class="card-badges">${badges}</div>` : ''}
         ${archiveBtn}
         ${deleteBtn}
+        ${copyBtn}
         ${moreBtn}
     `;
 
@@ -2790,7 +2792,7 @@ function createCardElement(card, status) {
     }
 
     cardElement.addEventListener('click', (e) => {
-        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.restore-chip')) return;
+        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.card-quick-copy') || e.target.closest('.restore-chip')) return;
         if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
         // If inline editors are open within this card, keep editing instead of opening details
         const inlineEditor = cardElement.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
@@ -2813,6 +2815,29 @@ function formatDue(dateStr) {
 function daysUntil(dateStr) {
     try { return Math.floor((new Date(dateStr).getTime() - Date.now()) / 86400000); } catch { return 9999; }
 }
+
+// 复制卡片文本到剪贴板
+function copyCardText(cardId) {
+    const card = findCardById(cardId);
+    if (!card) {
+        uiToast('卡片未找到', 'error');
+        return;
+    }
+
+    // 构建复制内容：标题 + 描述（如有）
+    let textToCopy = card.title || '';
+    if (card.description && card.description.trim()) {
+        textToCopy += '\n\n' + card.description.trim();
+    }
+
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        uiToast('已复制到剪贴板', 'success');
+    }).catch(err => {
+        console.error('复制失败:', err);
+        uiToast('复制失败', 'error');
+    });
+}
+
 function initials(name){
     if(!name) return '';
     const parts = String(name).trim().split(/\s+/);
