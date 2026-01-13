@@ -4274,7 +4274,7 @@ body {
     width: 44px;
     height: 44px;
     /* Expand clickable area with padding */
-    padding: 15px;
+    padding: 8px;
     box-sizing: content-box;
     display: inline-flex;
     align-items: center;
@@ -4297,8 +4297,8 @@ body {
     background: #fff;
     box-shadow: 0 3px 12px rgba(0,0,0,0.18);
 }
-.card-move-left { left: -51px; }
-.card-move-right { right: -51px; }
+.card-move-left { left: -44px; }
+.card-move-right { right: -44px; }
 
 
 @media (prefers-color-scheme: dark) {
@@ -4878,7 +4878,7 @@ body {
 .card:hover .card-quick:focus-visible,
 .card:hover .card-quick-archive:focus,
 .card:hover .card-quick-archive:focus-visible { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
-.card-quick { right: 5px; }
+.card-quick { right: 15px; }
 @media (prefers-color-scheme: dark) {
     .card:hover .card-quick,
     .card:hover .card-quick-archive { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #93c5fd; }
@@ -4892,7 +4892,7 @@ body {
 .card-quick-copy {
     position: absolute;
     top: 5px;
-    right: 40px; /* positioned to the left of edit button */
+    right: 50px; /* positioned to the left of edit button */
     width: 28px;
     height: 28px;
     border-radius: 6px;
