@@ -4295,8 +4295,8 @@ body {
     background: #fff;
     box-shadow: 0 3px 12px rgba(0,0,0,0.18);
 }
-.card-move-left { left: -22px; }
-.card-move-right { right: -22px; }
+.card-move-left { left: -32px; }
+.card-move-right { right: -32px; }
 
 @media (prefers-color-scheme: dark) {
     .card-move-button {
