@@ -4264,13 +4264,14 @@ body {
     position: absolute;
     top: 50%;
     border: none;
-    background: transparent;
-    color: transparent;
-    font-size: 22px;
-    font-weight: 600;
+    background: rgba(255,255,255,0.85);
+    border-radius: 50%;
+    color: #64748b;
+    font-size: 28px;
+    font-weight: 700;
     line-height: 1;
-    width: 34px;
-    height: 34px;
+    width: 44px;
+    height: 44px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -4278,20 +4279,37 @@ body {
     transform: translateY(-50%);
     opacity: 0;
     pointer-events: none;
-    transition: opacity .12s ease, color .12s ease;
+    transition: opacity .15s ease, color .15s ease, background .15s ease, box-shadow .15s ease;
     z-index: 2;
     text-shadow: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    cursor: pointer;
 }
 .card:hover .card-move-button {
+    opacity: 0.7;
     pointer-events: auto;
 }
 .card-move-button:hover {
     opacity: 1;
-    color: #94a3b8;
-    text-shadow: 0 0 6px rgba(255,255,255,0.9);
+    color: #1e40af;
+    background: #fff;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.18);
 }
-.card-move-left { left: -20px; }
-.card-move-right { right: -20px; }
+.card-move-left { left: -22px; }
+.card-move-right { right: -22px; }
+
+@media (prefers-color-scheme: dark) {
+    .card-move-button {
+        background: rgba(30,41,59,0.9);
+        color: #94a3b8;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    }
+    .card-move-button:hover {
+        color: #93c5fd;
+        background: #1e293b;
+        box-shadow: 0 3px 12px rgba(0,0,0,0.45);
+    }
+}
 
 .card-labels{ display:flex; gap:4px; margin-bottom:6px; min-height:var(--label-height); }
 .label{ height:var(--label-height); border-radius:6px; flex:0 0 36px; }
