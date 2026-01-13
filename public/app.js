@@ -7916,4 +7916,117 @@ async function unarchiveBoard(boardName){
         uiToast('还原失败','error');
     }
 }
+
+// =====================================================
+// 全局粘贴创建卡片功能
+// 当没有输入框激活时，粘贴可直接在第一个列表顶部创建新卡片
+// =====================================================
+document.addEventListener('paste', async function(e) {
+    // 仅在看板页面生效
+    if (!boardPage || boardPage.classList.contains('hidden')) return;
+
+    // 检查是否有输入框激活（如果是，让默认粘贴行为生效）
+    const activeEl = document.activeElement;
+    const isEditable = activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.isContentEditable ||
+        activeEl.contentEditable === 'true' ||
+        activeEl.closest('[contenteditable="true"]') ||
+        activeEl.closest('.card-composer') ||
+        activeEl.closest('.add-list-form')
+    );
+    if (isEditable) return;
+
+    // 检查是否有弹窗打开（不拦截弹窗内的粘贴）
+    const hasModal = document.querySelector('.modal:not(.hidden)') ||
+                     document.querySelector('#editModal:not(.hidden)') ||
+                     document.querySelector('.drawer.open');
+    if (hasModal) return;
+
+    // 获取剪贴板内容
+    let clipboardText = '';
+    try {
+        // 优先使用 clipboardData（同步方式）
+        if (e.clipboardData && e.clipboardData.getData) {
+            clipboardText = e.clipboardData.getData('text/plain');
+        }
+        // 备用：使用 navigator.clipboard API（异步方式）
+        if (!clipboardText && navigator.clipboard && navigator.clipboard.readText) {
+            clipboardText = await navigator.clipboard.readText();
+        }
+    } catch (err) {
+        console.warn('无法读取剪贴板:', err);
+        return;
+    }
+
+    clipboardText = (clipboardText || '').trim();
+    if (!clipboardText) return;
+
+    // 获取第一个列表的 status
+    const lists = ensureClientLists();
+    if (!lists || !lists.listIds || lists.listIds.length === 0) {
+        uiToast('当前看板没有列表', 'error');
+        return;
+    }
+
+    const firstListId = lists.listIds[0];
+    const firstList = lists.lists[firstListId];
+    if (!firstList || !firstList.status) {
+        uiToast('无法确定目标列表', 'error');
+        return;
+    }
+
+    const status = firstList.status;
+    const listTitle = firstList.title || status;
+
+    // 创建新卡片
+    const card = {
+        id: Date.now().toString(),
+        title: clipboardText,
+        description: '',
+        author: currentUser,
+        assignee: null,
+        created: new Date().toISOString(),
+        deadline: null,
+        posts: [],
+        commentsCount: 0
+    };
+
+    // 更新本地数据（插入顶部）
+    if (!Array.isArray(boardData[status])) boardData[status] = [];
+    boardData[status] = [card, ...boardData[status]];
+
+    // 通过 WebSocket 同步到服务器
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'add-card',
+            projectId: currentProjectId,
+            boardName: currentBoardName,
+            status: status,
+            card: card,
+            position: 'top'
+        }));
+    }
+
+    // 更新 DOM（插入顶部）
+    const columnEl = document.querySelector(`.column[data-status="${status}"]`);
+    const cardsEl = columnEl ? columnEl.querySelector('.cards') : null;
+    if (cardsEl) {
+        const el = createCardElement(card, status);
+        cardsEl.insertBefore(el, cardsEl.firstChild);
+        makeDraggable(el);
+        updateContainerEmptyState(cardsEl);
+        // 滚动到新卡片位置
+        try { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch(_){}
+    } else {
+        renderBoard();
+    }
+
+    // 提示用户
+    uiToast(`已在「${listTitle}」创建卡片`, 'success');
+
+    // 阻止默认粘贴行为（避免粘贴到其他地方）
+    e.preventDefault();
+});
 // ... existing code ...
