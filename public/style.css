@@ -4837,7 +4837,7 @@ body {
 
 /* Edit (pencil) */
 .card-quick {
-    right: 5px;
+    right: 85px;
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42L18.37 3.29a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.83z"/></svg>');
     background-repeat: no-repeat;
     background-position: center;
@@ -4846,7 +4846,7 @@ body {
 
 /* Archive (check) */
 .card-quick-archive {
-    right: 85px; /* positioned to the left of copy button */
+    right: 50px; /* positioned to the left of delete */
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.17l-3.88-3.88-1.41 1.41L9 19 20.29 7.71l-1.41-1.41z"/></svg>');
     background-repeat: no-repeat;
     background-position: center;
@@ -4878,7 +4878,7 @@ body {
 .card:hover .card-quick:focus-visible,
 .card:hover .card-quick-archive:focus,
 .card:hover .card-quick-archive:focus-visible { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
-.card-quick { right: 15px; }
+.card-quick { right: 85px; }
 @media (prefers-color-scheme: dark) {
     .card:hover .card-quick,
     .card:hover .card-quick-archive { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #93c5fd; }
@@ -4892,7 +4892,7 @@ body {
 .card-quick-copy {
     position: absolute;
     top: 5px;
-    right: 50px; /* positioned to the left of edit button */
+    right: 120px; /* left-most */
     width: 28px;
     height: 28px;
     border-radius: 6px;
@@ -4918,7 +4918,7 @@ body {
 .card-quick-trash {
     position: absolute;
     top: 5px;
-    right: 120px; /* positioned to the left of archive button */
+    right: 15px; /* right-most */
     width: 28px;
     height: 28px;
     border-radius: 6px;

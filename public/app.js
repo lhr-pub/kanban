@@ -2742,7 +2742,7 @@ function createCardElement(card, status) {
     const moreBtn = isInlineEditing ? '' : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
     const copyBtn = isInlineEditing ? '' : `<button class="card-quick-copy" onclick="event.stopPropagation(); copyCardText('${card.id}')" aria-label="复制" title="复制卡片内容"></button>`;
     const archiveBtnHtml = (status !== 'archived' && !isInlineEditing)
-        ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}')" aria-label="归档" title="完成归档"></button>`
+        ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}', '${escapeJs(status)}')" aria-label="归档" title="完成归档"></button>`
         : '';
     const deleteBtnHtml = (status !== 'archived' && !isInlineEditing)
         ? `<button class="card-quick-trash" onclick="event.stopPropagation(); deleteCardById('${card.id}')" aria-label="删除" title="删除卡片"></button>`
@@ -2770,8 +2770,8 @@ function createCardElement(card, status) {
         ${deleteBtn}
         ${deleteBtnHtml}
         ${archiveBtnHtml}
-        ${copyBtn}
         ${moreBtn}
+        ${copyBtn}
     `;
 
     if (status !== 'archived') {
@@ -3258,16 +3258,49 @@ function moveCard(cardId, direction) {
 }
 
 // 归档卡片
-function archiveCard(cardId) {
-    // find card from any non-archived column
+function archiveCard(cardId, hintStatus) {
+    // find card from any non-archived column (supports dynamic lists)
     let fromStatus = null;
     let cardObj = null;
-    for (const s of ['todo','doing','done']) {
-        const idx = (boardData[s] || []).findIndex(c => c.id === cardId);
-        if (idx !== -1) { fromStatus = s; cardObj = boardData[s][idx]; boardData[s].splice(idx,1); break; }
+
+    const candidates = [];
+    try {
+        if (hintStatus && hintStatus !== 'archived' && Array.isArray(boardData[hintStatus])) {
+            candidates.push(hintStatus);
+        }
+    } catch (_) {}
+
+    try {
+        // Prefer ordered statuses derived from clientLists (user-defined columns)
+        getOrderedStatusKeys().forEach(s => {
+            if (s && s !== 'archived' && !candidates.includes(s)) candidates.push(s);
+        });
+    } catch (_) {}
+
+    try {
+        // Fallback: any array-backed status on boardData
+        getAllStatusKeys().forEach(s => {
+            if (s && s !== 'archived' && !candidates.includes(s)) candidates.push(s);
+        });
+    } catch (_) {}
+
+    for (const s of candidates) {
+        const arr = boardData[s] || [];
+        const idx = arr.findIndex(c => c && c.id === cardId);
+        if (idx !== -1) {
+            fromStatus = s;
+            cardObj = arr[idx];
+            arr.splice(idx, 1);
+            break;
+        }
     }
-    if (!fromStatus) { return; }
-    boardData.archived = boardData.archived || [];
+
+    if (!fromStatus || !cardObj) {
+        // Silent no-op: card might already be archived / deleted / moved by another client
+        return;
+    }
+
+    boardData.archived = Array.isArray(boardData.archived) ? boardData.archived : [];
     boardData.archived.push(cardObj);
 
     if (socket && socket.readyState === WebSocket.OPEN) {
