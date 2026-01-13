@@ -4816,9 +4816,9 @@ body {
 .card-quick,
 .card-quick-archive {
     position: absolute;
-    top: 6px; /* align to original edit button baseline */
-    width: 24px;
-    height: 24px;
+    top: 5px; /* align to original edit button baseline */
+    width: 28px;
+    height: 28px;
     border-radius: 6px;
     opacity: 0;
     transition: opacity .12s, background-color .12s, border-color .12s, box-shadow .12s, color .12s;
@@ -4834,20 +4834,20 @@ body {
 
 /* Edit (pencil) */
 .card-quick {
-    right: 6px;
+    right: 5px;
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42L18.37 3.29a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.83z"/></svg>');
     background-repeat: no-repeat;
     background-position: center;
-    background-size: 16px 16px;
+    background-size: 17px 17px;
 }
 
 /* Archive (check) */
 .card-quick-archive {
-    right: 36px; /* 6px gap from edit */
+    right: 38px; /* gap from edit */
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M9 16.17l-3.88-3.88-1.41 1.41L9 19 20.29 7.71l-1.41-1.41z"/></svg>');
     background-repeat: no-repeat;
     background-position: center;
-    background-size: 16px 16px;
+    background-size: 17px 17px;
 }
 
 /* Hover/Focus visuals: soft blue, clear on white backgrounds */
@@ -4875,7 +4875,7 @@ body {
 .card:hover .card-quick:focus-visible,
 .card:hover .card-quick-archive:focus,
 .card:hover .card-quick-archive:focus-visible { outline: none; background-color: #e8edff; border-color: #c7d2fe; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); color: #1e3a8a; }
-.card-quick { right: 12px; }
+.card-quick { right: 5px; }
 @media (prefers-color-scheme: dark) {
     .card:hover .card-quick,
     .card:hover .card-quick-archive { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #93c5fd; }
@@ -4888,10 +4888,10 @@ body {
 /* Copy button for card */
 .card-quick-copy {
     position: absolute;
-    top: 6px;
-    right: 42px; /* positioned to the left of edit button */
-    width: 24px;
-    height: 24px;
+    top: 5px;
+    right: 38px; /* positioned to the left of edit button */
+    width: 28px;
+    height: 28px;
     border-radius: 6px;
     border: 1px solid transparent;
     background-color: transparent;
@@ -4901,7 +4901,7 @@ body {
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="%2344546f" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>');
     background-repeat: no-repeat;
     background-position: center;
-    background-size: 14px 14px;
+    background-size: 15px 15px;
 }
 .card.inline-editing .card-quick-copy,
 .card.inline-editing:hover .card-quick-copy { display: none !important; }
