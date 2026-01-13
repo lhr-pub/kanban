@@ -5288,6 +5288,15 @@ async function renameBoardRequest(projectId, oldName, isHome) {
                     } catch (e) {}
                 }
             }
+            // 更新缓存
+            try {
+                if (Array.isArray(projectBoardsCache[projectId])) {
+                    const idx = projectBoardsCache[projectId].indexOf(oldName);
+                    if (idx !== -1) {
+                        projectBoardsCache[projectId][idx] = newName;
+                    }
+                }
+            } catch(e) {}
             updateStarsOnBoardRenamed(projectId, oldName, newName);
             if (projectId === currentProjectId && currentBoardName === oldName) {
                 currentBoardName = newName;
@@ -5297,6 +5306,9 @@ async function renameBoardRequest(projectId, oldName, isHome) {
             }
             // Ensure all pages reflect the new name for future operations
             try { updateBoardNameInDom(projectId, oldName, newName); } catch(e) {}
+            // 刷新项目看板列表页以确保显示正确
+            try { if (!boardSelectPage.classList.contains('hidden')) loadProjectBoards(); } catch(e) {}
+            try { renderStarredBoards(); } catch(e) {}
             uiToast('重命名成功','success');
             return { success: true, newName };
         } else {
@@ -7845,15 +7857,24 @@ async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
                 }
             });
         } catch(e) {}
+        // 更新缓存：从源项目移除看板
+        try {
+            if (Array.isArray(projectBoardsCache[fromProjectId])) {
+                projectBoardsCache[fromProjectId] = projectBoardsCache[fromProjectId].filter(b => b !== boardName);
+            }
+            // 如果目标项目有缓存，也添加进去
+            if (Array.isArray(projectBoardsCache[toProjectId])) {
+                if (!projectBoardsCache[toProjectId].includes(boardName)) {
+                    projectBoardsCache[toProjectId].unshift(boardName);
+                }
+            }
+        } catch(e) {}
+
+        // 如果在项目看板列表页，刷新看板列表
         try {
             if (!boardSelectPage.classList.contains('hidden') && String(currentProjectId) === String(fromProjectId)) {
-                const list = document.getElementById('boardList');
-                if (list) {
-                    list.querySelectorAll('.quick-board-card').forEach(c => {
-                        const title = c.querySelector('h4');
-                        if (title && title.textContent === boardName) { c.remove(); }
-                    });
-                }
+                // 直接重新加载看板列表以确保完整刷新
+                loadProjectBoards();
             }
         } catch(e) {}
 
