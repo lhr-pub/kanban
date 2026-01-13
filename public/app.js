@@ -7904,8 +7904,20 @@ async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
         if (String(fromProjectId) === String(currentProjectId) && currentBoardName === boardName && socket && socket.readyState === WebSocket.OPEN) {
             // server will broadcast board-moved
         }
-        try { if (!projectPage.classList.contains('hidden')) loadUserProjects(); } catch(e) {}
-        try { renderStarredBoards(); } catch(e) {}
+        // 刷新首页项目列表和星标看板
+        // 标记首页需要刷新
+        homeDirty = true;
+        // 延迟执行刷新，确保模态框已完全关闭
+        setTimeout(() => {
+            try {
+                if (!projectPage.classList.contains('hidden')) {
+                    homeDirty = false;
+                    loadUserProjects();
+                }
+            } catch(e) {}
+            // 强制刷新星标看板区域
+            try { renderStarredBoards(); } catch(e) {}
+        }, 50);
     } catch (e) {
         console.error('Move board error:', e);
         uiToast('移动失败','error');
