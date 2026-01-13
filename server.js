@@ -6,6 +6,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const AsyncLock = require('async-lock');
+
+// 并发锁实例 - 防止同一文件的并发读写竞态
+const fileLock = new AsyncLock({ timeout: 5000 });
 
 const app = express();
 const server = http.createServer(app);
@@ -1912,21 +1916,18 @@ app.post('/api/move-board', (req, res) => {
 });
 
 // 看板数据API
-app.get('/api/board/:projectId/:boardName', (req, res) => {
+app.get('/api/board/:projectId/:boardName', async (req, res) => {
     const { projectId, boardName } = req.params;
-    const boardFile = path.join(dataDir, `${projectId}_${decodeURIComponent(boardName)}.json`);
+    const decodedBoardName = decodeURIComponent(boardName);
 
-    const boardData = readJsonFile(boardFile, {
-        archived: [],
-        lists: { listIds: [], lists: {} }
+    const { data: boardData } = await withBoardLock(projectId, decodedBoardName, (bd) => {
+        // Ensure lists metadata exists; if missing, infer from legacy arrays, otherwise keep empty
+        if (!bd.lists || !Array.isArray(bd.lists.listIds) || !bd.lists.lists) {
+            bd.lists = inferListsFromArrays(bd);
+        }
+        ensureListStatusArrays(bd);
+        return bd;
     });
-
-    // Ensure lists metadata exists; if missing, infer from legacy arrays, otherwise keep empty
-    if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
-        boardData.lists = inferListsFromArrays(boardData);
-    }
-    ensureListStatusArrays(boardData);
-    writeBoardData(projectId, decodeURIComponent(boardName), boardData);
 
     res.json(boardData);
 });
@@ -2086,7 +2087,7 @@ function handleWebSocketMessage(ws, data) {
     }
 }
 
-function handleJoin(ws, data) {
+async function handleJoin(ws, data) {
     const { user, projectId, boardName } = data;
     const connectionKey = `${user}-${projectId}-${boardName}`;
 
@@ -2098,22 +2099,16 @@ function handleJoin(ws, data) {
         joinTime: Date.now()
     });
 
-    // 发送当前看板数据
-    const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
-    const boardData = readJsonFile(boardFile, {
-        archived: [],
-        lists: { listIds: [], lists: {} }
+    // 发送当前看板数据（带锁，确保初始化数据一致性）
+    const { data: boardData } = await withBoardLock(projectId, boardName, (bd) => {
+        // Ensure lists metadata exists; if missing, infer from legacy arrays
+        if (!bd.lists || !Array.isArray(bd.lists.listIds) || !bd.lists.lists) {
+            bd.lists = inferListsFromArrays(bd);
+        }
+        // Ensure all status arrays exist
+        ensureListStatusArrays(bd);
+        return bd;
     });
-
-    // Ensure lists metadata exists; if missing, infer from legacy arrays
-    if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
-        boardData.lists = inferListsFromArrays(boardData);
-        writeBoardData(projectId, boardName, boardData);
-    }
-
-    // Ensure all status arrays exist
-    ensureListStatusArrays(boardData);
-    writeBoardData(projectId, boardName, boardData);
 
     ws.send(JSON.stringify({
         type: 'board-update',
@@ -2125,50 +2120,25 @@ function handleJoin(ws, data) {
     updateOnlineUsers(projectId, boardName);
 }
 
-function handleAddCard(ws, data) {
+async function handleAddCard(ws, data) {
     const { projectId, boardName, status, card, position } = data;
-    const boardData = readBoardData(projectId, boardName);
 
-    // Accept dynamic statuses; create bucket if missing
-    if (!Array.isArray(boardData[status])) {
-        boardData[status] = [];
-    }
-
-    // 支持顶部/底部添加
-    if (position === 'top') {
-        boardData[status].unshift(card);
-    } else {
-        boardData[status].push(card);
-    }
-
-    if (writeBoardData(projectId, boardName, boardData)) {
-        createBackup(projectId, boardName, boardData);
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
-    }
-}
-
-function handleUpdateCard(ws, data) {
-    const { projectId, boardName, cardId, updates } = data;
-    const boardData = readBoardData(projectId, boardName);
-
-    let updated = false;
-    for (const status of Object.keys(boardData)) {
-        if (!Array.isArray(boardData[status])) continue;
-        const cardIndex = boardData[status].findIndex(card => card.id === cardId);
-        if (cardIndex !== -1) {
-            Object.assign(boardData[status][cardIndex], updates);
-            updated = true;
-            break;
+    const { success, data: boardData } = await withBoardLock(projectId, boardName, (bd) => {
+        // Accept dynamic statuses; create bucket if missing
+        if (!Array.isArray(bd[status])) {
+            bd[status] = [];
         }
-    }
 
-    if (updated && writeBoardData(projectId, boardName, boardData)) {
-        createBackup(projectId, boardName, boardData);
+        // 支持顶部/底部添加
+        if (position === 'top') {
+            bd[status].unshift(card);
+        } else {
+            bd[status].push(card);
+        }
+        return bd;
+    });
+
+    if (success) {
         broadcastToBoard(projectId, boardName, {
             type: 'board-update',
             projectId,
@@ -2178,25 +2148,57 @@ function handleUpdateCard(ws, data) {
     }
 }
 
-function handleMoveCard(ws, data) {
-    const { projectId, boardName, cardId, fromStatus, toStatus } = data;
-    const boardData = readBoardData(projectId, boardName);
+async function handleUpdateCard(ws, data) {
+    const { projectId, boardName, cardId, updates } = data;
 
-    const cardIndex = (Array.isArray(boardData[fromStatus]) ? boardData[fromStatus] : []).findIndex(card => card.id === cardId);
-    if (cardIndex === -1) {
+    const { success, data: boardData, result: updated } = await withBoardLock(projectId, boardName, (bd) => {
+        let found = false;
+        for (const status of Object.keys(bd)) {
+            if (!Array.isArray(bd[status])) continue;
+            const cardIndex = bd[status].findIndex(card => card.id === cardId);
+            if (cardIndex !== -1) {
+                Object.assign(bd[status][cardIndex], updates);
+                found = true;
+                break;
+            }
+        }
+        return found ? { data: bd, result: true } : { data: null, result: false };
+    });
+
+    if (success && updated) {
+        broadcastToBoard(projectId, boardName, {
+            type: 'board-update',
+            projectId,
+            boardName,
+            board: boardData
+        });
+    }
+}
+
+async function handleMoveCard(ws, data) {
+    const { projectId, boardName, cardId, fromStatus, toStatus } = data;
+
+    const { success, data: boardData, result: errorMsg } = await withBoardLock(projectId, boardName, (bd) => {
+        const cardIndex = (Array.isArray(bd[fromStatus]) ? bd[fromStatus] : []).findIndex(card => card.id === cardId);
+        if (cardIndex === -1) {
+            return { data: null, result: '找不到要移动的任务' };
+        }
+
+        const card = bd[fromStatus].splice(cardIndex, 1)[0];
+        if (!Array.isArray(bd[toStatus])) bd[toStatus] = [];
+        bd[toStatus].push(card);
+        return { data: bd, result: null };
+    });
+
+    if (!success && errorMsg) {
         ws.send(JSON.stringify({
             type: 'error',
-            message: '找不到要移动的任务'
+            message: errorMsg
         }));
         return;
     }
 
-    const card = boardData[fromStatus].splice(cardIndex, 1)[0];
-    if (!Array.isArray(boardData[toStatus])) boardData[toStatus] = [];
-    boardData[toStatus].push(card);
-
-    if (writeBoardData(projectId, boardName, boardData)) {
-        createBackup(projectId, boardName, boardData);
+    if (success) {
         broadcastToBoard(projectId, boardName, {
             type: 'board-update',
             projectId,
@@ -2206,37 +2208,44 @@ function handleMoveCard(ws, data) {
     }
 }
 
-function handleReorderCards(ws, data) {
+async function handleReorderCards(ws, data) {
     const { projectId, boardName, status, orderedIds } = data;
-    const boardData = readBoardData(projectId, boardName);
 
-    if (!Array.isArray(boardData[status])) {
-        ws.send(JSON.stringify({ type: 'error', message: '无效的状态' }));
-        return;
-    }
+    // 前置校验（无需锁）
     if (!Array.isArray(orderedIds)) {
         ws.send(JSON.stringify({ type: 'error', message: '无效的排序参数' }));
         return;
     }
 
-    const existing = boardData[status];
-    const map = new Map(existing.map(c => [c.id, c]));
-
-    const reordered = [];
-    orderedIds.forEach(id => {
-        const c = map.get(id);
-        if (c) {
-            reordered.push(c);
-            map.delete(id);
+    const { success, data: boardData, result: errorMsg } = await withBoardLock(projectId, boardName, (bd) => {
+        if (!Array.isArray(bd[status])) {
+            return { data: null, result: '无效的状态' };
         }
+
+        const existing = bd[status];
+        const map = new Map(existing.map(c => [c.id, c]));
+
+        const reordered = [];
+        orderedIds.forEach(id => {
+            const c = map.get(id);
+            if (c) {
+                reordered.push(c);
+                map.delete(id);
+            }
+        });
+        // 追加任何缺失的卡片，保证不丢数据
+        existing.forEach(c => { if (map.has(c.id)) reordered.push(c); });
+
+        bd[status] = reordered;
+        return { data: bd, result: null };
     });
-    // 追加任何缺失的卡片，保证不丢数据
-    existing.forEach(c => { if (map.has(c.id)) reordered.push(c); });
 
-    boardData[status] = reordered;
+    if (!success && errorMsg) {
+        ws.send(JSON.stringify({ type: 'error', message: errorMsg }));
+        return;
+    }
 
-    if (writeBoardData(projectId, boardName, boardData)) {
-        createBackup(projectId, boardName, boardData);
+    if (success) {
         broadcastToBoard(projectId, boardName, {
             type: 'board-update',
             projectId,
@@ -2246,23 +2255,24 @@ function handleReorderCards(ws, data) {
     }
 }
 
-function handleDeleteCard(ws, data) {
+async function handleDeleteCard(ws, data) {
     const { projectId, boardName, cardId } = data;
-    const boardData = readBoardData(projectId, boardName);
 
-    let deleted = false;
-    for (const status of Object.keys(boardData)) {
-        if (!Array.isArray(boardData[status])) continue;
-        const cardIndex = boardData[status].findIndex(card => card.id === cardId);
-        if (cardIndex !== -1) {
-            boardData[status].splice(cardIndex, 1);
-            deleted = true;
-            break;
+    const { success, data: boardData, result: deleted } = await withBoardLock(projectId, boardName, (bd) => {
+        let found = false;
+        for (const status of Object.keys(bd)) {
+            if (!Array.isArray(bd[status])) continue;
+            const cardIndex = bd[status].findIndex(card => card.id === cardId);
+            if (cardIndex !== -1) {
+                bd[status].splice(cardIndex, 1);
+                found = true;
+                break;
+            }
         }
-    }
+        return found ? { data: bd, result: true } : { data: null, result: false };
+    });
 
-    if (deleted && writeBoardData(projectId, boardName, boardData)) {
-        createBackup(projectId, boardName, boardData);
+    if (success && deleted) {
         broadcastToBoard(projectId, boardName, {
             type: 'board-update',
             projectId,
@@ -2272,27 +2282,35 @@ function handleDeleteCard(ws, data) {
     }
 }
 
-function handleArchiveCard(ws, data) {
+async function handleArchiveCard(ws, data) {
     const { projectId, boardName, cardId, fromStatus } = data;
-    const boardData = readBoardData(projectId, boardName);
 
-    const cardIndex = boardData[fromStatus].findIndex(card => card.id === cardId);
-    if (cardIndex === -1) {
+    const { success, data: boardData, result: errorMsg } = await withBoardLock(projectId, boardName, (bd) => {
+        if (!Array.isArray(bd[fromStatus])) {
+            return { data: null, result: '找不到要归档的任务' };
+        }
+        const cardIndex = bd[fromStatus].findIndex(card => card.id === cardId);
+        if (cardIndex === -1) {
+            return { data: null, result: '找不到要归档的任务' };
+        }
+
+        const card = bd[fromStatus].splice(cardIndex, 1)[0];
+        if (!bd.archived) {
+            bd.archived = [];
+        }
+        bd.archived.push(card);
+        return { data: bd, result: null };
+    });
+
+    if (!success && errorMsg) {
         ws.send(JSON.stringify({
             type: 'error',
-            message: '找不到要归档的任务'
+            message: errorMsg
         }));
         return;
     }
 
-    const card = boardData[fromStatus].splice(cardIndex, 1)[0];
-    if (!boardData.archived) {
-        boardData.archived = [];
-    }
-    boardData.archived.push(card);
-
-    if (writeBoardData(projectId, boardName, boardData)) {
-        createBackup(projectId, boardName, boardData);
+    if (success) {
         broadcastToBoard(projectId, boardName, {
             type: 'board-update',
             projectId,
@@ -2302,38 +2320,46 @@ function handleArchiveCard(ws, data) {
     }
 }
 
-function handleRestoreCard(ws, data) {
+async function handleRestoreCard(ws, data) {
     const { projectId, boardName, cardId } = data;
-    const boardData = readBoardData(projectId, boardName);
 
-    const cardIndex = boardData.archived.findIndex(card => card.id === cardId);
-    if (cardIndex === -1) {
+    const { success, data: boardData, result: errorMsg } = await withBoardLock(projectId, boardName, (bd) => {
+        if (!Array.isArray(bd.archived)) {
+            return { data: null, result: '找不到要还原的任务' };
+        }
+        const cardIndex = bd.archived.findIndex(card => card.id === cardId);
+        if (cardIndex === -1) {
+            return { data: null, result: '找不到要还原的任务' };
+        }
+
+        const card = bd.archived.splice(cardIndex, 1)[0];
+
+        // Ensure 'done' list exists (create if missing)
+        if (!Array.isArray(bd.done)) bd.done = [];
+        if (!bd.lists || !Array.isArray(bd.lists.listIds) || !bd.lists.lists) {
+            bd.lists = { listIds: [], lists: {} };
+        }
+        // if no list entry maps to status 'done', add default
+        const hasDoneMeta = Object.values(bd.lists.lists || {}).some(m => m && m.status === 'done');
+        if (!hasDoneMeta) {
+            const id = 'done';
+            if (!bd.lists.listIds.includes(id)) bd.lists.listIds.push(id);
+            bd.lists.lists[id] = bd.lists.lists[id] || { id, title:'已完成', pos: bd.lists.listIds.length - 1, status:'done' };
+        }
+
+        bd.done.push(card);
+        return { data: bd, result: null };
+    });
+
+    if (!success && errorMsg) {
         ws.send(JSON.stringify({
             type: 'error',
-            message: '找不到要还原的任务'
+            message: errorMsg
         }));
         return;
     }
 
-    const card = boardData.archived.splice(cardIndex, 1)[0];
-
-    // Ensure 'done' list exists (create if missing)
-    if (!Array.isArray(boardData.done)) boardData.done = [];
-    if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
-        boardData.lists = { listIds: [], lists: {} };
-    }
-    // if no list entry maps to status 'done', add default
-    const hasDoneMeta = Object.values(boardData.lists.lists || {}).some(m => m && m.status === 'done');
-    if (!hasDoneMeta) {
-        const id = 'done';
-        if (!boardData.lists.listIds.includes(id)) boardData.lists.listIds.push(id);
-        boardData.lists.lists[id] = boardData.lists.lists[id] || { id, title:'已完成', pos: boardData.lists.listIds.length - 1, status:'done' };
-    }
-
-    boardData.done.push(card);
-
-    if (writeBoardData(projectId, boardName, boardData)) {
-        createBackup(projectId, boardName, boardData);
+    if (success) {
         broadcastToBoard(projectId, boardName, {
             type: 'board-update',
             projectId,
@@ -2343,14 +2369,15 @@ function handleRestoreCard(ws, data) {
     }
 }
 
-function handleClearArchive(ws, data) {
+async function handleClearArchive(ws, data) {
     const { projectId, boardName } = data;
-    const boardData = readBoardData(projectId, boardName);
 
-    boardData.archived = [];
+    const { success, data: boardData } = await withBoardLock(projectId, boardName, (bd) => {
+        bd.archived = [];
+        return bd;
+    });
 
-    if (writeBoardData(projectId, boardName, boardData)) {
-        createBackup(projectId, boardName, boardData);
+    if (success) {
         broadcastToBoard(projectId, boardName, {
             type: 'board-update',
             projectId,
@@ -2360,111 +2387,110 @@ function handleClearArchive(ws, data) {
     }
 }
 
-function handleImportBoard(ws, data) {
+async function handleImportBoard(ws, data) {
     const { projectId, boardName, data: importData, mode } = data;
-    let boardData = readBoardData(projectId, boardName);
 
     try {
-        // Normalize importData structure
+        // Normalize importData structure (before lock, this is read-only)
         const incoming = Object.assign({}, importData || {});
         const incomingLists = (incoming && incoming.lists && Array.isArray(incoming.lists.listIds) && incoming.lists.lists) ? incoming.lists : null;
 
-        if (mode === 'overwrite') {
-            // Start fresh, but keep lists metadata if provided; otherwise keep existing lists metadata
-            const listsMeta = incomingLists || boardData.lists || null;
-            const next = { archived: Array.isArray(incoming.archived) ? incoming.archived : [] };
+        const { success, data: boardData } = await withBoardLock(projectId, boardName, (bd) => {
+            if (mode === 'overwrite') {
+                // Start fresh, but keep lists metadata if provided; otherwise keep existing lists metadata
+                const listsMeta = incomingLists || bd.lists || null;
+                const next = { archived: Array.isArray(incoming.archived) ? incoming.archived : [] };
 
-            if (listsMeta) {
-                next.lists = listsMeta;
-                // Ensure arrays exist for all statuses from lists
-                ensureListStatusArrays(next);
-                // Merge in any matching statuses from incoming (by status key)
-                for (const id of listsMeta.listIds) {
-                    const st = listsMeta.lists[id] && listsMeta.lists[id].status;
-                    if (!st) continue;
-                    next[st] = Array.isArray(incoming[st]) ? incoming[st] : [];
-                }
-            }
-            // Fallback legacy sections
-            next.todo = next.todo || (Array.isArray(incoming.todo) ? incoming.todo : []);
-            next.doing = next.doing || (Array.isArray(incoming.doing) ? incoming.doing : []);
-            next.done = next.done || (Array.isArray(incoming.done) ? incoming.done : []);
-
-            boardData = next;
-        } else {
-            // Merge mode: append cards for known statuses; create/merge dynamic statuses
-            // Merge lists metadata
-            if (incomingLists) {
-                // Ensure target lists exists
-                if (!boardData.lists || !Array.isArray(boardData.lists.listIds) || !boardData.lists.lists) {
-                    boardData.lists = { listIds: [], lists: {} };
-                }
-                const existing = boardData.lists;
-
-                // Build title -> {id, status} map (case-insensitive)
-                const titleMap = new Map();
-                existing.listIds.forEach(id => {
-                    const m = existing.lists[id];
-                    if (m && m.title) titleMap.set(String(m.title).toLowerCase(), { id, status: m.status });
-                });
-
-                // For each incoming list, find same-title list; if found, merge into that status; else append new list
-                incomingLists.listIds.forEach(inId => {
-                    const meta = incomingLists.lists[inId];
-                    if (!meta || !meta.title) return;
-                    const key = String(meta.title).toLowerCase();
-                    const hit = titleMap.get(key);
-                    if (hit) {
-                        // Keep existing id/status; optionally update title/pos
-                        existing.lists[hit.id] = Object.assign({}, existing.lists[hit.id] || {}, { title: meta.title });
-                        // Merge incoming cards into this status bucket
-                        const st = hit.status;
-                        if (Array.isArray(incoming[meta.status])) {
-                            if (!Array.isArray(boardData[st])) boardData[st] = [];
-                            boardData[st] = boardData[st].concat(incoming[meta.status]);
-                        }
-                    } else {
-                        // Append as new list
-                        const newId = 'list_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-                        const st = meta.status || ('list_' + Math.random().toString(36).slice(2,8));
-                        if (!existing.listIds.includes(newId)) existing.listIds.push(newId);
-                        existing.lists[newId] = { id: newId, title: meta.title, pos: existing.listIds.length - 1, status: st };
-                        if (Array.isArray(incoming[meta.status])) {
-                            if (!Array.isArray(boardData[st])) boardData[st] = [];
-                            boardData[st] = boardData[st].concat(incoming[meta.status]);
-                        }
+                if (listsMeta) {
+                    next.lists = listsMeta;
+                    // Ensure arrays exist for all statuses from lists
+                    ensureListStatusArrays(next);
+                    // Merge in any matching statuses from incoming (by status key)
+                    for (const id of listsMeta.listIds) {
+                        const st = listsMeta.lists[id] && listsMeta.lists[id].status;
+                        if (!st) continue;
+                        next[st] = Array.isArray(incoming[st]) ? incoming[st] : [];
                     }
-                });
-                ensureListStatusArrays(boardData);
-            }
+                }
+                // Fallback legacy sections
+                next.todo = next.todo || (Array.isArray(incoming.todo) ? incoming.todo : []);
+                next.doing = next.doing || (Array.isArray(incoming.doing) ? incoming.doing : []);
+                next.done = next.done || (Array.isArray(incoming.done) ? incoming.done : []);
 
-            // Merge dynamic and legacy arrays: append
-            const keys = new Set(Object.keys(boardData).concat(Object.keys(incoming)));
-            for (const k of keys) {
-                if (k === 'lists') continue;
-                // Skip any list statuses that were merged by title above to avoid double-add
-                if (incomingLists && incomingLists.listIds.some(id => (incomingLists.lists[id]||{}).status === k)) continue;
-                if (Array.isArray(incoming[k])) {
-                    if (!Array.isArray(boardData[k])) boardData[k] = [];
-                    boardData[k] = boardData[k].concat(incoming[k]);
+                bd = next;
+            } else {
+                // Merge mode: append cards for known statuses; create/merge dynamic statuses
+                // Merge lists metadata
+                if (incomingLists) {
+                    // Ensure target lists exists
+                    if (!bd.lists || !Array.isArray(bd.lists.listIds) || !bd.lists.lists) {
+                        bd.lists = { listIds: [], lists: {} };
+                    }
+                    const existing = bd.lists;
+
+                    // Build title -> {id, status} map (case-insensitive)
+                    const titleMap = new Map();
+                    existing.listIds.forEach(id => {
+                        const m = existing.lists[id];
+                        if (m && m.title) titleMap.set(String(m.title).toLowerCase(), { id, status: m.status });
+                    });
+
+                    // For each incoming list, find same-title list; if found, merge into that status; else append new list
+                    incomingLists.listIds.forEach(inId => {
+                        const meta = incomingLists.lists[inId];
+                        if (!meta || !meta.title) return;
+                        const key = String(meta.title).toLowerCase();
+                        const hit = titleMap.get(key);
+                        if (hit) {
+                            // Keep existing id/status; optionally update title/pos
+                            existing.lists[hit.id] = Object.assign({}, existing.lists[hit.id] || {}, { title: meta.title });
+                            // Merge incoming cards into this status bucket
+                            const st = hit.status;
+                            if (Array.isArray(incoming[meta.status])) {
+                                if (!Array.isArray(bd[st])) bd[st] = [];
+                                bd[st] = bd[st].concat(incoming[meta.status]);
+                            }
+                        } else {
+                            // Append as new list
+                            const newId = 'list_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+                            const st = meta.status || ('list_' + Math.random().toString(36).slice(2,8));
+                            if (!existing.listIds.includes(newId)) existing.listIds.push(newId);
+                            existing.lists[newId] = { id: newId, title: meta.title, pos: existing.listIds.length - 1, status: st };
+                            if (Array.isArray(incoming[meta.status])) {
+                                if (!Array.isArray(bd[st])) bd[st] = [];
+                                bd[st] = bd[st].concat(incoming[meta.status]);
+                            }
+                        }
+                    });
+                    ensureListStatusArrays(bd);
+                }
+
+                // Merge dynamic and legacy arrays: append
+                const keys = new Set(Object.keys(bd).concat(Object.keys(incoming)));
+                for (const k of keys) {
+                    if (k === 'lists') continue;
+                    // Skip any list statuses that were merged by title above to avoid double-add
+                    if (incomingLists && incomingLists.listIds.some(id => (incomingLists.lists[id]||{}).status === k)) continue;
+                    if (Array.isArray(incoming[k])) {
+                        if (!Array.isArray(bd[k])) bd[k] = [];
+                        bd[k] = bd[k].concat(incoming[k]);
+                    }
                 }
             }
 
-            // Legacy fallbacks still covered by above concat
-        }
+            // Ensure all card IDs exist
+            Object.keys(bd).forEach(st => {
+                if (!Array.isArray(bd[st])) return;
+                bd[st] = bd[st].map(card => ({
+                    ...card,
+                    id: card && card.id ? card.id : (Date.now() + Math.random()).toString()
+                }));
+            });
 
-        // Ensure all card IDs exist
-        Object.keys(boardData).forEach(st => {
-            if (!Array.isArray(boardData[st])) return;
-            boardData[st] = boardData[st].map(card => ({
-                ...card,
-                id: card && card.id ? card.id : (Date.now() + Math.random()).toString()
-            }));
+            return bd;
         });
 
-        if (writeBoardData(projectId, boardName, boardData)) {
-            createBackup(projectId, boardName, boardData);
-
+        if (success) {
             broadcastToBoard(projectId, boardName, {
                 type: 'board-update',
                 projectId,
@@ -2496,18 +2522,23 @@ function handleCardEditing(ws, data) {
 }
 
 // persist lists metadata (client dynamic lists)
-function handleSaveLists(ws, data) {
+async function handleSaveLists(ws, data) {
     const { projectId, boardName, lists } = data;
-    const boardData = readBoardData(projectId, boardName);
+
+    // 前置校验（无需锁）
     if (!lists || !Array.isArray(lists.listIds) || typeof lists.lists !== 'object') {
         ws.send(JSON.stringify({ type:'error', message:'无效的列表数据' }));
         return;
     }
-    boardData.lists = lists;
-    // Ensure arrays exist for any new list statuses
-    ensureListStatusArrays(boardData);
-    if (writeBoardData(projectId, boardName, boardData)) {
-        createBackup(projectId, boardName, boardData);
+
+    const { success, data: boardData } = await withBoardLock(projectId, boardName, (bd) => {
+        bd.lists = lists;
+        // Ensure arrays exist for any new list statuses
+        ensureListStatusArrays(bd);
+        return bd;
+    });
+
+    if (success) {
         broadcastToBoard(projectId, boardName, {
             type: 'board-update',
             projectId,
@@ -2534,6 +2565,41 @@ function readBoardData(projectId, boardName) {
 function writeBoardData(projectId, boardName, data) {
     const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
     return writeJsonFile(boardFile, data);
+}
+
+/**
+ * 带并发锁的看板数据原子操作
+ * @param {string} projectId - 项目ID
+ * @param {string} boardName - 看板名称
+ * @param {Function} modifier - 修改函数，接收 boardData，返回 { data, result } 或直接返回修改后的 data
+ * @returns {Promise<{success: boolean, data?: any, result?: any}>}
+ */
+async function withBoardLock(projectId, boardName, modifier) {
+    const lockKey = `board:${projectId}:${boardName}`;
+    try {
+        return await fileLock.acquire(lockKey, async () => {
+            const boardData = readBoardData(projectId, boardName);
+            const modResult = await modifier(boardData);
+
+            // 支持两种返回格式：直接返回数据，或返回 { data, result }
+            const newData = modResult && modResult.data !== undefined ? modResult.data : modResult;
+            const extraResult = modResult && modResult.result !== undefined ? modResult.result : null;
+
+            if (newData === null || newData === false) {
+                // modifier 返回 null/false 表示不保存（如验证失败）
+                return { success: false, data: boardData, result: extraResult };
+            }
+
+            if (writeBoardData(projectId, boardName, newData)) {
+                createBackup(projectId, boardName, newData);
+                return { success: true, data: newData, result: extraResult };
+            }
+            return { success: false, data: boardData, result: extraResult };
+        });
+    } catch (error) {
+        console.error(`Lock error for ${lockKey}:`, error);
+        return { success: false, error: error.message };
+    }
 }
 
 function ensureListStatusArrays(boardData) {
