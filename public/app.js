@@ -2818,7 +2818,7 @@ function daysUntil(dateStr) {
 
 // 复制卡片文本到剪贴板
 function copyCardText(cardId) {
-    const card = findCardById(cardId);
+    const card = getCardById(cardId);
     if (!card) {
         uiToast('卡片未找到', 'error');
         return;
