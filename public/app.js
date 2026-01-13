@@ -3129,7 +3129,9 @@ function updateCardImmediately(cardId, updates){
     const cmt = document.getElementById('drawerCommentInput');
     const attach = document.getElementById('drawerAttachmentInput');
     if (cmt) cmt.addEventListener('keydown', (e)=>{
-        if(e.key==='Enter' && drawerCardId){
+        if (e.isComposing || e.keyCode === 229) return; // IME composing
+        if(e.key==='Enter' && !e.shiftKey && drawerCardId){
+            e.preventDefault();
             const card = getCardById(drawerCardId) || {};
             const commentsCount = (card.commentsCount||0) + 1;
             updateCardImmediately(drawerCardId, { commentsCount });
@@ -3403,7 +3405,10 @@ function openEditModal(cardId) {
         postsSubmit.onclick = function(e){ e.preventDefault(); submitNewPost(); };
     }
     if (postsInput) {
-        postsInput.onkeydown = function(e){ if ((e.metaKey||e.ctrlKey) && e.key==='Enter') { e.preventDefault(); submitNewPost(); } };
+        postsInput.onkeydown = function(e){
+            if (e.isComposing || e.keyCode === 229) return; // IME composing
+            if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); submitNewPost(); }
+        };
     }
 
     editModal.classList.remove('hidden');
