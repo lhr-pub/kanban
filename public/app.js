@@ -820,6 +820,17 @@ function showLoginPage() {
     boardSelectPage.classList.add('hidden');
     boardPage.classList.add('hidden');
     archivePage.classList.add('hidden');
+
+    // 重新启用登录表单输入框
+    try {
+        const authForm = document.getElementById('authForm');
+        if (authForm) {
+            const pwdInput = authForm.querySelector('#password');
+            const userInput = authForm.querySelector('#username');
+            if (pwdInput) { pwdInput.disabled = false; }
+            if (userInput) { userInput.disabled = false; }
+        }
+    } catch(e) {}
 }
 
 function showProjectPage(replaceHistory) {
@@ -829,6 +840,17 @@ function showProjectPage(replaceHistory) {
     boardSelectPage.classList.add('hidden');
     boardPage.classList.add('hidden');
     archivePage.classList.add('hidden');
+
+    // 清空并禁用登录表单，防止密码管理器弹出
+    try {
+        const authForm = document.getElementById('authForm');
+        if (authForm) {
+            const pwdInput = authForm.querySelector('#password');
+            const userInput = authForm.querySelector('#username');
+            if (pwdInput) { pwdInput.value = ''; pwdInput.disabled = true; }
+            if (userInput) { userInput.value = ''; userInput.disabled = true; }
+        }
+    } catch(e) {}
 
     // 保存页面状态
     localStorage.setItem('kanbanPageState', 'project');

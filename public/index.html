@@ -24,18 +24,18 @@
                             未收到邮件？<a href="#" id="resendLink">重新发送验证邮件</a>
                             <span id="resendStatus"></span>
                         </div>
-                        <form id="authForm" class="login-form">
+                        <form id="authForm" class="login-form" autocomplete="off">
                             <div class="input-field">
                                 <span class="input-icon" aria-hidden="true" data-icon="user"></span>
-                                <input type="text" id="username" placeholder="用户名或邮箱" required>
+                                <input type="text" id="username" placeholder="用户名或邮箱" required autocomplete="off">
                             </div>
                             <div class="input-field" id="emailField" style="display:none;">
                                 <span class="input-icon" aria-hidden="true" data-icon="mail"></span>
-                                <input type="email" id="email" placeholder="邮箱（用于验证）">
+                                <input type="email" id="email" placeholder="邮箱（用于验证）" autocomplete="off">
                             </div>
                             <div class="input-field">
                                 <span class="input-icon" aria-hidden="true" data-icon="lock"></span>
-                                <input type="password" id="password" placeholder="密码" required>
+                                <input type="password" id="password" placeholder="密码" required autocomplete="new-password">
                             </div>
                             <button type="submit" id="submitBtn">登录</button>
                         </form>
