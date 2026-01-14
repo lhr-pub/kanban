@@ -7107,9 +7107,25 @@ if (importModal) {
 const importTextModalEl = document.getElementById('importTextModal');
 if (importTextModalEl) {
     importTextModalEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){} }
-        if (e.key === 'Escape') { cancelImportText(); }
-        if (e.key === 'Enter') { parseImportText(); }
+        // Esc 关闭
+        if (e.key === 'Escape') {
+            e.preventDefault(); e.stopPropagation();
+            try{ e.stopImmediatePropagation(); }catch(_){}
+            cancelImportText();
+            return;
+        }
+        // Enter 在 textarea 中应换行，不提交；Ctrl+Enter 提交
+        if (e.key === 'Enter') {
+            const isTextArea = e.target && e.target.tagName === 'TEXTAREA';
+            if (isTextArea && !e.ctrlKey && !e.metaKey) {
+                // 允许 textarea 内正常换行
+                return;
+            }
+            // Ctrl+Enter 或非 textarea 中按 Enter 则提交
+            e.preventDefault(); e.stopPropagation();
+            try{ e.stopImmediatePropagation(); }catch(_){}
+            parseImportText();
+        }
     }, true);
 }
 const invitesModalEl = document.getElementById('invitesModal');
