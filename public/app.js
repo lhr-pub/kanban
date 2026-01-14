@@ -3684,7 +3684,7 @@ function ensureBoardExportContext() {
     return ctx;
 }
 
-// 导出Markdown
+// 导出 Markdown（详细格式）
 async function exportMarkdown() {
     const ctx = ensureBoardExportContext();
     if (!ctx) return;
@@ -3714,6 +3714,36 @@ async function exportMarkdown() {
     }
 }
 
+// 导出 TaskPaper（简洁格式）
+async function exportTaskPaper() {
+    const ctx = ensureBoardExportContext();
+    if (!ctx) return;
+    const { projectId, projectName, boardName } = ctx;
+    const fileName = `${sanitizeFilenamePart(projectName)}-${sanitizeFilenamePart(boardName)}.taskpaper`;
+    const url = `/api/export-taskpaper/${projectId}/${encodeURIComponent(boardName)}`;
+    // 直接通过 <a> 触发下载（更稳定，点击即下载）
+    if (anchorDownload(url, fileName)) return;
+    if (navigateDownload(url)) return;
+    // 回退：隐藏 iframe
+    if (directDownload(url)) return;
+    // 最后回退到 Blob 方式
+    try {
+        const finalUrl = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+        const response = await fetch(finalUrl, { credentials: 'include' });
+        if (response.ok) {
+            const blob = await response.blob();
+            triggerBlobDownload(blob, fileName);
+        } else {
+            const text = await response.text().catch(()=> '');
+            console.error('Export TaskPaper error:', response.status, text);
+            uiToast('导出失败','error');
+        }
+    } catch (error) {
+        console.error('Export TaskPaper error:', error);
+        uiToast('导出失败','error');
+    }
+}
+
 // 导入功能
 function importBoard() {
     const fileInput = document.getElementById('importFile');
@@ -3739,10 +3769,11 @@ document.getElementById('importFile').addEventListener('change', function(e) {
             let data;
             if (file.name.endsWith('.json')) {
                 data = JSON.parse(event.target.result);
-            } else if (file.name.endsWith('.md')) {
+            } else if (file.name.endsWith('.md') || file.name.endsWith('.taskpaper')) {
+                // Markdown 和 TaskPaper 都用同一个解析函数（自动检测格式）
                 data = parseMarkdownToBoard(event.target.result);
             } else {
-                uiToast('不支持的文件格式，请选择 .json 或 .md 文件','error');
+                uiToast('不支持的文件格式，请选择 .json / .md / .taskpaper 文件','error');
                 return;
             }
 
@@ -3787,6 +3818,25 @@ function cancelImportText() {
 }
 
 // 解析 Markdown 为看板数据
+/**
+ * TaskPaper 风格解析（兼容旧格式）
+ *
+ * 新格式：
+ * ```
+ * 待办:
+ *
+ * - 完成登录功能 @张三 @due(2024-03-15)
+ * - 修复 bug
+ * ```
+ *
+ * 旧格式（仍然支持）：
+ * ```
+ * ## 📋 待办
+ * ### 1. 任务标题
+ * **描述:** ...
+ * **分配给:** ...
+ * ```
+ */
 function parseMarkdownToBoard(markdown) {
     const lines = markdown.split('\n');
     const board = { archived: [] };
@@ -3795,17 +3845,22 @@ function parseMarkdownToBoard(markdown) {
     let currentCard = null;
     let listCounter = 0;
 
+    // 检测是否为 TaskPaper 格式（简单判断：有 "xxx:" 开头的行且没有 ## 开头的行）
+    const hasTaskPaperHeaders = lines.some(l => /^[^#\s][^:]*:$/.test(l.trim()));
+    const hasMarkdownHeaders = lines.some(l => /^##\s+/.test(l));
+    const isTaskPaperFormat = hasTaskPaperHeaders && !hasMarkdownHeaders;
+
     function ensureSection(key){
         if (!Array.isArray(board[key])) board[key] = [];
     }
 
     function normalizeHeadingToKey(h){
-        const t = h.trim().replace(/^##\s+/, '');
+        const t = h.trim().replace(/^##\s+/, '').replace(/:$/, '');
         // legacy quick mapping
-        if (t.startsWith('📋') || /\bTODO\b/i.test(t)) return 'todo';
-        if (t.startsWith('🔄') || /\bDOING\b/i.test(t)) return 'doing';
-        if (t.startsWith('✅') || /\bDONE\b/i.test(t)) return 'done';
-        if (t.startsWith('📁') || /\bARCHIVED\b/i.test(t)) return 'archived';
+        if (t.startsWith('📋') || /\bTODO\b/i.test(t) || t === '待办') return 'todo';
+        if (t.startsWith('🔄') || /\bDOING\b/i.test(t) || t === '进行中') return 'doing';
+        if (t.startsWith('✅') || /\bDONE\b/i.test(t) || t === '已完成') return 'done';
+        if (t.startsWith('📁') || /\bARCHIVED\b/i.test(t) || t === '归档') return 'archived';
         // dynamic: generate a stable status key from title text
         const base = 'list_' + (++listCounter).toString(36);
         return base;
@@ -3815,16 +3870,58 @@ function parseMarkdownToBoard(markdown) {
         // skip archived in lists meta
         if (statusKey === 'archived') return;
         // create a unique stable id for this list title
-        // we cannot derive back original id; generate one
         const id = 'list_' + (listsMeta.listIds.length + 1).toString(36) + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
         listsMeta.listIds.push(id);
         listsMeta.lists[id] = { id, title: title, pos: listsMeta.listIds.length - 1, status: statusKey };
     }
 
+    // TaskPaper 格式解析
+    function parseTaskPaperItem(content) {
+        let title = content;
+        let assignee = null;
+        let deadline = null;
+
+        // 解析 @due(日期)
+        const dueMatch = title.match(/@due\(([^)]+)\)/);
+        if (dueMatch) {
+            deadline = dueMatch[1].trim();
+            title = title.replace(/@due\([^)]+\)/, '').trim();
+        }
+
+        // 解析 @用户名（排除特殊标签）
+        const assigneeMatch = title.match(/@(\S+)/);
+        if (assigneeMatch && !assigneeMatch[1].includes('(')) {
+            assignee = assigneeMatch[1];
+            title = title.replace(/@\S+/, '').trim();
+        }
+
+        return { title: title.trim(), assignee, deadline };
+    }
+
     for (const rawLine of lines) {
         const line = rawLine.replace(/\r$/, '');
+        const trimmedLine = line.trim();
+
+        // 跳过空行
+        if (!trimmedLine) continue;
+
+        // TaskPaper 格式：列名以冒号结尾（不是 URL）
+        if (isTaskPaperFormat && trimmedLine.endsWith(':') && !trimmedLine.includes('://')) {
+            const columnName = trimmedLine.slice(0, -1).trim();
+            if (columnName) {
+                const key = normalizeHeadingToKey(columnName);
+                currentSectionKey = key;
+                ensureSection(key);
+                if (key !== 'archived') {
+                    addListMetaIfNeeded(columnName, key);
+                }
+                currentCard = null;
+            }
+            continue;
+        }
+
+        // 旧格式：## 标题
         if (/^##\s+/.test(line)) {
-            // New section
             const heading = line;
             const key = normalizeHeadingToKey(heading);
             const title = heading.replace(/^##\s+/, '').trim();
@@ -3833,12 +3930,33 @@ function parseMarkdownToBoard(markdown) {
             if (key !== 'todo' && key !== 'doing' && key !== 'done' && key !== 'archived') {
                 addListMetaIfNeeded(title, key);
             } else if (key !== 'archived') {
-                // legacy named list, also add meta with localized title
                 addListMetaIfNeeded(title, key);
             }
             currentCard = null;
             continue;
         }
+
+        // TaskPaper 格式：- 开头的条目
+        if (isTaskPaperFormat && trimmedLine.startsWith('- ') && currentSectionKey) {
+            const itemContent = trimmedLine.substring(2);
+            const { title, assignee, deadline } = parseTaskPaperItem(itemContent);
+
+            if (title) {
+                currentCard = {
+                    id: Date.now() + Math.random().toString(),
+                    title: title,
+                    description: '',
+                    author: currentUser,
+                    assignee: assignee,
+                    created: new Date().toISOString(),
+                    deadline: deadline
+                };
+                board[currentSectionKey].push(currentCard);
+            }
+            continue;
+        }
+
+        // 旧格式：### 标题
         if (line.startsWith('### ') && currentSectionKey) {
             const title = line.replace(/^###\s*\d+\.\s*/, '').trim();
             currentCard = {
@@ -3854,6 +3972,8 @@ function parseMarkdownToBoard(markdown) {
             board[currentSectionKey].push(currentCard);
             continue;
         }
+
+        // 旧格式：元数据
         if (line.startsWith('**描述:**') && currentCard) {
             currentCard.description = line.replace('**描述:**', '').trim();
             continue;
@@ -7627,11 +7747,13 @@ function bindIOMenuOnce(){
     // Bind item clicks
     const importFileItem = document.getElementById('ioImportFile');
     const importTextItem = document.getElementById('ioImportText');
+    const exportTaskPaperItem = document.getElementById('ioExportTaskPaper');
     const exportMdItem = document.getElementById('ioExportMarkdown');
     const exportJsonItem = document.getElementById('ioExportJSON');
 
     if (importFileItem) importFileItem.onclick = () => { hideIOMenu(); importBoard(); };
     if (importTextItem) importTextItem.onclick = () => { hideIOMenu(); openImportText(); };
+    if (exportTaskPaperItem) exportTaskPaperItem.onclick = () => { hideIOMenu(); exportTaskPaper(); };
     if (exportMdItem) exportMdItem.onclick = () => { hideIOMenu(); exportMarkdown(); };
     if (exportJsonItem) exportJsonItem.onclick = () => { hideIOMenu(); exportJSON(); };
 

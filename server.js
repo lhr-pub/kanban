@@ -2016,6 +2016,7 @@ app.get('/api/board/:projectId/:boardName', async (req, res) => {
 });
 
 // 导出API
+// 导出 Markdown（详细格式，包含描述、创建者等元数据）
 app.get('/api/export/:projectId/:boardName', (req, res) => {
     const { projectId, boardName } = req.params;
     const decodedBoardName = decodeURIComponent(boardName);
@@ -2075,6 +2076,92 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
     res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${decodedBoardName}.md"`);
     res.send(markdown);
+});
+
+/**
+ * TaskPaper 风格导出（简洁格式，适合快速编辑）
+ *
+ * 格式示例：
+ * ```
+ * 待办:
+ *
+ * - 完成登录功能 @张三 @due(2024-03-15)
+ * - 修复 bug
+ *
+ * 进行中:
+ *
+ * - 代码审查 @王五
+ * ```
+ */
+app.get('/api/export-taskpaper/:projectId/:boardName', (req, res) => {
+    const { projectId, boardName } = req.params;
+    const decodedBoardName = decodeURIComponent(boardName);
+    const boardFile = path.join(dataDir, `${projectId}_${decodedBoardName}.json`);
+
+    const boardData = readJsonFile(boardFile, {
+        archived: [],
+        lists: { listIds: [], lists: {} }
+    });
+
+    let content = '';
+
+    // If lists metadata exists, export in that order and with custom titles
+    let sections = [];
+    if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
+        sections = boardData.lists.listIds
+            .map(id => boardData.lists.lists[id])
+            .filter(meta => meta && meta.status && meta.status !== 'archived')
+            .sort((a,b)=> (a.pos||0) - (b.pos||0))
+            .map(meta => ({ key: meta.status, title: meta.title || meta.status }));
+        // Append archived at the end if present
+        const archivedCards = Array.isArray(boardData['archived']) ? boardData['archived'] : [];
+        if (archivedCards.length > 0) {
+            sections.push({ key: 'archived', title: '归档' });
+        }
+    } else {
+        // Fallback to legacy fixed sections
+        sections = [
+            { key: 'todo', title: '待办' },
+            { key: 'doing', title: '进行中' },
+            { key: 'done', title: '已完成' }
+        ];
+        const archivedCards = Array.isArray(boardData['archived']) ? boardData['archived'] : [];
+        if (archivedCards.length > 0) {
+            sections.push({ key: 'archived', title: '归档' });
+        }
+    }
+
+    sections.forEach((section, sectionIndex) => {
+        const cards = Array.isArray(boardData[section.key]) ? boardData[section.key] : [];
+
+        // 列名后加冒号
+        content += `${section.title}:\n\n`;
+
+        cards.forEach(card => {
+            let line = `- ${card.title}`;
+
+            // 添加负责人 @标签
+            if (card.assignee) {
+                line += ` @${card.assignee}`;
+            }
+
+            // 添加截止日期 @due(日期)
+            if (card.deadline) {
+                line += ` @due(${card.deadline})`;
+            }
+
+            content += line + '\n';
+        });
+
+        // 列之间空一行
+        if (sectionIndex < sections.length - 1) {
+            content += '\n';
+        }
+    });
+
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${decodedBoardName}.taskpaper"`);
+    res.send(content);
 });
 
 // 导出JSON API

@@ -207,7 +207,7 @@
                         <span id="onlineCount">在线用户: 0</span>
                         <div id="userList"></div>
                     </div>
-                    <input type="file" id="importFile" accept=".md,.json" hidden>
+                    <input type="file" id="importFile" accept=".md,.json,.taskpaper" hidden>
                     <input type="file" id="bgUploadFile" accept="image/*" hidden>
                     <button id="ioMenuBtn">导入/导出 ▾</button>
                     <button id="bgBtn" title="更换背景">背景 ▾</button>
@@ -220,9 +220,10 @@
 
         <div id="ioMenu" class="board-switcher-menu hidden" style="position:absolute; min-width: 200px;">
             <div class="board-switcher-list">
-                <div class="board-switcher-item" id="ioImportFile">从文件导入 (.json/.md)</div>
+                <div class="board-switcher-item" id="ioImportFile">从文件导入 (.json/.md/.taskpaper)</div>
                 <div class="board-switcher-item" id="ioImportText">从文本导入</div>
-                <div class="board-switcher-item" id="ioExportMarkdown">导出为 Markdown</div>
+                <div class="board-switcher-item" id="ioExportTaskPaper">导出为 TaskPaper（简洁）</div>
+                <div class="board-switcher-item" id="ioExportMarkdown">导出为 Markdown（详细）</div>
                 <div class="board-switcher-item" id="ioExportJSON">导出为 JSON</div>
             </div>
         </div>
