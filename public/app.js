@@ -2545,8 +2545,18 @@ function bindListMenu(section, list){
 }
 function removeClientList(listId){
     ensureClientLists();
+    // 获取列表的 status，以便清理 boardData
+    const list = clientLists.lists[listId];
+    const status = list ? list.status : null;
+
     clientLists.listIds = clientLists.listIds.filter(id=>id!==listId);
     delete clientLists.lists[listId];
+
+    // 清理 boardData 中的残留数据
+    if (status && boardData && Array.isArray(boardData[status])) {
+        delete boardData[status];
+    }
+
     saveClientListsToStorage();
     // sync to server
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -8408,15 +8418,14 @@ document.addEventListener('paste', async function(e) {
     clipboardText = (clipboardText || '').trim();
     if (!clipboardText) return;
 
-    // 获取看板列表信息
-    const lists = ensureClientLists();
-    if (!lists || !lists.listIds || lists.listIds.length === 0) {
-        uiToast('当前看板没有列表', 'error');
-        return;
-    }
-
     // 阻止默认粘贴行为
     e.preventDefault();
+
+    // 获取看板列表信息（可能为空）
+    let lists = ensureClientLists();
+    if (!lists || !lists.listIds) {
+        lists = { listIds: [], lists: {} };
+    }
 
     // 解析粘贴内容并智能导入
     const result = parsePasteContent(clipboardText, lists);
@@ -8438,7 +8447,8 @@ document.addEventListener('paste', async function(e) {
                 const pos = clientLists.listIds.length;
                 clientLists.lists[id] = { id, title: newList.title, pos, status: newList.status };
                 clientLists.listIds.push(id);
-                if (!Array.isArray(boardData[newList.status])) boardData[newList.status] = [];
+                // 清空可能残留的旧数据（被删除的列表可能留有数据）
+                boardData[newList.status] = [];
                 newListsCreated++;
             }
         }
@@ -8461,10 +8471,18 @@ document.addEventListener('paste', async function(e) {
     const affectedStatuses = new Set();
     const updatedLists = ensureClientLists(); // 获取更新后的列表
 
+    // 收集新建列表的 status（这些列表的 boardData 已在上面清空）
+    const newListStatuses = new Set((result.newLists || []).map(nl => nl.status));
+
     for (const { card, status } of result.cards) {
-        // 更新本地数据（插入顶部）
+        // 更新本地数据
         if (!Array.isArray(boardData[status])) boardData[status] = [];
-        boardData[status] = [card, ...boardData[status]];
+        // 新建的列表直接 push（因为已清空），现有列表插入顶部
+        if (newListStatuses.has(status)) {
+            boardData[status].push(card);
+        } else {
+            boardData[status] = [card, ...boardData[status]];
+        }
         affectedStatuses.add(status);
 
         // 通过 WebSocket 同步到服务器
@@ -8504,219 +8522,232 @@ document.addEventListener('paste', async function(e) {
 });
 
 /**
- * 解析粘贴内容，支持 TaskPaper/Markdown 格式和普通多行文本
- * 与 parseMarkdownToBoard 保持一致的解析逻辑，支持动态创建新列表
+ * 解析粘贴内容，复用 parseMarkdownToBoard 进行 TaskPaper/Markdown 解析
  * @param {string} text 粘贴的文本
- * @param {object} lists 看板列表信息
+ * @param {object} existingLists 看板现有列表信息
  * @returns {{cards: Array<{card: object, status: string}>, isTaskPaperFormat: boolean, newLists: Array<{title: string, status: string}>}}
  */
-function parsePasteContent(text, lists) {
+function parsePasteContent(text, existingLists) {
     const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
     const result = { cards: [], isTaskPaperFormat: false, newLists: [] };
-    let listCounter = 0;
 
-    // 构建列名到 status 的映射（基于现有看板列表）
-    const listNameToStatus = {};
-    const existingStatuses = new Set();
-    for (const listId of lists.listIds) {
-        const list = lists.lists[listId];
-        if (list) {
-            const title = (list.title || '').trim().toLowerCase();
-            listNameToStatus[title] = list.status;
-            existingStatuses.add(list.status);
-            // 也支持去除 emoji 后的名称
-            const titleNoEmoji = title.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
-            if (titleNoEmoji !== title) {
-                listNameToStatus[titleNoEmoji] = list.status;
-            }
-        }
-    }
-
-    // 记录新创建的列表映射（避免重复创建）
-    const newListMap = {};
-
-    // 标准化列名映射函数（与 parseMarkdownToBoard 的 normalizeHeadingToKey 一致）
-    // 如果列名不匹配，会创建新列表
-    function normalizeToStatus(h, originalTitle) {
-        const t = h.trim().replace(/^##\s+/, '').replace(/:$/, '').toLowerCase();
-        const displayTitle = originalTitle || h.trim().replace(/^##\s+/, '').replace(/:$/, '');
-
-        // 支持 emoji 前缀和中英文别名 - 映射到现有标准列表
-        if (t.startsWith('📋') || /\btodo\b/i.test(t) || t === '待办') {
-            const found = listNameToStatus['待办'] || listNameToStatus['todo'] ||
-                   Object.values(lists.lists).find(l => l.status === 'todo')?.status;
-            if (found) return found;
-        }
-        if (t.startsWith('🔄') || /\bdoing\b/i.test(t) || t === '进行中') {
-            const found = listNameToStatus['进行中'] || listNameToStatus['doing'] ||
-                   Object.values(lists.lists).find(l => l.status === 'doing')?.status;
-            if (found) return found;
-        }
-        if (t.startsWith('✅') || /\bdone\b/i.test(t) || t === '已完成') {
-            const found = listNameToStatus['已完成'] || listNameToStatus['done'] ||
-                   Object.values(lists.lists).find(l => l.status === 'done')?.status;
-            if (found) return found;
-        }
-        if (t.startsWith('📁') || /\barchived\b/i.test(t) || t === '归档') {
-            return 'archived'; // 归档特殊处理
-        }
-
-        // 尝试直接匹配现有列表名称
-        if (listNameToStatus[t]) {
-            return listNameToStatus[t];
-        }
-        // 去除 emoji 后再匹配
-        const tNoEmoji = t.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
-        if (listNameToStatus[tNoEmoji]) {
-            return listNameToStatus[tNoEmoji];
-        }
-
-        // 检查是否已为此列名创建了新列表
-        if (newListMap[t]) {
-            return newListMap[t];
-        }
-
-        // 创建新列表（与 parseMarkdownToBoard 一致）
-        const newStatus = 'list_' + (++listCounter).toString(36) + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-        newListMap[t] = newStatus;
-        result.newLists.push({ title: displayTitle, status: newStatus });
-
-        return newStatus;
-    }
-
-    // 检测格式（与 parseMarkdownToBoard 一致）
-    // TaskPaper 格式：有 "xxx:" 开头的行且没有 ## 开头的行
+    // 检测是否为 TaskPaper/Markdown 格式
     const hasTaskPaperHeaders = lines.some(l => /^[^#\s][^:]*:$/.test(l.trim()));
     const hasMarkdownHeaders = lines.some(l => /^##\s+/.test(l));
-    const isTaskPaperFormat = hasTaskPaperHeaders && !hasMarkdownHeaders;
-    const isMarkdownFormat = hasMarkdownHeaders;
+    const isStructuredFormat = hasTaskPaperHeaders || hasMarkdownHeaders;
 
-    // 解析 TaskPaper 条目的辅助函数（与 parseMarkdownToBoard 一致）
-    function parseTaskPaperItem(content) {
-        let title = content;
-        let assignee = null;
-        let deadline = null;
-
-        // 解析 @due(日期)
-        const dueMatch = title.match(/@due\(([^)]+)\)/);
-        if (dueMatch) {
-            deadline = dueMatch[1].trim();
-            title = title.replace(/@due\([^)]+\)/, '').trim();
-        }
-
-        // 解析 @用户名（排除特殊标签）
-        const assigneeMatch = title.match(/@(\S+)/);
-        if (assigneeMatch && !assigneeMatch[1].includes('(')) {
-            assignee = assigneeMatch[1];
-            title = title.replace(/@\S+/, '').trim();
-        }
-
-        return { title: title.trim(), assignee, deadline };
-    }
-
-    // 创建卡片对象的辅助函数
-    function createCard(title, assignee = null, deadline = null, description = '') {
-        return {
-            id: Date.now().toString() + Math.random().toString(36).slice(2, 8),
-            title: title,
-            description: description,
-            author: currentUser,
-            assignee: assignee,
-            created: new Date().toISOString(),
-            deadline: deadline,
-            posts: [],
-            commentsCount: 0
-        };
-    }
-
-    if (isTaskPaperFormat || isMarkdownFormat) {
-        // TaskPaper 或 Markdown 格式解析
+    if (isStructuredFormat) {
+        // 使用原有的 parseMarkdownToBoard 函数解析
+        const parsedBoard = parseMarkdownToBoard(text);
         result.isTaskPaperFormat = true;
-        let currentStatus = null;
-        let currentCard = null;
 
-        for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine) continue;
-
-            // TaskPaper 格式：列名以冒号结尾（不是 URL）
-            if (isTaskPaperFormat && trimmedLine.endsWith(':') && !trimmedLine.includes('://')) {
-                const columnName = trimmedLine.slice(0, -1).trim();
-                if (columnName) {
-                    currentStatus = normalizeToStatus(columnName, columnName);
-                    currentCard = null;
+        // 构建现有列表的 status 集合和名称映射
+        const existingStatusSet = new Set();
+        const existingNameToStatus = {};
+        for (const listId of existingLists.listIds) {
+            const list = existingLists.lists[listId];
+            if (list) {
+                existingStatusSet.add(list.status);
+                const title = (list.title || '').trim().toLowerCase();
+                existingNameToStatus[title] = list.status;
+                // 支持去除 emoji 后的名称
+                const titleNoEmoji = title.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
+                if (titleNoEmoji !== title) {
+                    existingNameToStatus[titleNoEmoji] = list.status;
                 }
-                continue;
-            }
-
-            // Markdown 格式：## 标题
-            if (/^##\s+/.test(line)) {
-                const heading = line.replace(/^##\s+/, '').trim();
-                currentStatus = normalizeToStatus(heading, heading);
-                currentCard = null;
-                continue;
-            }
-
-            // TaskPaper 格式：- 开头的条目
-            if (isTaskPaperFormat && trimmedLine.startsWith('- ') && currentStatus) {
-                const itemContent = trimmedLine.substring(2);
-                const { title, assignee, deadline } = parseTaskPaperItem(itemContent);
-                if (title && currentStatus !== 'archived') {
-                    currentCard = createCard(title, assignee, deadline);
-                    result.cards.push({ card: currentCard, status: currentStatus });
-                }
-                continue;
-            }
-
-            // Markdown 格式：### 标题（任务卡片）
-            if (line.startsWith('### ') && currentStatus) {
-                const title = line.replace(/^###\s*\d+\.\s*/, '').trim();
-                if (title && currentStatus !== 'archived') {
-                    currentCard = createCard(title);
-                    result.cards.push({ card: currentCard, status: currentStatus });
-                }
-                continue;
-            }
-
-            // Markdown 格式：元数据
-            if (line.startsWith('**描述:**') && currentCard) {
-                currentCard.description = line.replace('**描述:**', '').trim();
-                continue;
-            }
-            if (line.startsWith('**分配给:**') && currentCard) {
-                currentCard.assignee = line.replace('**分配给:**', '').trim();
-                continue;
-            }
-            if (line.startsWith('**截止日期:**') && currentCard) {
-                currentCard.deadline = line.replace('**截止日期:**', '').trim();
-                continue;
             }
         }
+
+        // 处理解析出的列表和卡片
+        const parsedLists = parsedBoard.lists;
+        const statusMapping = {}; // 解析出的 status -> 实际使用的 status
+
+        if (parsedLists && parsedLists.listIds) {
+            for (const listId of parsedLists.listIds) {
+                const list = parsedLists.lists[listId];
+                if (!list) continue;
+
+                const listTitle = list.title || '';
+                const listTitleLower = listTitle.toLowerCase();
+                const parsedStatus = list.status;
+
+                // 尝试匹配现有列表
+                let targetStatus = null;
+
+                // 1. 检查是否是标准列表（todo/doing/done）
+                if (parsedStatus === 'todo' || parsedStatus === 'doing' || parsedStatus === 'done') {
+                    // 查找现有列表中匹配的
+                    const found = Object.values(existingLists.lists).find(l => l.status === parsedStatus);
+                    if (found) {
+                        targetStatus = found.status;
+                    }
+                }
+
+                // 2. 按名称匹配
+                if (!targetStatus && existingNameToStatus[listTitleLower]) {
+                    targetStatus = existingNameToStatus[listTitleLower];
+                }
+
+                // 3. 去除 emoji 后按名称匹配
+                if (!targetStatus) {
+                    const titleNoEmoji = listTitleLower.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
+                    if (existingNameToStatus[titleNoEmoji]) {
+                        targetStatus = existingNameToStatus[titleNoEmoji];
+                    }
+                }
+
+                // 4. 如果都不匹配，创建新列表
+                if (!targetStatus) {
+                    targetStatus = parsedStatus;
+                    result.newLists.push({ title: listTitle, status: targetStatus });
+                }
+
+                statusMapping[parsedStatus] = targetStatus;
+            }
+        }
+
+        // 提取所有卡片（避免重复处理同一个 status 的卡片）
+        const processedStatuses = new Set();
+
+        // 收集所有需要处理的 status 及其目标映射
+        const statusesToProcess = new Map(); // parsedStatus -> targetStatus
+
+        if (parsedLists && parsedLists.listIds) {
+            for (const listId of parsedLists.listIds) {
+                const list = parsedLists.lists[listId];
+                if (!list) continue;
+                const parsedStatus = list.status;
+                if (!statusesToProcess.has(parsedStatus)) {
+                    const targetStatus = statusMapping[parsedStatus] || parsedStatus;
+                    statusesToProcess.set(parsedStatus, targetStatus);
+                }
+            }
+        }
+
+        // 处理解析出的列表中的卡片（每个 status 只处理一次）
+        for (const [parsedStatus, targetStatus] of statusesToProcess) {
+            if (processedStatuses.has(parsedStatus)) continue;
+
+            const cards = parsedBoard[parsedStatus];
+            if (Array.isArray(cards)) {
+                for (const card of cards) {
+                    const newCard = {
+                        id: Date.now().toString() + Math.random().toString(36).slice(2, 8),
+                        title: card.title || '',
+                        description: card.description || '',
+                        author: currentUser,
+                        assignee: card.assignee || null,
+                        created: card.created || new Date().toISOString(),
+                        deadline: card.deadline || null,
+                        posts: card.posts || [],
+                        commentsCount: card.commentsCount || 0
+                    };
+                    if (newCard.title && targetStatus !== 'archived') {
+                        result.cards.push({ card: newCard, status: targetStatus });
+                    }
+                }
+            }
+            processedStatuses.add(parsedStatus);
+        }
+
+        // 处理标准列表（todo/doing/done）中的卡片（如果没有被处理过）
+        const stdListTitles = { todo: '待办', doing: '进行中', done: '已完成' };
+        for (const stdStatus of ['todo', 'doing', 'done']) {
+            if (processedStatuses.has(stdStatus)) continue;
+
+            const cards = parsedBoard[stdStatus];
+            if (!Array.isArray(cards) || cards.length === 0) continue;
+
+            // 查找对应的目标 status
+            let targetStatus = statusMapping[stdStatus];
+            if (!targetStatus) {
+                const found = Object.values(existingLists.lists).find(l => l.status === stdStatus);
+                if (found) {
+                    targetStatus = found.status;
+                } else {
+                    // 没有现有列表匹配，创建新列表
+                    targetStatus = stdStatus;
+                    // 检查是否已在 newLists 中
+                    if (!result.newLists.some(nl => nl.status === stdStatus)) {
+                        result.newLists.push({ title: stdListTitles[stdStatus], status: stdStatus });
+                    }
+                }
+            }
+
+            for (const card of cards) {
+                const newCard = {
+                    id: Date.now().toString() + Math.random().toString(36).slice(2, 8),
+                    title: card.title || '',
+                    description: card.description || '',
+                    author: currentUser,
+                    assignee: card.assignee || null,
+                    created: card.created || new Date().toISOString(),
+                    deadline: card.deadline || null,
+                    posts: card.posts || [],
+                    commentsCount: card.commentsCount || 0
+                };
+                if (newCard.title) {
+                    result.cards.push({ card: newCard, status: targetStatus });
+                }
+            }
+            processedStatuses.add(stdStatus);
+        }
+
     } else {
-        // 普通文本格式：每行一个任务（支持 "- " 前缀）
-        const firstStatus = lists.lists[lists.listIds[0]]?.status || 'todo';
+        // 普通文本格式：每行一个任务
+        let firstStatus = existingLists.lists[existingLists.listIds[0]]?.status;
+
+        // 如果没有现有列表，创建一个默认的「待办」列表
+        if (!firstStatus) {
+            firstStatus = 'todo';
+            result.newLists.push({ title: '待办', status: 'todo' });
+        }
+
+        // 解析 @标签 的辅助函数
+        function parseTaskPaperItem(content) {
+            let title = content;
+            let assignee = null;
+            let deadline = null;
+
+            const dueMatch = title.match(/@due\(([^)]+)\)/);
+            if (dueMatch) {
+                deadline = dueMatch[1].trim();
+                title = title.replace(/@due\([^)]+\)/, '').trim();
+            }
+
+            const assigneeMatch = title.match(/@(\S+)/);
+            if (assigneeMatch && !assigneeMatch[1].includes('(')) {
+                assignee = assigneeMatch[1];
+                title = title.replace(/@\S+/, '').trim();
+            }
+
+            return { title: title.trim(), assignee, deadline };
+        }
 
         for (const line of lines) {
             let trimmed = line.trim();
             if (!trimmed) continue;
 
-            // 去除可能的 "- " 前缀
-            if (trimmed.startsWith('- ')) {
-                trimmed = trimmed.substring(2).trim();
-            }
-            // 去除可能的 "* " 前缀
-            if (trimmed.startsWith('* ')) {
-                trimmed = trimmed.substring(2).trim();
-            }
-            // 去除可能的数字编号前缀 (如 "1. ", "2) ")
+            // 去除列表前缀
+            if (trimmed.startsWith('- ')) trimmed = trimmed.substring(2).trim();
+            if (trimmed.startsWith('* ')) trimmed = trimmed.substring(2).trim();
             trimmed = trimmed.replace(/^\d+[\.\)]\s*/, '').trim();
 
             if (trimmed) {
-                // 也尝试解析 @用户名 和 @due(日期)
                 const { title, assignee, deadline } = parseTaskPaperItem(trimmed);
                 if (title) {
                     result.cards.push({
-                        card: createCard(title, assignee, deadline),
+                        card: {
+                            id: Date.now().toString() + Math.random().toString(36).slice(2, 8),
+                            title: title,
+                            description: '',
+                            author: currentUser,
+                            assignee: assignee,
+                            created: new Date().toISOString(),
+                            deadline: deadline,
+                            posts: [],
+                            commentsCount: 0
+                        },
                         status: firstStatus
                     });
                 }

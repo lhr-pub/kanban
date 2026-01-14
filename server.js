@@ -3013,6 +3013,33 @@ async function handleSaveLists(ws, data) {
     }
 
     const { success, data: boardData } = await withBoardLock(projectId, boardName, (bd) => {
+        // 获取新列表中所有的 status
+        const newStatuses = new Set();
+        for (const listId of lists.listIds) {
+            const list = lists.lists[listId];
+            if (list && list.status) {
+                newStatuses.add(list.status);
+            }
+        }
+
+        // 获取旧列表中所有的 status
+        const oldStatuses = new Set();
+        if (bd.lists && bd.lists.listIds && bd.lists.lists) {
+            for (const listId of bd.lists.listIds) {
+                const list = bd.lists.lists[listId];
+                if (list && list.status) {
+                    oldStatuses.add(list.status);
+                }
+            }
+        }
+
+        // 清理被删除列表的卡片数据
+        for (const oldStatus of oldStatuses) {
+            if (!newStatuses.has(oldStatus) && oldStatus !== 'archived') {
+                delete bd[oldStatus];
+            }
+        }
+
         bd.lists = lists;
         // Ensure arrays exist for any new list statuses
         ensureListStatusArrays(bd);
