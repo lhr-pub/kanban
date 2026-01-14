@@ -10,6 +10,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
+      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY:-}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}

@@ -11,6 +11,71 @@ const AsyncLock = require('async-lock');
 // 并发锁实例 - 防止同一文件的并发读写竞态
 const fileLock = new AsyncLock({ timeout: 5000 });
 
+// ============ 数据加密配置 ============
+// 从环境变量读取加密密钥（32字节 = 256位）
+// 如果未设置，则不加密（向后兼容）
+const DATA_ENCRYPTION_KEY = process.env.DATA_ENCRYPTION_KEY || '';
+const ENCRYPTION_ENABLED = DATA_ENCRYPTION_KEY.length >= 32;
+
+// 派生实际使用的密钥（确保正好32字节）
+const encryptionKey = ENCRYPTION_ENABLED
+    ? crypto.createHash('sha256').update(DATA_ENCRYPTION_KEY).digest()
+    : null;
+
+// 加密文件的魔数标识（用于区分明文和密文）
+const ENCRYPTED_MAGIC = Buffer.from('KANBAN_ENC_V1\x00\x00\x00'); // 16 bytes
+
+/**
+ * 加密数据
+ * @param {string} plaintext - 明文 JSON 字符串
+ * @returns {Buffer} - 加密后的数据（magic + iv + tag + ciphertext）
+ */
+function encryptData(plaintext) {
+    const iv = crypto.randomBytes(12); // GCM 推荐 12 字节 IV
+    const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
+    const encrypted = Buffer.concat([
+        cipher.update(plaintext, 'utf8'),
+        cipher.final()
+    ]);
+    const tag = cipher.getAuthTag(); // 16 bytes
+    // 格式: MAGIC(16) + IV(12) + TAG(16) + CIPHERTEXT
+    return Buffer.concat([ENCRYPTED_MAGIC, iv, tag, encrypted]);
+}
+
+/**
+ * 解密数据
+ * @param {Buffer} data - 加密的数据
+ * @returns {string} - 解密后的明文
+ */
+function decryptData(data) {
+    // 解析各部分
+    const iv = data.subarray(16, 28);        // 12 bytes
+    const tag = data.subarray(28, 44);       // 16 bytes
+    const ciphertext = data.subarray(44);    // 剩余部分
+
+    const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([
+        decipher.update(ciphertext),
+        decipher.final()
+    ]).toString('utf8');
+}
+
+/**
+ * 检查数据是否已加密（通过魔数）
+ */
+function isEncrypted(data) {
+    if (!Buffer.isBuffer(data) || data.length < 44) return false;
+    return data.subarray(0, 16).equals(ENCRYPTED_MAGIC);
+}
+
+if (ENCRYPTION_ENABLED) {
+    console.log('📦 数据加密已启用 (AES-256-GCM)');
+} else {
+    console.log('⚠️  数据加密未启用 (设置 DATA_ENCRYPTION_KEY 环境变量以启用)');
+}
+// ============ 数据加密配置 END ============
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -277,8 +342,17 @@ function generateProjectId() {
 function readJsonFile(filePath, defaultValue = {}) {
     try {
         if (fs.existsSync(filePath)) {
-            const content = fs.readFileSync(filePath, 'utf8');
-            return JSON.parse(content);
+            // 以 Buffer 形式读取，以便检测是否加密
+            const rawData = fs.readFileSync(filePath);
+
+            if (ENCRYPTION_ENABLED && isEncrypted(rawData)) {
+                // 文件已加密，解密后解析
+                const plaintext = decryptData(rawData);
+                return JSON.parse(plaintext);
+            } else {
+                // 文件是明文（或未启用加密），直接解析
+                return JSON.parse(rawData.toString('utf8'));
+            }
         }
     } catch (error) {
         console.error(`Error reading ${filePath}:`, error);
@@ -288,7 +362,16 @@ function readJsonFile(filePath, defaultValue = {}) {
 
 function writeJsonFile(filePath, data) {
     try {
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+        const jsonStr = JSON.stringify(data, null, 2);
+
+        if (ENCRYPTION_ENABLED) {
+            // 加密后写入（二进制）
+            const encrypted = encryptData(jsonStr);
+            fs.writeFileSync(filePath, encrypted);
+        } else {
+            // 明文写入
+            fs.writeFileSync(filePath, jsonStr, 'utf8');
+        }
         return true;
     } catch (error) {
         console.error(`Error writing ${filePath}:`, error);
