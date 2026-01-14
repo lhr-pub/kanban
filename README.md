@@ -4,6 +4,7 @@
 
 ## 目录（Contents）
 
+- [📖 用户使用手册](docs/USER_MANUAL.md) ← **新用户请先阅读**
 - [最近改动要点（交互对齐）](#recent-changes)
 - [🗺️ Roadmap（规划）](#roadmap)
 - [🗂️ 项目与看板](#projects-boards)
@@ -305,6 +306,7 @@ classDiagram
   class User {
     +string username
     +string passwordHash
+    +string email
     +bool verified
     +bool admin
     +string[] projects
@@ -312,6 +314,7 @@ classDiagram
     +string[] pinnedProjects
     +map~string,string[]~ pinnedBoards
     +string[] pinnedStarBoards
+    +string backgroundUrl
   }
 
   class Star {
@@ -627,10 +630,21 @@ classDiagram
 ### 星标与置前
 - GET `/api/user-stars/:username` → { stars }
 - POST `/api/user-stars/toggle` { username, projectId, boardName, projectName } → { stars, starred }
+- GET `/api/user-pinned/:username` → { pinnedProjects, pinnedBoards }（获取用户的置顶数据）
+- POST `/api/toggle-pin-project` { username, projectId, pinned } → 置顶/取消置顶项目
+- POST `/api/toggle-pin-board` { username, projectId, boardName, pinned } → 置顶/取消置顶看板
+- POST `/api/reorder-project` { username, projectId, where: "first"|"last" } → 移动项目到最前/最后
+- POST `/api/reorder-board` { username, projectId, boardName, where: "first"|"last" } → 移动看板到最前/最后
 - POST `/api/user-pins/pin` { username, projectId }（项目置前：仅将该用户的项目顺序移动至最前，不设置置顶分组）
 - POST `/api/user-board-pins/pin` { username, projectId, boardName }（看板置前：将该看板移动到项目看板顺序最前，作为一次性排序）
- - GET `/api/user-star-pins/:username` → { pins }（星标列表的置前顺序，仅影响星标区）
- - POST `/api/user-star-pins/pin` { username, projectId, boardName } → { pins }（置前指定星标看板至星标区最前）
+- GET `/api/user-star-pins/:username` → { pins }（星标列表的置前顺序，仅影响星标区）
+- POST `/api/user-star-pins/pin` { username, projectId, boardName } → { pins }（置前指定星标看板至星标区最前）
+
+### 备份与还原
+- GET `/api/user-backup/:username` → 导出用户所有数据（项目、看板、设置）为 JSON
+- POST `/api/user-restore` { username, backupData } → 从备份数据还原用户数据
+- GET `/api/project-backup/:projectId?username=xxx` → 导出单个项目及其所有看板数据
+- POST `/api/project-restore` { username, backupData } → 从备份数据还原项目
 
 ### 管理员
 - POST `/api/admin/login` { username, password }
@@ -655,6 +669,25 @@ classDiagram
 
 ## 🗃️ 数据模型（要点）
 
+### users.json（示意）
+```json
+{
+  "alice": {
+    "username": "alice",
+    "passwordHash": "...",
+    "email": "alice@example.com",
+    "verified": true,
+    "admin": false,
+    "projects": ["pid123", "pid456"],
+    "stars": [{ "projectId": "pid123", "boardName": "看板1", "projectName": "项目A", "starredAt": 1704067200000 }],
+    "pinnedProjects": ["pid123"],
+    "pinnedBoards": { "pid123": ["看板1"] },
+    "pinnedStarBoards": ["pid123::看板1"],
+    "backgroundUrl": ""
+  }
+}
+```
+
 ### projects.json（示意）
 ```json
 {
@@ -665,8 +698,10 @@ classDiagram
     "created": "2024-01-01T00:00:00.000Z",
     "members": ["alice", "bob"],
     "boards": ["默认看板", "迭代一"],
+    "archivedBoards": [],
     "boardOwners": { "默认看板": "alice" },
-    "pendingRequests": []
+    "pendingRequests": [],
+    "pendingInvites": []
   }
 }
 ```
@@ -708,6 +743,9 @@ classDiagram
 
 ```
 kanban/
+├── docs/                   # 文档
+│   ├── USER_MANUAL.md      # 用户使用手册
+│   └── images/             # 架构图、页面线框图
 ├── public/                 # 前端资源（Vanilla JS）
 │   ├── index.html          # 单页应用
 │   ├── app.js              # 前端逻辑（WS、内联编辑、拖拽、邀请/成员/星标/切换器等）

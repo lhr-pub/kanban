@@ -214,9 +214,22 @@ POST /api/request-add-member          项目内发起添加请求
 ```
 GET  /api/user-stars/:username
 POST /api/user-stars/toggle
-POST /api/user-pins/pin          项目置前
-POST /api/user-board-pins/pin    看板置前
-POST /api/user-star-pins/pin     星标区置前
+GET  /api/user-pinned/:username       获取用户的置顶数据
+POST /api/toggle-pin-project          置顶/取消置顶项目
+POST /api/toggle-pin-board            置顶/取消置顶看板
+POST /api/reorder-project             移动项目到最前/最后
+POST /api/reorder-board               移动看板到最前/最后
+POST /api/user-pins/pin               项目置前
+POST /api/user-board-pins/pin         看板置前
+POST /api/user-star-pins/pin          星标区置前
+```
+
+### 备份与还原
+```
+GET  /api/user-backup/:username       导出用户所有数据
+POST /api/user-restore                从备份还原用户数据
+GET  /api/project-backup/:projectId   导出单个项目数据
+POST /api/project-restore             从备份还原项目
 ```
 
 ### 导入导出
@@ -327,9 +340,15 @@ member-removed / member-added / join-request
   "stars": [{ "projectId": "", "boardName": "", "projectName": "", "starredAt": 0 }],
   "pinnedProjects": ["projectId"],
   "pinnedBoards": { "projectId": ["boardName"] },
+  "pinnedStarBoards": ["projectId::boardName"],
   "backgroundUrl": ""
 }
 ```
+
+说明：
+- `pinnedProjects`: 置顶的项目ID列表
+- `pinnedBoards`: 每个项目中置顶的看板名列表
+- `pinnedStarBoards`: 星标区置顶的看板（格式 "projectId::boardName"）
 
 ### Project（projects.json）
 ```json
@@ -342,11 +361,16 @@ member-removed / member-added / join-request
     "boards": ["看板1", "看板2"],
     "archivedBoards": [],
     "boardOwners": { "看板1": "alice" },
-    "pendingRequests": [],
+    "pendingRequests": [{ "username": "charlie", "created": "ISO时间" }],
+    "pendingInvites": ["david"],
     "created": "ISO时间"
   }
 }
 ```
+
+说明：
+- `pendingRequests`: 待审批的加入申请（通过邀请码申请）
+- `pendingInvites`: 待接受的邀请（项目内发起的添加请求）
 
 ### Board（{projectId}_{board}.json）
 ```json
