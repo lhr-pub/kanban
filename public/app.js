@@ -8469,7 +8469,8 @@ document.addEventListener('paste', async function(e) {
 });
 
 /**
- * 解析粘贴内容，支持 TaskPaper 格式和普通多行文本
+ * 解析粘贴内容，支持 TaskPaper/Markdown 格式和普通多行文本
+ * 与 parseMarkdownToBoard 保持一致的解析逻辑
  * @param {string} text 粘贴的文本
  * @param {object} lists 看板列表信息
  * @returns {{cards: Array<{card: object, status: string}>, isTaskPaperFormat: boolean}}
@@ -8478,40 +8479,64 @@ function parsePasteContent(text, lists) {
     const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
     const result = { cards: [], isTaskPaperFormat: false };
 
-    // 构建列名到 status 的映射
+    // 构建列名到 status 的映射（基于现有看板列表）
     const listNameToStatus = {};
-    const listStatusToTitle = {};
     for (const listId of lists.listIds) {
         const list = lists.lists[listId];
         if (list) {
             const title = (list.title || '').trim().toLowerCase();
             listNameToStatus[title] = list.status;
-            listStatusToTitle[list.status] = list.title || list.status;
-            // 也支持常见别名
-            if (list.status === 'todo' || title === '待办' || title === 'todo') {
-                listNameToStatus['待办'] = list.status;
-                listNameToStatus['todo'] = list.status;
-            }
-            if (list.status === 'doing' || title === '进行中' || title === 'doing') {
-                listNameToStatus['进行中'] = list.status;
-                listNameToStatus['doing'] = list.status;
-            }
-            if (list.status === 'done' || title === '已完成' || title === 'done') {
-                listNameToStatus['已完成'] = list.status;
-                listNameToStatus['done'] = list.status;
+            // 也支持去除 emoji 后的名称
+            const titleNoEmoji = title.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
+            if (titleNoEmoji !== title) {
+                listNameToStatus[titleNoEmoji] = list.status;
             }
         }
     }
 
-    // 检测是否为 TaskPaper 格式（有 "xxx:" 列名行，且有 "- " 开头的条目）
-    const hasTaskPaperHeaders = lines.some(l => {
-        const t = l.trim();
-        return t.endsWith(':') && !t.includes('://') && t.length > 1;
-    });
-    const hasListItems = lines.some(l => l.trim().startsWith('- '));
-    const isTaskPaperFormat = hasTaskPaperHeaders && hasListItems;
+    // 标准化列名映射函数（与 parseMarkdownToBoard 的 normalizeHeadingToKey 一致）
+    function normalizeToStatus(h) {
+        const t = h.trim().replace(/^##\s+/, '').replace(/:$/, '').toLowerCase();
+        // 支持 emoji 前缀和中英文别名
+        if (t.startsWith('📋') || /\btodo\b/i.test(t) || t === '待办') {
+            return listNameToStatus['待办'] || listNameToStatus['todo'] ||
+                   Object.values(lists.lists).find(l => l.status === 'todo')?.status ||
+                   lists.lists[lists.listIds[0]]?.status;
+        }
+        if (t.startsWith('🔄') || /\bdoing\b/i.test(t) || t === '进行中') {
+            return listNameToStatus['进行中'] || listNameToStatus['doing'] ||
+                   Object.values(lists.lists).find(l => l.status === 'doing')?.status ||
+                   lists.lists[lists.listIds[0]]?.status;
+        }
+        if (t.startsWith('✅') || /\bdone\b/i.test(t) || t === '已完成') {
+            return listNameToStatus['已完成'] || listNameToStatus['done'] ||
+                   Object.values(lists.lists).find(l => l.status === 'done')?.status ||
+                   lists.lists[lists.listIds[0]]?.status;
+        }
+        if (t.startsWith('📁') || /\barchived\b/i.test(t) || t === '归档') {
+            return 'archived'; // 归档特殊处理
+        }
+        // 尝试直接匹配现有列表名称
+        if (listNameToStatus[t]) {
+            return listNameToStatus[t];
+        }
+        // 去除 emoji 后再匹配
+        const tNoEmoji = t.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
+        if (listNameToStatus[tNoEmoji]) {
+            return listNameToStatus[tNoEmoji];
+        }
+        // 默认使用第一个列表
+        return lists.lists[lists.listIds[0]]?.status || 'todo';
+    }
 
-    // 解析 TaskPaper 条目的辅助函数
+    // 检测格式（与 parseMarkdownToBoard 一致）
+    // TaskPaper 格式：有 "xxx:" 开头的行且没有 ## 开头的行
+    const hasTaskPaperHeaders = lines.some(l => /^[^#\s][^:]*:$/.test(l.trim()));
+    const hasMarkdownHeaders = lines.some(l => /^##\s+/.test(l));
+    const isTaskPaperFormat = hasTaskPaperHeaders && !hasMarkdownHeaders;
+    const isMarkdownFormat = hasMarkdownHeaders;
+
+    // 解析 TaskPaper 条目的辅助函数（与 parseMarkdownToBoard 一致）
     function parseTaskPaperItem(content) {
         let title = content;
         let assignee = null;
@@ -8535,11 +8560,11 @@ function parsePasteContent(text, lists) {
     }
 
     // 创建卡片对象的辅助函数
-    function createCard(title, assignee = null, deadline = null) {
+    function createCard(title, assignee = null, deadline = null, description = '') {
         return {
             id: Date.now().toString() + Math.random().toString(36).slice(2, 8),
             title: title,
-            description: '',
+            description: description,
             author: currentUser,
             assignee: assignee,
             created: new Date().toISOString(),
@@ -8549,38 +8574,67 @@ function parsePasteContent(text, lists) {
         };
     }
 
-    if (isTaskPaperFormat) {
-        // TaskPaper 格式解析
+    if (isTaskPaperFormat || isMarkdownFormat) {
+        // TaskPaper 或 Markdown 格式解析
         result.isTaskPaperFormat = true;
         let currentStatus = null;
+        let currentCard = null;
 
         for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed) continue;
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
 
-            // 检测列名行（以冒号结尾，不是 URL）
-            if (trimmed.endsWith(':') && !trimmed.includes('://')) {
-                const columnName = trimmed.slice(0, -1).trim().toLowerCase();
-                // 尝试匹配现有列表
-                if (listNameToStatus[columnName]) {
-                    currentStatus = listNameToStatus[columnName];
-                } else {
-                    // 如果列名不匹配，使用第一个列表
-                    currentStatus = lists.lists[lists.listIds[0]]?.status || 'todo';
+            // TaskPaper 格式：列名以冒号结尾（不是 URL）
+            if (isTaskPaperFormat && trimmedLine.endsWith(':') && !trimmedLine.includes('://')) {
+                const columnName = trimmedLine.slice(0, -1).trim();
+                if (columnName) {
+                    currentStatus = normalizeToStatus(columnName);
+                    currentCard = null;
                 }
                 continue;
             }
 
-            // 解析条目（以 "- " 开头）
-            if (trimmed.startsWith('- ') && currentStatus) {
-                const itemContent = trimmed.substring(2);
+            // Markdown 格式：## 标题
+            if (/^##\s+/.test(line)) {
+                const heading = line.replace(/^##\s+/, '').trim();
+                currentStatus = normalizeToStatus(heading);
+                currentCard = null;
+                continue;
+            }
+
+            // TaskPaper 格式：- 开头的条目
+            if (isTaskPaperFormat && trimmedLine.startsWith('- ') && currentStatus) {
+                const itemContent = trimmedLine.substring(2);
                 const { title, assignee, deadline } = parseTaskPaperItem(itemContent);
-                if (title) {
-                    result.cards.push({
-                        card: createCard(title, assignee, deadline),
-                        status: currentStatus
-                    });
+                if (title && currentStatus !== 'archived') {
+                    currentCard = createCard(title, assignee, deadline);
+                    result.cards.push({ card: currentCard, status: currentStatus });
                 }
+                continue;
+            }
+
+            // Markdown 格式：### 标题（任务卡片）
+            if (line.startsWith('### ') && currentStatus) {
+                const title = line.replace(/^###\s*\d+\.\s*/, '').trim();
+                if (title && currentStatus !== 'archived') {
+                    currentCard = createCard(title);
+                    result.cards.push({ card: currentCard, status: currentStatus });
+                }
+                continue;
+            }
+
+            // Markdown 格式：元数据
+            if (line.startsWith('**描述:**') && currentCard) {
+                currentCard.description = line.replace('**描述:**', '').trim();
+                continue;
+            }
+            if (line.startsWith('**分配给:**') && currentCard) {
+                currentCard.assignee = line.replace('**分配给:**', '').trim();
+                continue;
+            }
+            if (line.startsWith('**截止日期:**') && currentCard) {
+                currentCard.deadline = line.replace('**截止日期:**', '').trim();
+                continue;
             }
         }
     } else {
@@ -8621,3 +8675,4 @@ function parsePasteContent(text, lists) {
     return result;
 }
 // ... existing code ...
+
