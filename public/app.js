@@ -8426,9 +8426,40 @@ document.addEventListener('paste', async function(e) {
         return;
     }
 
+    // 先创建需要的新列表
+    let newListsCreated = 0;
+    if (result.newLists && result.newLists.length > 0) {
+        ensureClientLists();
+        for (const newList of result.newLists) {
+            // 检查列表是否已存在
+            const exists = Object.values(clientLists.lists).some(l => l.status === newList.status);
+            if (!exists) {
+                const id = newList.status; // 使用 status 作为 id
+                const pos = clientLists.listIds.length;
+                clientLists.lists[id] = { id, title: newList.title, pos, status: newList.status };
+                clientLists.listIds.push(id);
+                if (!Array.isArray(boardData[newList.status])) boardData[newList.status] = [];
+                newListsCreated++;
+            }
+        }
+        // 保存列表并同步到服务器
+        if (newListsCreated > 0) {
+            saveClientListsToStorage();
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'save-lists',
+                    projectId: currentProjectId,
+                    boardName: currentBoardName,
+                    lists: clientLists
+                }));
+            }
+        }
+    }
+
     // 批量创建卡片
     let createdCount = 0;
     const affectedStatuses = new Set();
+    const updatedLists = ensureClientLists(); // 获取更新后的列表
 
     for (const { card, status } of result.cards) {
         // 更新本地数据（插入顶部）
@@ -8456,13 +8487,17 @@ document.addEventListener('paste', async function(e) {
     // 提示用户
     if (result.isTaskPaperFormat) {
         const listNames = [...affectedStatuses].map(s => {
-            const listInfo = Object.values(lists.lists).find(l => l.status === s);
+            const listInfo = Object.values(updatedLists.lists).find(l => l.status === s);
             return listInfo ? listInfo.title : s;
         }).join('、');
-        uiToast(`已导入 ${createdCount} 张卡片到「${listNames}」`, 'success');
+        let msg = `已导入 ${createdCount} 张卡片到「${listNames}」`;
+        if (newListsCreated > 0) {
+            msg += `（新建 ${newListsCreated} 个列表）`;
+        }
+        uiToast(msg, 'success');
     } else {
-        const firstListId = lists.listIds[0];
-        const firstList = lists.lists[firstListId];
+        const firstListId = updatedLists.listIds[0];
+        const firstList = updatedLists.lists[firstListId];
         const listTitle = firstList?.title || firstList?.status || '列表';
         uiToast(`已在「${listTitle}」创建 ${createdCount} 张卡片`, 'success');
     }
@@ -8470,22 +8505,25 @@ document.addEventListener('paste', async function(e) {
 
 /**
  * 解析粘贴内容，支持 TaskPaper/Markdown 格式和普通多行文本
- * 与 parseMarkdownToBoard 保持一致的解析逻辑
+ * 与 parseMarkdownToBoard 保持一致的解析逻辑，支持动态创建新列表
  * @param {string} text 粘贴的文本
  * @param {object} lists 看板列表信息
- * @returns {{cards: Array<{card: object, status: string}>, isTaskPaperFormat: boolean}}
+ * @returns {{cards: Array<{card: object, status: string}>, isTaskPaperFormat: boolean, newLists: Array<{title: string, status: string}>}}
  */
 function parsePasteContent(text, lists) {
     const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
-    const result = { cards: [], isTaskPaperFormat: false };
+    const result = { cards: [], isTaskPaperFormat: false, newLists: [] };
+    let listCounter = 0;
 
     // 构建列名到 status 的映射（基于现有看板列表）
     const listNameToStatus = {};
+    const existingStatuses = new Set();
     for (const listId of lists.listIds) {
         const list = lists.lists[listId];
         if (list) {
             const title = (list.title || '').trim().toLowerCase();
             listNameToStatus[title] = list.status;
+            existingStatuses.add(list.status);
             // 也支持去除 emoji 后的名称
             const titleNoEmoji = title.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
             if (titleNoEmoji !== title) {
@@ -8494,28 +8532,35 @@ function parsePasteContent(text, lists) {
         }
     }
 
+    // 记录新创建的列表映射（避免重复创建）
+    const newListMap = {};
+
     // 标准化列名映射函数（与 parseMarkdownToBoard 的 normalizeHeadingToKey 一致）
-    function normalizeToStatus(h) {
+    // 如果列名不匹配，会创建新列表
+    function normalizeToStatus(h, originalTitle) {
         const t = h.trim().replace(/^##\s+/, '').replace(/:$/, '').toLowerCase();
-        // 支持 emoji 前缀和中英文别名
+        const displayTitle = originalTitle || h.trim().replace(/^##\s+/, '').replace(/:$/, '');
+
+        // 支持 emoji 前缀和中英文别名 - 映射到现有标准列表
         if (t.startsWith('📋') || /\btodo\b/i.test(t) || t === '待办') {
-            return listNameToStatus['待办'] || listNameToStatus['todo'] ||
-                   Object.values(lists.lists).find(l => l.status === 'todo')?.status ||
-                   lists.lists[lists.listIds[0]]?.status;
+            const found = listNameToStatus['待办'] || listNameToStatus['todo'] ||
+                   Object.values(lists.lists).find(l => l.status === 'todo')?.status;
+            if (found) return found;
         }
         if (t.startsWith('🔄') || /\bdoing\b/i.test(t) || t === '进行中') {
-            return listNameToStatus['进行中'] || listNameToStatus['doing'] ||
-                   Object.values(lists.lists).find(l => l.status === 'doing')?.status ||
-                   lists.lists[lists.listIds[0]]?.status;
+            const found = listNameToStatus['进行中'] || listNameToStatus['doing'] ||
+                   Object.values(lists.lists).find(l => l.status === 'doing')?.status;
+            if (found) return found;
         }
         if (t.startsWith('✅') || /\bdone\b/i.test(t) || t === '已完成') {
-            return listNameToStatus['已完成'] || listNameToStatus['done'] ||
-                   Object.values(lists.lists).find(l => l.status === 'done')?.status ||
-                   lists.lists[lists.listIds[0]]?.status;
+            const found = listNameToStatus['已完成'] || listNameToStatus['done'] ||
+                   Object.values(lists.lists).find(l => l.status === 'done')?.status;
+            if (found) return found;
         }
         if (t.startsWith('📁') || /\barchived\b/i.test(t) || t === '归档') {
             return 'archived'; // 归档特殊处理
         }
+
         // 尝试直接匹配现有列表名称
         if (listNameToStatus[t]) {
             return listNameToStatus[t];
@@ -8525,8 +8570,18 @@ function parsePasteContent(text, lists) {
         if (listNameToStatus[tNoEmoji]) {
             return listNameToStatus[tNoEmoji];
         }
-        // 默认使用第一个列表
-        return lists.lists[lists.listIds[0]]?.status || 'todo';
+
+        // 检查是否已为此列名创建了新列表
+        if (newListMap[t]) {
+            return newListMap[t];
+        }
+
+        // 创建新列表（与 parseMarkdownToBoard 一致）
+        const newStatus = 'list_' + (++listCounter).toString(36) + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        newListMap[t] = newStatus;
+        result.newLists.push({ title: displayTitle, status: newStatus });
+
+        return newStatus;
     }
 
     // 检测格式（与 parseMarkdownToBoard 一致）
@@ -8588,7 +8643,7 @@ function parsePasteContent(text, lists) {
             if (isTaskPaperFormat && trimmedLine.endsWith(':') && !trimmedLine.includes('://')) {
                 const columnName = trimmedLine.slice(0, -1).trim();
                 if (columnName) {
-                    currentStatus = normalizeToStatus(columnName);
+                    currentStatus = normalizeToStatus(columnName, columnName);
                     currentCard = null;
                 }
                 continue;
@@ -8597,7 +8652,7 @@ function parsePasteContent(text, lists) {
             // Markdown 格式：## 标题
             if (/^##\s+/.test(line)) {
                 const heading = line.replace(/^##\s+/, '').trim();
-                currentStatus = normalizeToStatus(heading);
+                currentStatus = normalizeToStatus(heading, heading);
                 currentCard = null;
                 continue;
             }
