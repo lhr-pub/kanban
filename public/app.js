@@ -2327,7 +2327,7 @@ function renderBoard() {
             const header = document.createElement('header');
             header.className = 'list-header';
             header.innerHTML = `
-                <h3 class="list-title" tabindex="0">${escapeHtml(list.title)}</h3>
+                <h3 class="list-title" tabindex="0" draggable="false">${escapeHtml(list.title)}</h3>
                 <div class="list-actions">
                     <button class="list-archive" title="归档此卡组全部卡片" aria-label="归档卡组"></button>
                 <button class="list-menu" aria-label="删除"></button>
@@ -2525,7 +2525,7 @@ function startListRename(titleEl, list){
         const val = (input.value||'').trim();
         const next = canceled? old : (val || old);
         list.title = next;
-        const h = document.createElement('h3'); h.className='list-title'; h.tabIndex=0; h.textContent=next;
+        const h = document.createElement('h3'); h.className='list-title'; h.tabIndex=0; h.draggable=false; h.textContent=next;
         input.replaceWith(h);
         bindListTitleInlineRename(h.closest('.list'), list);
         saveClientListsToStorage();
@@ -5330,8 +5330,8 @@ function enableListsDrag() {
         header.setAttribute('draggable', 'false');
 
         header.addEventListener('mousedown', (e) => {
-            // Ignore if clicking on buttons, inputs, or actions
-            if (e.target.closest('button, input, textarea, select, .list-actions, .list-menu, .list-archive')) return;
+            // Ignore if clicking on buttons, inputs, or actions, or list title (for inline rename)
+            if (e.target.closest('button, input, textarea, select, .list-actions, .list-menu, .list-archive, .list-title, .list-title-input')) return;
             if (e.button !== 0) return; // Only left click
 
             e.preventDefault();

@@ -4391,8 +4391,8 @@ body {
 
 /* === Trello-like lists & composer visuals === */
 .list { background: #ebecf0; border: 1px solid #dfe1e6; border-radius: 8px; padding: 8px; width: var(--list-width); min-width: var(--list-width); max-width: var(--list-width); display:flex; flex-direction:column; gap:8px; }
-.list-header { display:flex; align-items:center; justify-content:space-between; margin: 2px 4px 6px; cursor: grab; -webkit-user-select: none; user-select: none; -webkit-user-drag: element; }
-.list-title { font-size: 14px; font-weight:600; margin:0; }
+.list-header { display:flex; align-items:center; justify-content:space-between; margin: 2px 4px 6px; cursor: grab; -webkit-user-select: none; user-select: none; }
+.list-title { font-size: 14px; font-weight:600; margin:0; cursor: text; -webkit-user-drag: none; user-select: text; }
 .list-title-input { width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-weight:600; background:#fff; }
 .list-menu { width:28px; height:28px; border:0; background:transparent; border-radius:6px; color:#6b778c; cursor:pointer; }
 .list-menu:hover { background:rgba(9,30,66,.08); }
