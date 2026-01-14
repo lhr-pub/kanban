@@ -459,10 +459,50 @@ classDiagram
 - 卡组拖拽：释放后保存 lists 顺序（容器单一 ondragover）
 
 ### ⬆️ 导入/导出与备份
-- I/O 菜单：导航“导入/导出”下拉（导入文件、粘贴文本导入、导出 Markdown/JSON）
-- 导入 JSON/Markdown：支持合并或覆盖两种模式；支持“粘贴文本导入”
-- 导出 Markdown/JSON：更稳健的多策略下载兼容
-- 自动备份：每次写入在 `data/backups/` 生成时间戳版本，保留最近 50 份
+
+#### 支持的格式
+
+| 格式 | 扩展名 | 特点 | 用途 |
+|------|--------|------|------|
+| **TaskPaper** | `.taskpaper` | 简洁、纯文本友好 | 快速编辑、版本控制、与其他工具集成 |
+| **Markdown** | `.md` | 详细、包含元数据 | 文档归档、完整备份 |
+| **JSON** | `.json` | 原始数据 | 程序处理、完整迁移 |
+
+#### TaskPaper 格式示例
+
+```
+待办:
+
+- 完成用户认证模块 @张三 @due(2024-03-15)
+- 修复登录 bug
+- 编写单元测试 @李四
+
+进行中:
+
+- 代码审查 @王五 @due(2024-03-10)
+
+已完成:
+
+- 数据库设计
+```
+
+**TaskPaper 语法**：
+- `列名:` — 以冒号结尾定义列
+- `- 内容` — 以 `- ` 开头定义卡片
+- `@用户名` — 指定负责人
+- `@due(日期)` — 指定截止日期
+
+#### 导入导出操作
+
+- **I/O 菜单**：导航栏"导入/导出"下拉
+  - 从文件导入（`.json` / `.md` / `.taskpaper`）
+  - 从文本导入（自动检测格式）
+  - 导出为 TaskPaper（简洁）
+  - 导出为 Markdown（详细）
+  - 导出为 JSON
+- **导入模式**：支持"合并"或"覆盖"两种模式
+- **文本导入**：Enter 换行，Ctrl+Enter 确认
+- **自动备份**：每次写入在 `data/backups/` 生成时间戳版本，保留最近 50 份
 
 ### ⭐ 星标看板（服务器持久化）
 - 星标列表为每个用户服务器持久化（非本地存储）
@@ -556,7 +596,8 @@ classDiagram
 - POST `/api/move-board` { fromProjectId, toProjectId, boardName, actor }
 - DELETE `/api/delete-board` { projectId, boardName, actor }
 - GET `/api/board/:projectId/:boardName`
-- GET `/api/export/:projectId/:boardName` → Markdown 下载
+- GET `/api/export/:projectId/:boardName` → Markdown 下载（详细格式）
+- GET `/api/export-taskpaper/:projectId/:boardName` → TaskPaper 下载（简洁格式）
 - GET `/api/export-json/:projectId/:boardName` → JSON 下载
 
 ### 成员与邀请
