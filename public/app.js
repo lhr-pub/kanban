@@ -2691,7 +2691,7 @@ function inlineEditCardTitle(cardEl){
     setCardInlineEditingState(cardEl.dataset.cardId, true);
     let canceled = false;
     input.addEventListener('keydown',(e)=>{
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
         if (e.key === 'Escape') { e.preventDefault(); canceled = true; input.blur(); }
     });
     input.addEventListener('blur', ()=>{
@@ -4269,8 +4269,8 @@ function editCardTitle(cardId, clickEvent) {
 
     // 绑定事件 - 智能焦点管理
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && e.ctrlKey) {
-            // Ctrl+Enter保存
+        if (e.key === 'Enter') {
+            // Enter保存（不再需要Ctrl）
             e.preventDefault();
             save();
         } else if (e.key === 'Escape') {
