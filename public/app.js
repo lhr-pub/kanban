@@ -2516,7 +2516,7 @@ function startListRename(titleEl, list){
     titleEl.replaceWith(input); input.focus(); input.select();
     let canceled=false;
     input.addEventListener('keydown', (e)=>{
-        if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+        if(e.key==='Enter'){ e.preventDefault(); try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; input.blur(); }
         if(e.key==='Escape'){ canceled=true; input.blur(); }
     });
     input.addEventListener('blur', ()=>{
