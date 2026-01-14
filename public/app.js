@@ -403,6 +403,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (invitesBtn) invitesBtn.addEventListener('click', openInvitesModal);
     const changePwdProj = document.getElementById('changePasswordProject');
     if (changePwdProj) changePwdProj.addEventListener('click', changePasswordFlow);
+    const userBackupBtn = document.getElementById('userBackupBtn');
+    if (userBackupBtn) userBackupBtn.addEventListener('click', toggleUserBackupMenu);
 
     // 看板选择页面事件
     document.getElementById('backToProjects').addEventListener('click', showProjectPage);
@@ -7656,6 +7658,165 @@ function hideIOMenu(){
     const menu = document.getElementById('ioMenu');
     if (menu) menu.classList.add('hidden');
 }
+
+// ============ 用户数据备份/恢复 ============
+
+function toggleUserBackupMenu(e) {
+    e && e.preventDefault();
+    e && e.stopPropagation();
+    const btn = document.getElementById('userBackupBtn');
+    const menu = document.getElementById('userBackupMenu');
+    if (!btn || !menu) return;
+
+    const wasHidden = menu.classList.contains('hidden');
+    menu.classList.add('hidden');
+
+    if (wasHidden) {
+        const rect = btn.getBoundingClientRect();
+        menu.style.left = `${Math.round(rect.left)}px`;
+        menu.style.top = `${Math.round(rect.bottom + 6)}px`;
+        menu.classList.remove('hidden');
+        bindUserBackupMenuOnce();
+    }
+}
+
+function hideUserBackupMenu() {
+    const menu = document.getElementById('userBackupMenu');
+    if (menu) menu.classList.add('hidden');
+}
+
+let userBackupMenuBound = false;
+function bindUserBackupMenuOnce() {
+    if (userBackupMenuBound) return;
+    userBackupMenuBound = true;
+
+    const backupAllBtn = document.getElementById('backupAllData');
+    const restoreBtn = document.getElementById('restoreFromFile');
+    const restoreInput = document.getElementById('restoreFileInput');
+
+    if (backupAllBtn) {
+        backupAllBtn.onclick = () => {
+            hideUserBackupMenu();
+            downloadUserBackup();
+        };
+    }
+
+    if (restoreBtn) {
+        restoreBtn.onclick = () => {
+            hideUserBackupMenu();
+            restoreInput && restoreInput.click();
+        };
+    }
+
+    if (restoreInput) {
+        restoreInput.onchange = async (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            try {
+                const text = await file.text();
+                const backupData = JSON.parse(text);
+                await restoreUserBackup(backupData);
+            } catch (err) {
+                console.error('Restore error:', err);
+                uiToast('备份文件格式错误', 'error');
+            } finally {
+                e.target.value = '';
+            }
+        };
+    }
+
+    // 点击外部关闭
+    document.addEventListener('click', (ev) => {
+        const menu = document.getElementById('userBackupMenu');
+        const btn = document.getElementById('userBackupBtn');
+        if (menu && !menu.classList.contains('hidden')) {
+            if (!menu.contains(ev.target) && (!btn || !btn.contains(ev.target))) {
+                hideUserBackupMenu();
+            }
+        }
+    });
+
+    // ESC 关闭
+    document.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Escape') hideUserBackupMenu();
+    }, true);
+}
+
+async function downloadUserBackup() {
+    if (!currentUser) {
+        uiToast('请先登录', 'error');
+        return;
+    }
+    try {
+        uiToast('正在导出数据...', 'info');
+        const response = await fetch(`/api/user-backup/${encodeURIComponent(currentUser)}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.message || '导出失败');
+        }
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `kanban_backup_${currentUser}_${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        uiToast('数据导出成功', 'success');
+    } catch (err) {
+        console.error('Backup error:', err);
+        uiToast(err.message || '导出失败', 'error');
+    }
+}
+
+async function restoreUserBackup(backupData) {
+    if (!currentUser) {
+        uiToast('请先登录', 'error');
+        return;
+    }
+
+    // 验证备份数据
+    if (!backupData.version || !backupData.projects) {
+        uiToast('无效的备份文件格式', 'error');
+        return;
+    }
+
+    const projectCount = backupData.projects.length;
+    const boardCount = backupData.projects.reduce((sum, p) => sum + (p.boards ? p.boards.length : 0), 0);
+
+    // 确认恢复
+    const confirmed = confirm(`确定要恢复此备份吗？\n\n将创建 ${projectCount} 个新项目，共 ${boardCount} 个看板。\n\n原项目数据不会被覆盖。`);
+    if (!confirmed) return;
+
+    try {
+        uiToast('正在恢复数据...', 'info');
+        const response = await fetch('/api/user-restore', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: currentUser,
+                backupData: backupData
+            })
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.message || '恢复失败');
+        }
+
+        uiToast(`恢复成功！创建了 ${result.summary.projectCount} 个项目，${result.summary.totalBoards} 个看板`, 'success');
+
+        // 刷新项目列表
+        await loadProjects();
+    } catch (err) {
+        console.error('Restore error:', err);
+        uiToast(err.message || '恢复失败', 'error');
+    }
+}
+
+// ============ 用户数据备份/恢复 END ============
+
 // ... existing code ...
 // 在捕获阶段也拦截一次，确保一次 Esc 生效
 document.addEventListener('keydown', function(e){

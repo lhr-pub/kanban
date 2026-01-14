@@ -2010,6 +2010,317 @@ app.get('/api/export-json/:projectId/:boardName', (req, res) => {
     res.send(JSON.stringify(boardData));
 });
 
+// ============ 个人完整数据导出/导入 ============
+
+/**
+ * 导出用户的所有项目数据（完整备份）
+ * GET /api/user-backup/:username
+ */
+app.get('/api/user-backup/:username', (req, res) => {
+    const { username } = req.params;
+
+    if (!username) {
+        return res.status(400).json({ message: '用户名不能为空' });
+    }
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+
+    if (!users[username]) {
+        return res.status(404).json({ message: '用户不存在' });
+    }
+
+    const userProjects = users[username].projects || [];
+    const exportData = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        exportedBy: username,
+        user: {
+            // 不导出密码和敏感信息
+            stars: users[username].stars || [],
+            pinnedProjects: users[username].pinnedProjects || [],
+            pinnedBoards: users[username].pinnedBoards || {},
+            backgroundUrl: users[username].backgroundUrl || null
+        },
+        projects: []
+    };
+
+    // 导出用户参与的每个项目
+    userProjects.forEach(projectId => {
+        const project = projects[projectId];
+        if (!project) return;
+
+        const projectExport = {
+            originalId: projectId,
+            name: project.name,
+            owner: project.owner,
+            members: project.members || [],
+            boards: [],
+            boardOwners: project.boardOwners || {},
+            joinApprovals: project.joinApprovals || [],
+            created: project.created
+        };
+
+        // 导出该项目的所有看板数据
+        (project.boards || []).forEach(boardName => {
+            const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
+            const boardData = readJsonFile(boardFile, {
+                archived: [],
+                lists: { listIds: [], lists: {} }
+            });
+            projectExport.boards.push({
+                name: boardName,
+                owner: project.boardOwners?.[boardName] || project.owner,
+                data: boardData
+            });
+        });
+
+        exportData.projects.push(projectExport);
+    });
+
+    const filename = `kanban_backup_${username}_${new Date().toISOString().slice(0,10)}.json`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(JSON.stringify(exportData, null, 2));
+});
+
+/**
+ * 导入用户数据（创建新项目）
+ * POST /api/user-restore
+ * Body: { username, backupData }
+ */
+app.post('/api/user-restore', (req, res) => {
+    const { username, backupData } = req.body;
+
+    if (!username || !backupData) {
+        return res.status(400).json({ message: '用户名和备份数据不能为空' });
+    }
+
+    if (!backupData.version || !backupData.projects) {
+        return res.status(400).json({ message: '无效的备份文件格式' });
+    }
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+
+    if (!users[username]) {
+        return res.status(404).json({ message: '用户不存在' });
+    }
+
+    const importedProjects = [];
+    const idMapping = {}; // 旧ID -> 新ID 映射
+
+    try {
+        // 为每个项目创建新的 projectId
+        backupData.projects.forEach(projectExport => {
+            const newProjectId = Date.now().toString() + Math.random().toString(36).slice(2, 12);
+            idMapping[projectExport.originalId] = newProjectId;
+
+            // 创建新项目
+            const newProject = {
+                name: `${projectExport.name} (恢复)`,
+                owner: username, // 当前用户成为所有者
+                members: [username], // 只有当前用户是成员
+                boards: [],
+                boardOwners: {},
+                joinApprovals: [],
+                created: new Date().toISOString()
+            };
+
+            // 恢复每个看板
+            projectExport.boards.forEach(boardExport => {
+                const boardName = boardExport.name;
+                newProject.boards.push(boardName);
+                newProject.boardOwners[boardName] = username;
+
+                // 写入看板数据文件
+                const boardFile = path.join(dataDir, `${newProjectId}_${boardName}.json`);
+                writeJsonFile(boardFile, boardExport.data);
+            });
+
+            // 保存项目
+            projects[newProjectId] = newProject;
+
+            // 将项目添加到用户的项目列表
+            if (!users[username].projects.includes(newProjectId)) {
+                users[username].projects.unshift(newProjectId);
+            }
+
+            importedProjects.push({
+                oldId: projectExport.originalId,
+                newId: newProjectId,
+                name: newProject.name,
+                boardCount: newProject.boards.length
+            });
+        });
+
+        // 保存更新
+        if (!writeJsonFile(projectsFile, projects)) {
+            return res.status(500).json({ message: '保存项目数据失败' });
+        }
+        if (!writeJsonFile(usersFile, users)) {
+            return res.status(500).json({ message: '保存用户数据失败' });
+        }
+
+        res.json({
+            message: '数据恢复成功',
+            imported: importedProjects,
+            summary: {
+                projectCount: importedProjects.length,
+                totalBoards: importedProjects.reduce((sum, p) => sum + p.boardCount, 0)
+            }
+        });
+
+    } catch (error) {
+        console.error('Import error:', error);
+        res.status(500).json({ message: '导入失败: ' + error.message });
+    }
+});
+
+/**
+ * 导出单个项目的完整数据
+ * GET /api/project-backup/:projectId
+ */
+app.get('/api/project-backup/:projectId', (req, res) => {
+    const { projectId } = req.params;
+    const { username } = req.query;
+
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const projects = readJsonFile(projectsFile, {});
+    const project = projects[projectId];
+
+    if (!project) {
+        return res.status(404).json({ message: '项目不存在' });
+    }
+
+    // 可选：检查用户是否有权限
+    if (username && !project.members?.includes(username) && project.owner !== username) {
+        return res.status(403).json({ message: '无权访问此项目' });
+    }
+
+    const exportData = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        type: 'single_project',
+        project: {
+            originalId: projectId,
+            name: project.name,
+            owner: project.owner,
+            members: project.members || [],
+            boards: [],
+            boardOwners: project.boardOwners || {},
+            created: project.created
+        }
+    };
+
+    // 导出所有看板
+    (project.boards || []).forEach(boardName => {
+        const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
+        const boardData = readJsonFile(boardFile, {
+            archived: [],
+            lists: { listIds: [], lists: {} }
+        });
+        exportData.project.boards.push({
+            name: boardName,
+            owner: project.boardOwners?.[boardName] || project.owner,
+            data: boardData
+        });
+    });
+
+    const safeName = project.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
+    const filename = `project_backup_${safeName}_${new Date().toISOString().slice(0,10)}.json`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(JSON.stringify(exportData, null, 2));
+});
+
+/**
+ * 导入单个项目（创建新项目）
+ * POST /api/project-restore
+ * Body: { username, backupData }
+ */
+app.post('/api/project-restore', (req, res) => {
+    const { username, backupData } = req.body;
+
+    if (!username || !backupData) {
+        return res.status(400).json({ message: '用户名和备份数据不能为空' });
+    }
+
+    if (!backupData.version || !backupData.project) {
+        return res.status(400).json({ message: '无效的项目备份文件格式' });
+    }
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+
+    if (!users[username]) {
+        return res.status(404).json({ message: '用户不存在' });
+    }
+
+    try {
+        const projectExport = backupData.project;
+        const newProjectId = Date.now().toString() + Math.random().toString(36).slice(2, 12);
+
+        // 创建新项目
+        const newProject = {
+            name: `${projectExport.name} (恢复)`,
+            owner: username,
+            members: [username],
+            boards: [],
+            boardOwners: {},
+            joinApprovals: [],
+            created: new Date().toISOString()
+        };
+
+        // 恢复每个看板
+        (projectExport.boards || []).forEach(boardExport => {
+            const boardName = boardExport.name;
+            newProject.boards.push(boardName);
+            newProject.boardOwners[boardName] = username;
+
+            const boardFile = path.join(dataDir, `${newProjectId}_${boardName}.json`);
+            writeJsonFile(boardFile, boardExport.data);
+        });
+
+        // 保存项目
+        projects[newProjectId] = newProject;
+
+        // 添加到用户项目列表
+        if (!users[username].projects.includes(newProjectId)) {
+            users[username].projects.unshift(newProjectId);
+        }
+
+        if (!writeJsonFile(projectsFile, projects)) {
+            return res.status(500).json({ message: '保存项目数据失败' });
+        }
+        if (!writeJsonFile(usersFile, users)) {
+            return res.status(500).json({ message: '保存用户数据失败' });
+        }
+
+        res.json({
+            message: '项目恢复成功',
+            project: {
+                oldId: projectExport.originalId,
+                newId: newProjectId,
+                name: newProject.name,
+                boardCount: newProject.boards.length
+            }
+        });
+
+    } catch (error) {
+        console.error('Project import error:', error);
+        res.status(500).json({ message: '导入失败: ' + error.message });
+    }
+});
+
+// ============ 个人完整数据导出/导入 END ============
+
 // WebSocket处理
 wss.on('connection', (ws) => {
     console.log('New WebSocket connection');

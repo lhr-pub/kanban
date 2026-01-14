@@ -72,6 +72,7 @@
                 <h1>工作台</h1>
                 <div class="user-info">
                     <span id="currentUserName"></span>
+                    <button id="userBackupBtn" class="btn-secondary">备份/恢复 ▾</button>
                     <button id="invitesBtn" class="btn-secondary">管理邀请 <span id="invitesBadge" class="count"
                             style="margin-left:6px; display:none;">0</span></button>
                     <button id="changePasswordProject" class="btn-secondary">修改密码</button>
@@ -132,6 +133,15 @@
                 <div id="quickAccessBoards" class="quick-boards-grid">
                     <!-- 看板快速访问将动态生成 -->
                 </div>
+            </div>
+        </div>
+
+        <!-- 备份/恢复菜单 -->
+        <input type="file" id="restoreFileInput" accept=".json" hidden>
+        <div id="userBackupMenu" class="board-switcher-menu hidden" style="position:fixed; min-width: 220px; z-index: 1000;">
+            <div class="board-switcher-list">
+                <div class="board-switcher-item" id="backupAllData">📦 导出所有数据</div>
+                <div class="board-switcher-item" id="restoreFromFile">📂 从备份恢复</div>
             </div>
         </div>
     </div>
