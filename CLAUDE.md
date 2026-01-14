@@ -2,15 +2,40 @@
 
 这是一个多人协作看板应用（Trello 风格），支持实时协作、邮件验证登录、项目/成员管理等功能。本文档为 Claude 等 AI 编程助手提供项目上下文和开发指南。
 
+## 常用命令
+
+```bash
+# 启动开发服务
+npm start                  # 默认端口 3000
+PORT=3001 npm start        # 指定端口
+
+# CSS 构建
+npm run build:css          # 合并 CSS
+npm run build:css:min      # 压缩 CSS
+npm run build:css:purged   # PurgeCSS 清理未用样式
+
+# Docker 开发
+docker compose -f docker-compose.dev.yml up -d
+
+# Docker 生产
+docker compose -f docker-compose.prod.build.yml build
+docker compose -f docker-compose.prod.yml up -d
+
+# 生产环境数据备份
+docker run --rm -v kanban_data:/data -v $(pwd):/backup alpine tar czf /backup/kanban_backup_$(date +%Y%m%d).tar.gz /data
+# 或直接复制
+docker cp kanban:/app/data ./backup/
+```
+
 ## 项目概览
 
 ```
 kanban/
-├── server.js              # 后端核心：Express + WebSocket 服务，REST API，数据持久化
+├── server.js              # 后端核心：Express + WebSocket 服务，REST API，数据持久化（~3000 行）
 ├── public/                # 前端资源（原生 JavaScript SPA）
 │   ├── index.html         # 单页应用入口
-│   ├── app.js             # 前端主逻辑（8000+ 行）
-│   ├── style.css          # 主样式文件（5500+ 行）
+│   ├── app.js             # 前端主逻辑（~8000 行）
+│   ├── style.css          # 主样式文件（~5500 行）
 │   ├── admin.html/js      # 管理员控制台
 │   └── vendor/            # 第三方资源（图标字体等）
 ├── data/                  # 文件型 JSON 存储（运行时生成）
@@ -94,9 +119,23 @@ function broadcast(projectId, boardName, message) { /* ... */ }
 
 关键全局变量：
 ```javascript
+// 用户与页面状态
 let currentUser, currentProjectId, currentBoardName;
 let boardData = { archived: [], lists: { listIds: [], lists: {} } };
 let socket; // WebSocket 实例
+
+// 防闪烁与缓存
+let lastLoadedBoardKey, lastJoinedBoardKey, lastFetchBoardKey;
+let ignoreFirstBoardUpdate = false;  // 抑制首条 WS 更新
+let homeLoadedOnce = false, homeDirty = false;  // 首次/脏数据机制
+
+// 编辑状态
+let editingCardId = null;
+const inlineEditingCardIds = new Set();  // 正在内联编辑的卡片
+
+// UI 状态
+let boardSwitcherOpen = false, projectSwitcherOpen = false;
+let isCreatingBoard = false;  // 防重复创建看板
 ```
 
 ### `public/style.css`（样式，约 5500 行）
@@ -113,10 +152,14 @@ let socket; // WebSocket 实例
 - Responsive
 
 设计规范：
-- 列宽 272px、间距 12px
+- 列宽 272px、间距 12px、列背景 #ebecf0
 - 主色 #3b82f6、危险 #dc2626
 - 卡片圆角 10-12px、按钮圆角 6-8px
+- 文字：#111827 / 次要 #374151 / 辅助 #6b7280
+- 边框：#e5e7eb，hover 边：var(--primary-light)
 - 看板页样式作用域 `#boardPage`
+- 编辑弹窗 `.modal-body` 最大高度 70vh
+- 评论列表 `.posts-list` 最大高度 300px
 
 ## API 端点速查
 
@@ -147,11 +190,25 @@ GET    /api/board/:projectId/:boardName
 
 ### 成员与邀请
 ```
-POST /api/join-project       邀请码加入申请
-POST /api/approve-join       审批加入
-POST /api/remove-project-member
-POST /api/regenerate-invite-code
+GET  /api/user-invites/:username      获取收到的邀请
+POST /api/accept-invite               接受邀请
+POST /api/decline-invite              拒绝邀请
+GET  /api/user-approvals/:username    获取待审批的申请
+GET  /api/join-requests/:projectId    获取项目的加入申请
+POST /api/join-project                邀请码加入申请
+POST /api/approve-join                审批加入
+POST /api/deny-join                   拒绝加入
+POST /api/remove-project-member       移除成员
+POST /api/regenerate-invite-code      重新生成邀请码
+POST /api/request-add-member          项目内发起添加请求
 ```
+
+#### 邀请管理模块
+- 首页导航栏"管理邀请"统一入口，显示徽标数（收到的邀请 + 待审批的申请）
+- 上半区：我收到的邀请（接受/拒绝）
+- 下半区：待我审批的加入申请（同意/拒绝）
+- 支持输入邀请码发起加入申请
+- 弹窗打开时自动 3s 轮询刷新
 
 ### 星标与置前
 ```
@@ -245,6 +302,13 @@ member-removed / member-added / join-request
 }
 ```
 
+#### 评论/帖子（Posts）功能
+- 创建新卡片时自动包含 `posts: []` 和 `commentsCount: 0`
+- 卡片正面显示评论数徽标（与描述、截止日期、负责人徽标并列）
+- 详情弹窗内嵌评论列表（最大高度 300px，可滚动）
+- 仅能编辑自己的评论
+- 收到 `board-update` 时自动刷新打开中的评论列表
+
 ## 权限矩阵
 
 | 动作 | 项目所有者 | 看板创建者 | 项目成员 |
@@ -268,21 +332,32 @@ member-removed / member-added / join-request
 - 标题/描述编辑器使用绝对定位覆盖原文本
 - 容器 `position: relative` 锁高，避免布局抖动
 - Esc 取消、Enter/Ctrl+Enter 保存、失焦保存
+- 编辑中失焦不关闭窗口（输入状态保护）
 
 ### 拖拽
 - 卡片拖拽：列内排序 + 跨列移动
 - 列表拖拽：列头为手柄，容器单一 `ondragover`
+- `enableListsDrag` 函数使列表头成为拖拽手柄
 
 ### 弹窗与键盘
 - 动态弹窗（uiPrompt/uiConfirm/uiAlert）在捕获阶段处理 Esc/Enter
-- IME 输入保护：`e.isComposing || e.keyCode === 229` 时跳过
+- IME 输入保护：`e.isComposing || e.keyCode === 229` 时跳过，避免中文输入法回车误提交
 - 全局 Esc 按优先级关闭最顶层弹窗
+- 弹窗关闭优先级：动态弹窗 > createProjectForm > joinProjectForm > invitesModal > membersModal > importModal > editModal
+- 所有 overlay 的 Esc/Enter 执行 `preventDefault + stopPropagation + stopImmediatePropagation`
 
 ### 无闪烁渲染
-- 离线构建 + 占位显示
-- 首条 WebSocket 更新抑制
-- 编辑中延迟重渲染
+- 使用 `DocumentFragment` 离线构建，`replaceChildren()` 一次性替换
+- 首条 WebSocket 更新抑制（`ignoreFirstBoardUpdate`）
+- 编辑中延迟重渲染（`pendingBoardUpdate`）
 - 滚动位置恢复
+- 首次/脏数据机制（`homeLoadedOnce`、`homeDirty`）避免重复刷新
+- 渲染期间添加 `aria-busy="true"` 属性
+
+### 项目卡片交互
+- 点击卡片空白区域 → 进入项目
+- 点击右上角按钮（置前/重命名/删除）→ 只触发对应动作
+- `.project-card-actions` 设为 `pointer-events: none`，按钮设为 `pointer-events: auto`
 
 ## 环境变量（.env）
 
@@ -342,6 +417,28 @@ DEFAULT_BG_URLS=url1, url2, url3
 3. **XSS 防护**：动态插入 HTML 时使用 `escapeHtml()` 或 `textContent`
 4. **内存泄漏**：WebSocket 断开时清理 `connections` Map
 5. **备份策略**：每次写入自动备份，保留最近 50 份
+6. **新建项目**：不自动创建默认看板，需优雅处理空看板状态
+7. **项目排序**：新建项目使用 `unshift` 添加到列表最前
+8. **成员移除**：被移出项目时客户端自动退出并返回首页（2s 内）
+9. **星标同步**：服务端为权威数据源，所有星标按钮需同步更新
+
+## 关键行为规则
+
+### 权限规则
+- 仅项目所有者可：删除项目、重命名项目、移除他人、审批加入申请
+- 项目所有者或看板创建者可：删除/重命名/归档看板、移动看板
+- 普通成员可：创建看板、星标/置前、移除自己
+
+### UI 规则
+- 看板名可点击打开切换器（添加 `title="切换看板"` 提示）
+- 所有者标签显示在卡片右上角
+- 删除按钮始终位于操作区最右侧
+- 更多(…)菜单合并重命名/移动/归档操作
+
+### 数据同步
+- WebSocket 广播用于实时同步
+- `member-removed` 事件触发客户端退出逻辑
+- 重命名/移动/删除看板后同步更新星标记录
 
 ## 进行中的工作
 
