@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>使用帮助 - 协作看板</title>
+    <style>
+        :root {
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --border: #e2e8f0;
+            --code-bg: #f1f5f9;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+        }
+
+        .header {
+            background: var(--card-bg);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .header a {
+            color: var(--primary);
+            text-decoration: none;
+            font-size: 0.9rem;
+        }
+
+        .header a:hover {
+            text-decoration: underline;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .toc {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .toc h2 {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .toc ul {
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.5rem;
+        }
+
+        .toc a {
+            color: var(--primary);
+            text-decoration: none;
+            padding: 0.25rem 0;
+            display: block;
+        }
+
+        .toc a:hover {
+            text-decoration: underline;
+        }
+
+        .content {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin: 2rem 0 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border);
+            color: var(--text);
+        }
+
+        h2:first-child {
+            margin-top: 0;
+        }
+
+        h3 {
+            font-size: 1.2rem;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--text);
+        }
+
+        h4 {
+            font-size: 1rem;
+            margin: 1.25rem 0 0.5rem;
+            color: var(--text);
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        ul,
+        ol {
+            margin-bottom: 1rem;
+            padding-left: 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        th,
+        td {
+            border: 1px solid var(--border);
+            padding: 0.75rem 1rem;
+            text-align: left;
+        }
+
+        th {
+            background: var(--code-bg);
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: var(--bg);
+        }
+
+        code {
+            background: var(--code-bg);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 0.85em;
+        }
+
+        pre {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+        }
+
+        blockquote {
+            border-left: 4px solid var(--primary);
+            padding: 0.5rem 1rem;
+            margin: 1rem 0;
+            background: var(--code-bg);
+            border-radius: 0 8px 8px 0;
+        }
+
+        blockquote p:last-child {
+            margin-bottom: 0;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 2rem 0;
+        }
+
+        .emoji {
+            font-style: normal;
+        }
+
+        .back-to-top {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--primary);
+            color: white;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+            transition: transform 0.2s, background 0.2s;
+            font-size: 1.25rem;
+        }
+
+        .back-to-top:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+        }
+
+        .diagram {
+            background: var(--code-bg);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            white-space: pre;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .content {
+                padding: 1.5rem;
+            }
+
+            .toc ul {
+                grid-template-columns: 1fr;
+            }
+
+            table {
+                font-size: 0.8rem;
+            }
+
+            th,
+            td {
+                padding: 0.5rem;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <h1>📖 使用帮助</h1>
+        <a href="/">← 返回应用</a>
+    </header>
+
+    <div class="container">
+        <nav class="toc">
+            <h2>目录</h2>
+            <ul>
+                <li><a href="#quick-start">快速入门</a></li>
+                <li><a href="#home">首页/工作台</a></li>
+                <li><a href="#project">项目管理</a></li>
+                <li><a href="#board">看板操作</a></li>
+                <li><a href="#card">卡片与任务</a></li>
+                <li><a href="#star">星标与置顶</a></li>
+                <li><a href="#import-export">导入与导出</a></li>
+                <li><a href="#shortcuts">快捷键</a></li>
+                <li><a href="#settings">个人设置</a></li>
+                <li><a href="#faq">常见问题</a></li>
+                <li><a href="#permissions">权限速查表</a></li>
+            </ul>
+        </nav>
+
+        <div class="content">
+            <h2 id="quick-start">快速入门</h2>
+
+            <h3>注册账号</h3>
+            <ol>
+                <li>访问应用首页，点击 <strong>"注册"</strong></li>
+                <li>填写用户名、密码和邮箱地址</li>
+                <li>点击 <strong>"注册"</strong> 按钮提交</li>
+            </ol>
+
+            <h3>邮箱验证</h3>
+            <p>注册成功后，系统会发送验证邮件到你的邮箱：</p>
+            <ol>
+                <li>打开邮箱，找到标题为"请验证您的邮箱"的邮件</li>
+                <li>点击邮件中的验证链接</li>
+                <li>验证成功后即可登录</li>
+            </ol>
+            <blockquote>
+                <p>⚠️ <strong>注意</strong>：未验证邮箱无法登录。如果没收到邮件，请检查垃圾邮件文件夹，或点击"重新发送验证邮件"（60秒内只能发送一次）。</p>
+            </blockquote>
+
+            <h3>登录</h3>
+            <ol>
+                <li>输入用户名（或邮箱）和密码</li>
+                <li>点击 <strong>"登录"</strong> 按钮</li>
+            </ol>
+
+            <h3>忘记密码</h3>
+            <ol>
+                <li>在登录页点击 <strong>"忘记密码"</strong></li>
+                <li>输入注册时的邮箱地址</li>
+                <li>查收邮件并点击重置链接</li>
+                <li>设置新密码</li>
+            </ol>
+
+            <hr>
+
+            <h2 id="home">首页/工作台</h2>
+            <p>登录后进入工作台，这里是你的项目和看板管理中心。</p>
+
+            <h3>页面布局</h3>
+            <div class="diagram">┌─────────────────────────────────────────────────────────┐
+│  🏠 工作台          [邀请管理] [背景▾] [用户▾]          │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ⭐ 星标看板                                            │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐                   │
+│  │ 看板A   │ │ 看板B   │ │ 看板C   │                   │
+│  │ 项目X   │ │ 项目Y   │ │ 项目X   │                   │
+│  └─────────┘ └─────────┘ └─────────┘                   │
+│                                                         │
+│  📁 我的项目                    [+ 创建项目] [加入项目] │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐                   │
+│  │ 项目A   │ │ 项目B   │ │ 项目C   │                   │
+│  │ 3个看板 │ │ 5个看板 │ │ 2个看板 │                   │
+│  └─────────┘ └─────────┘ └─────────┘                   │
+│                                                         │
+│  📋 所有看板                              [搜索...]     │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐                   │
+│  │ 看板1   │ │ 看板2   │ │ 看板3   │                   │
+│  └─────────┘ └─────────┘ └─────────┘                   │
+│                                                         │
+└─────────────────────────────────────────────────────────┘</div>
+
+            <h3>星标看板区</h3>
+            <ul>
+                <li>显示你标记为星标的看板，按加星时间倒序排列</li>
+                <li>点击看板卡片直接进入该看板</li>
+                <li>点击 ⭐ 按钮取消星标</li>
+            </ul>
+
+            <h3>项目区</h3>
+            <ul>
+                <li>显示你参与的所有项目</li>
+                <li>点击项目卡片进入项目的看板列表页</li>
+                <li>项目卡片右上角显示操作按钮（悬停可见）</li>
+            </ul>
+
+            <h3>所有看板区</h3>
+            <ul>
+                <li>显示你所有项目中的所有看板</li>
+                <li>支持按看板名/项目名搜索</li>
+                <li>点击看板卡片直接进入该看板</li>
+            </ul>
+
+            <hr>
+
+            <h2 id="project">项目管理</h2>
+
+            <h3>创建项目</h3>
+            <ol>
+                <li>在首页点击 <strong>"+ 创建项目"</strong></li>
+                <li>输入项目名称</li>
+                <li>点击确认</li>
+            </ol>
+            <blockquote>
+                <p>💡 新创建的项目默认不包含任何看板，需要手动创建看板。</p>
+            </blockquote>
+
+            <h3>加入项目</h3>
+            <p><strong>方式一：通过邀请码</strong></p>
+            <ol>
+                <li>点击首页 <strong>"加入项目"</strong> 按钮</li>
+                <li>输入项目邀请码</li>
+                <li>等待项目所有者审批</li>
+            </ol>
+            <p><strong>方式二：接受邀请</strong></p>
+            <ol>
+                <li>项目所有者在项目成员管理中添加你</li>
+                <li>你会在"邀请管理"中看到邀请</li>
+                <li>点击"接受"加入项目</li>
+            </ol>
+
+            <h3>邀请管理</h3>
+            <p>点击导航栏的 <strong>"邀请管理"</strong> 按钮，可以看到：</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>区域</th>
+                        <th>内容</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>我收到的邀请</td>
+                        <td>其他项目发给你的邀请，可接受或拒绝</td>
+                    </tr>
+                    <tr>
+                        <td>待我审批的申请</td>
+                        <td>他人通过邀请码申请加入你的项目，需审批</td>
+                    </tr>
+                    <tr>
+                        <td>输入邀请码</td>
+                        <td>输入邀请码申请加入项目</td>
+                    </tr>
+                </tbody>
+            </table>
+            <blockquote>
+                <p>📌 邀请管理按钮上的数字徽标 = 收到的邀请数 + 待审批的申请数</p>
+            </blockquote>
+
+            <h3>项目设置（项目所有者）</h3>
+            <p>进入项目页后，项目所有者可以：</p>
+            <ul>
+                <li><strong>重命名项目</strong>：点击面包屑中的项目名进行内联编辑</li>
+                <li><strong>查看邀请码</strong>：在成员管理中查看，可分享给他人</li>
+                <li><strong>重新生成邀请码</strong>：点击刷新按钮生成新邀请码</li>
+                <li><strong>管理成员</strong>：查看成员列表，移除成员</li>
+                <li><strong>删除项目</strong>：删除项目及其所有看板（不可恢复）</li>
+            </ul>
+
+            <h3>成员管理</h3>
+            <p>点击项目页的 <strong>"成员"</strong> 按钮：</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>角色</th>
+                        <th>权限</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>项目所有者</td>
+                        <td>可移除任意成员、审批加入申请、删除项目</td>
+                    </tr>
+                    <tr>
+                        <td>普通成员</td>
+                        <td>只能移除自己（退出项目）</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <hr>
+
+            <h2 id="board">看板操作</h2>
+
+            <h3>创建看板</h3>
+            <ol>
+                <li>在项目看板页底部，点击 <strong>"+ 新建看板"</strong> 输入框</li>
+                <li>输入看板名称</li>
+                <li>按 <strong>Enter</strong> 创建</li>
+            </ol>
+
+            <h3>看板卡片操作</h3>
+            <p>悬停在看板卡片上，右上角会显示操作按钮：</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>按钮</th>
+                        <th>功能</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>⭐</td>
+                        <td>添加/取消星标</td>
+                    </tr>
+                    <tr>
+                        <td>⇧</td>
+                        <td>置前（移到最前）</td>
+                    </tr>
+                    <tr>
+                        <td>…</td>
+                        <td>更多操作（重命名/移动/归档）</td>
+                    </tr>
+                    <tr>
+                        <td>✕</td>
+                        <td>删除看板</td>
+                    </tr>
+                </tbody>
+            </table>
+            <blockquote>
+                <p>⚠️ 只有项目所有者或看板创建者才能看到"更多"和"删除"按钮。</p>
+            </blockquote>
+
+            <h3>重命名看板</h3>
+            <p><strong>方式一</strong>：点击看板卡片的 <strong>"…"</strong> → <strong>"重命名"</strong></p>
+            <p><strong>方式二</strong>：在看板页面，点击面包屑中的看板名进行内联编辑</p>
+
+            <h3>移动看板</h3>
+            <p>将看板移动到其他项目：</p>
+            <ol>
+                <li>点击看板卡片的 <strong>"…"</strong> → <strong>"移动"</strong></li>
+                <li>在弹出的项目选择器中搜索并选择目标项目</li>
+                <li>确认移动</li>
+            </ol>
+            <blockquote>
+                <p>⚠️ 你必须是目标项目的成员才能移动看板到该项目。</p>
+            </blockquote>
+
+            <h3>归档看板</h3>
+            <ol>
+                <li>点击看板卡片的 <strong>"…"</strong> → <strong>"归档"</strong></li>
+                <li>看板会移到"归档的看板"区域</li>
+                <li>点击"▶ 归档的看板"展开查看</li>
+                <li>可以"还原"或"删除"归档的看板</li>
+            </ol>
+
+            <hr>
+
+            <h2 id="card">卡片与任务</h2>
+
+            <h3>看板页面布局</h3>
+            <div class="diagram">┌─────────────────────────────────────────────────────────────────┐
+│  🏠 > 📁 项目A ▾ > 📋 看板1 ▾        [导入/导出▾] [归档] [成员] │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌───────────┐ │
+│  │ 📋 待办     │ │ 🔄 进行中   │ │ ✅ 已完成   │ │ + 添加卡组│ │
+│  ├─────────────┤ ├─────────────┤ ├─────────────┤ └───────────┘ │
+│  │ ┌─────────┐ │ │ ┌─────────┐ │ │ ┌─────────┐ │               │
+│  │ │ 任务1   │ │ │ │ 任务3   │ │ │ │ 任务5   │ │               │
+│  │ │ 📝 💬2  │ │ │ │ @张三   │ │ │ │ ✓       │ │               │
+│  │ └─────────┘ │ │ └─────────┘ │ │ └─────────┘ │               │
+│  │ ┌─────────┐ │ │             │ │             │               │
+│  │ │ 任务2   │ │ │             │ │             │               │
+│  │ │ 📅3/15  │ │ │             │ │             │               │
+│  │ └─────────┘ │ │             │ │             │               │
+│  │             │ │             │ │             │               │
+│  │ + 添加卡片  │ │ + 添加卡片  │ │ + 添加卡片  │               │
+│  └─────────────┘ └─────────────┘ └─────────────┘               │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘</div>
+
+            <h3>卡组（列表）</h3>
+            <h4>创建卡组</h4>
+            <ol>
+                <li>点击页面右侧的 <strong>"+ 添加卡组"</strong> 按钮</li>
+                <li>输入卡组名称</li>
+                <li>按 <strong>Enter</strong> 创建，或按 <strong>Esc</strong> 取消</li>
+            </ol>
+
+            <h4>重命名卡组</h4>
+            <ol>
+                <li>双击卡组标题</li>
+                <li>编辑名称</li>
+                <li>按 <strong>Enter</strong> 保存或点击外部</li>
+            </ol>
+
+            <h4>拖拽排序卡组</h4>
+            <p>拖拽卡组标题可以调整卡组顺序</p>
+
+            <h3>卡片</h3>
+            <h4>添加卡片</h4>
+            <ol>
+                <li>点击卡组底部的 <strong>"+ 添加卡片"</strong></li>
+                <li>输入卡片标题</li>
+                <li>按 <strong>Enter</strong> 添加，继续输入可连续添加</li>
+                <li>按 <strong>Esc</strong> 或点击外部关闭</li>
+            </ol>
+            <blockquote>
+                <p>💡 在空白卡组区域按 <strong>Enter</strong> 也可以快速打开添加卡片输入框。</p>
+            </blockquote>
+
+            <h4>卡片正面信息</h4>
+            <table>
+                <thead>
+                    <tr>
+                        <th>元素</th>
+                        <th>含义</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>彩色点</td>
+                        <td>标签颜色</td>
+                    </tr>
+                    <tr>
+                        <td>标题</td>
+                        <td>卡片标题</td>
+                    </tr>
+                    <tr>
+                        <td>📝</td>
+                        <td>有描述内容</td>
+                    </tr>
+                    <tr>
+                        <td>💬 数字</td>
+                        <td>评论数量</td>
+                    </tr>
+                    <tr>
+                        <td>📅 日期</td>
+                        <td>截止日期</td>
+                    </tr>
+                    <tr>
+                        <td>@名字</td>
+                        <td>负责人</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h4>编辑卡片</h4>
+            <p><strong>方式一：内联编辑</strong></p>
+            <ul>
+                <li>点击卡片标题直接编辑标题</li>
+                <li>按 <strong>Enter</strong> 或 <strong>Ctrl+Enter</strong> 保存</li>
+                <li>按 <strong>Esc</strong> 取消</li>
+            </ul>
+            <p><strong>方式二：详情抽屉</strong></p>
+            <ul>
+                <li>点击卡片空白区域打开详情抽屉</li>
+                <li>可编辑标题、描述、负责人、截止日期、标签</li>
+                <li>可查看和添加评论</li>
+            </ul>
+
+            <h4>拖拽卡片</h4>
+            <ul>
+                <li><strong>列内排序</strong>：拖拽卡片上下移动调整顺序</li>
+                <li><strong>跨列移动</strong>：拖拽卡片到其他卡组</li>
+            </ul>
+
+            <h3>归档管理</h3>
+            <h4>归档卡片</h4>
+            <ol>
+                <li>打开卡片详情抽屉</li>
+                <li>点击 <strong>"归档卡片"</strong> 按钮</li>
+            </ol>
+
+            <h4>查看归档</h4>
+            <ol>
+                <li>点击导航栏的 <strong>"归档"</strong> 按钮</li>
+                <li>可搜索归档的卡片（按标题/描述/标签/负责人）</li>
+                <li>可"还原"或"删除"卡片</li>
+            </ol>
+
+            <hr>
+
+            <h2 id="star">星标与置顶</h2>
+
+            <h3>星标看板</h3>
+            <p>星标功能帮助你快速访问常用看板。</p>
+            <h4>添加星标</h4>
+            <ul>
+                <li>在看板卡片上点击 ⭐ 按钮</li>
+                <li>或在看板页面点击导航栏的星标按钮</li>
+            </ul>
+            <h4>星标看板区</h4>
+            <ul>
+                <li>首页顶部显示所有星标看板</li>
+                <li>按加星时间倒序排列</li>
+                <li>支持单独的置前排序（不影响项目内排序）</li>
+            </ul>
+
+            <h3>置顶分组</h3>
+            <p>项目和看板列表分为"置顶"和"普通"两个分组。</p>
+            <h4>置顶/取消置顶</h4>
+            <ul>
+                <li>悬停在卡片标题左侧图标上</li>
+                <li>图标变为 📌（置顶）或取消图标</li>
+                <li>点击切换置顶状态</li>
+            </ul>
+            <h4>分组内排序</h4>
+            <ul>
+                <li>点击 <strong>"⇧"</strong>（置前）将卡片移到当前分组最前</li>
+                <li>置顶分组和普通分组各自独立排序</li>
+            </ul>
+
+            <hr>
+
+            <h2 id="import-export">导入与导出</h2>
+
+            <h3>导出看板</h3>
+            <p>在看板页点击 <strong>"导入/导出 ▾"</strong> 菜单：</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>格式</th>
+                        <th>特点</th>
+                        <th>适用场景</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>TaskPaper</strong></td>
+                        <td>简洁纯文本</td>
+                        <td>快速编辑、版本控制</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Markdown</strong></td>
+                        <td>详细格式</td>
+                        <td>文档归档、分享</td>
+                    </tr>
+                    <tr>
+                        <td><strong>JSON</strong></td>
+                        <td>原始数据</td>
+                        <td>程序处理、完整迁移</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>导入看板</h3>
+            <h4>从文件导入</h4>
+            <ol>
+                <li>点击 <strong>"从文件导入"</strong></li>
+                <li>选择 <code>.json</code>、<code>.md</code> 或 <code>.taskpaper</code> 文件</li>
+                <li>选择导入模式：
+                    <ul>
+                        <li><strong>合并</strong>：添加到现有数据</li>
+                        <li><strong>覆盖</strong>：替换现有数据</li>
+                    </ul>
+                </li>
+            </ol>
+
+            <h4>从文本导入</h4>
+            <ol>
+                <li>点击 <strong>"从文本导入"</strong></li>
+                <li>在文本框中粘贴内容（自动检测格式）</li>
+                <li>按 <strong>Ctrl+Enter</strong> 确认导入</li>
+            </ol>
+
+            <h3>TaskPaper 格式说明</h3>
+            <pre><code>待办:
+
+- 完成用户认证模块 @张三 @due(2024-03-15)
+- 修复登录 bug
+- 编写单元测试 @李四
+
+进行中:
+
+- 代码审查 @王五 @due(2024-03-10)
+
+已完成:
+
+- 数据库设计</code></pre>
+            <p><strong>语法规则</strong>：</p>
+            <ul>
+                <li><code>列名:</code> — 以冒号结尾定义卡组</li>
+                <li><code>- 内容</code> — 以 <code>- </code> 开头定义卡片</li>
+                <li><code>@用户名</code> — 指定负责人</li>
+                <li><code>@due(日期)</code> — 指定截止日期</li>
+            </ul>
+
+            <hr>
+
+            <h2 id="shortcuts">快捷键</h2>
+
+            <h3>全局快捷键</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>快捷键</th>
+                        <th>功能</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Esc</strong></td>
+                        <td>关闭当前弹窗/抽屉/对话框</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>编辑快捷键</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>快捷键</th>
+                        <th>功能</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Enter</strong></td>
+                        <td>保存/确认</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Shift+Enter</strong></td>
+                        <td>换行（在单行输入框中）</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Ctrl/Cmd+Enter</strong></td>
+                        <td>保存并关闭（在多行编辑中）</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Esc</strong></td>
+                        <td>取消编辑</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>卡组快捷键</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>快捷键</th>
+                        <th>功能</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Enter</strong>（在空白卡组）</td>
+                        <td>打开"添加卡片"输入框</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>导入弹窗</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>快捷键</th>
+                        <th>功能</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Enter</strong></td>
+                        <td>文本框内换行</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Ctrl+Enter</strong></td>
+                        <td>确认导入</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Esc</strong></td>
+                        <td>取消导入</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <hr>
+
+            <h2 id="settings">个人设置</h2>
+
+            <h3>修改密码</h3>
+            <ol>
+                <li>点击导航栏右上角的用户名</li>
+                <li>选择 <strong>"修改密码"</strong></li>
+                <li>输入当前密码和新密码</li>
+                <li>确认修改</li>
+            </ol>
+
+            <h3>背景设置</h3>
+            <ol>
+                <li>点击导航栏的 <strong>"背景 ▾"</strong> 按钮</li>
+                <li>选择：
+                    <ul>
+                        <li><strong>默认背景</strong>：从预设背景中选择</li>
+                        <li><strong>上传背景</strong>：上传自定义图片（支持 PNG/JPEG/WEBP，最大 10MB）</li>
+                        <li><strong>清除背景</strong>：恢复纯色背景</li>
+                    </ul>
+                </li>
+            </ol>
+            <blockquote>
+                <p>💡 背景设置是每用户独立的，不影响其他用户。</p>
+            </blockquote>
+
+            <h3>退出登录</h3>
+            <p>点击用户名下拉菜单中的 <strong>"退出"</strong></p>
+
+            <hr>
+
+            <h2 id="faq">常见问题</h2>
+
+            <h3>Q: 注册后没收到验证邮件？</h3>
+            <ol>
+                <li>检查垃圾邮件/广告邮件文件夹</li>
+                <li>确认邮箱地址输入正确</li>
+                <li>在登录页点击"重新发送验证邮件"（60秒限制）</li>
+                <li>如仍有问题，联系管理员</li>
+            </ol>
+
+            <h3>Q: 忘记密码怎么办？</h3>
+            <ol>
+                <li>在登录页点击"忘记密码"</li>
+                <li>输入注册邮箱</li>
+                <li>查收邮件并按链接重置密码</li>
+            </ol>
+
+            <h3>Q: 为什么我不能删除/重命名看板？</h3>
+            <p>只有以下用户可以操作：</p>
+            <ul>
+                <li>项目所有者</li>
+                <li>看板创建者</li>
+            </ul>
+            <p>如果你是普通成员，需要联系项目所有者或看板创建者。</p>
+
+            <h3>Q: 为什么我被移出了项目？</h3>
+            <p>项目所有者可以移除任意成员。被移出后：</p>
+            <ul>
+                <li>你会收到提示</li>
+                <li>2秒后自动跳转到首页</li>
+                <li>该项目的星标会被清除</li>
+            </ul>
+
+            <h3>Q: 如何邀请他人加入项目？</h3>
+            <p><strong>方式一</strong>：分享邀请码</p>
+            <ol>
+                <li>进入项目页</li>
+                <li>点击"邀请码"查看</li>
+                <li>将邀请码发给对方</li>
+                <li>对方输入邀请码申请加入</li>
+                <li>你在"邀请管理"中审批</li>
+            </ol>
+            <p><strong>方式二</strong>：直接添加</p>
+            <ol>
+                <li>进入项目页</li>
+                <li>点击"成员"</li>
+                <li>输入用户名添加</li>
+                <li>对方在"邀请管理"中接受</li>
+            </ol>
+
+            <h3>Q: 看板数据会丢失吗？</h3>
+            <p>不会。系统有多重保护：</p>
+            <ul>
+                <li>每次修改自动备份（保留最近 50 份）</li>
+                <li>支持导出 JSON 完整备份</li>
+                <li>支持用户/项目级别的备份还原</li>
+            </ul>
+
+            <h3>Q: 多人同时编辑会冲突吗？</h3>
+            <p>不会。系统支持实时协作：</p>
+            <ul>
+                <li>修改会即时同步到所有在线用户</li>
+                <li>正在被编辑的卡片会显示占用提示</li>
+                <li>评论等操作实时刷新</li>
+            </ul>
+
+            <hr>
+
+            <h2 id="permissions">权限速查表</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>操作</th>
+                        <th>项目所有者</th>
+                        <th>看板创建者</th>
+                        <th>普通成员</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>创建看板</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                    </tr>
+                    <tr>
+                        <td>重命名看板</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>❌</td>
+                    </tr>
+                    <tr>
+                        <td>移动看板</td>
+                        <td>✅</td>
+                        <td>✅*</td>
+                        <td>❌</td>
+                    </tr>
+                    <tr>
+                        <td>归档/还原看板</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>❌</td>
+                    </tr>
+                    <tr>
+                        <td>删除看板</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>❌</td>
+                    </tr>
+                    <tr>
+                        <td>重命名项目</td>
+                        <td>✅</td>
+                        <td>❌</td>
+                        <td>❌</td>
+                    </tr>
+                    <tr>
+                        <td>删除项目</td>
+                        <td>✅</td>
+                        <td>❌</td>
+                        <td>❌</td>
+                    </tr>
+                    <tr>
+                        <td>移除成员</td>
+                        <td>✅（任意）</td>
+                        <td>❌</td>
+                        <td>❌（仅自己）</td>
+                    </tr>
+                    <tr>
+                        <td>审批加入申请</td>
+                        <td>✅</td>
+                        <td>❌</td>
+                        <td>❌</td>
+                    </tr>
+                    <tr>
+                        <td>星标/置前</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                        <td>✅</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p>*移动看板需同时是目标项目成员</p>
+
+            <hr>
+            <p style="text-align: center; color: var(--text-secondary); margin-top: 2rem;">
+                如有其他问题，请联系系统管理员。祝你使用愉快！🎉
+            </p>
+        </div>
+    </div>
+
+    <a href="#" class="back-to-top" title="返回顶部">↑</a>
+</body>
+
+</html>
+
