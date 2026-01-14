@@ -8364,7 +8364,7 @@ async function unarchiveBoard(boardName){
 
 // =====================================================
 // 全局粘贴创建卡片功能
-// 当没有输入框激活时，粘贴可直接在第一个列表顶部创建新卡片
+// 支持 TaskPaper 格式智能识别和批量导入
 // =====================================================
 document.addEventListener('paste', async function(e) {
     // 仅在看板页面生效
@@ -8408,70 +8408,216 @@ document.addEventListener('paste', async function(e) {
     clipboardText = (clipboardText || '').trim();
     if (!clipboardText) return;
 
-    // 获取第一个列表的 status
+    // 获取看板列表信息
     const lists = ensureClientLists();
     if (!lists || !lists.listIds || lists.listIds.length === 0) {
         uiToast('当前看板没有列表', 'error');
         return;
     }
 
-    const firstListId = lists.listIds[0];
-    const firstList = lists.lists[firstListId];
-    if (!firstList || !firstList.status) {
-        uiToast('无法确定目标列表', 'error');
+    // 阻止默认粘贴行为
+    e.preventDefault();
+
+    // 解析粘贴内容并智能导入
+    const result = parsePasteContent(clipboardText, lists);
+
+    if (result.cards.length === 0) {
+        uiToast('未识别到有效内容', 'warning');
         return;
     }
 
-    const status = firstList.status;
-    const listTitle = firstList.title || status;
+    // 批量创建卡片
+    let createdCount = 0;
+    const affectedStatuses = new Set();
 
-    // 创建新卡片
-    const card = {
-        id: Date.now().toString(),
-        title: clipboardText,
-        description: '',
-        author: currentUser,
-        assignee: null,
-        created: new Date().toISOString(),
-        deadline: null,
-        posts: [],
-        commentsCount: 0
-    };
+    for (const { card, status } of result.cards) {
+        // 更新本地数据（插入顶部）
+        if (!Array.isArray(boardData[status])) boardData[status] = [];
+        boardData[status] = [card, ...boardData[status]];
+        affectedStatuses.add(status);
 
-    // 更新本地数据（插入顶部）
-    if (!Array.isArray(boardData[status])) boardData[status] = [];
-    boardData[status] = [card, ...boardData[status]];
-
-    // 通过 WebSocket 同步到服务器
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'add-card',
-            projectId: currentProjectId,
-            boardName: currentBoardName,
-            status: status,
-            card: card,
-            position: 'top'
-        }));
+        // 通过 WebSocket 同步到服务器
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'add-card',
+                projectId: currentProjectId,
+                boardName: currentBoardName,
+                status: status,
+                card: card,
+                position: 'top'
+            }));
+        }
+        createdCount++;
     }
 
-    // 更新 DOM（插入顶部）
-    const columnEl = document.querySelector(`.column[data-status="${status}"]`);
-    const cardsEl = columnEl ? columnEl.querySelector('.cards') : null;
-    if (cardsEl) {
-        const el = createCardElement(card, status);
-        cardsEl.insertBefore(el, cardsEl.firstChild);
-        makeDraggable(el);
-        updateContainerEmptyState(cardsEl);
-        // 滚动到新卡片位置
-        try { el.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch(_){}
-    } else {
-        renderBoard();
-    }
+    // 更新 DOM
+    renderBoard();
 
     // 提示用户
-    uiToast(`已在「${listTitle}」创建卡片`, 'success');
-
-    // 阻止默认粘贴行为（避免粘贴到其他地方）
-    e.preventDefault();
+    if (result.isTaskPaperFormat) {
+        const listNames = [...affectedStatuses].map(s => {
+            const listInfo = Object.values(lists.lists).find(l => l.status === s);
+            return listInfo ? listInfo.title : s;
+        }).join('、');
+        uiToast(`已导入 ${createdCount} 张卡片到「${listNames}」`, 'success');
+    } else {
+        const firstListId = lists.listIds[0];
+        const firstList = lists.lists[firstListId];
+        const listTitle = firstList?.title || firstList?.status || '列表';
+        uiToast(`已在「${listTitle}」创建 ${createdCount} 张卡片`, 'success');
+    }
 });
+
+/**
+ * 解析粘贴内容，支持 TaskPaper 格式和普通多行文本
+ * @param {string} text 粘贴的文本
+ * @param {object} lists 看板列表信息
+ * @returns {{cards: Array<{card: object, status: string}>, isTaskPaperFormat: boolean}}
+ */
+function parsePasteContent(text, lists) {
+    const lines = text.split('\n').map(l => l.replace(/\r$/, ''));
+    const result = { cards: [], isTaskPaperFormat: false };
+
+    // 构建列名到 status 的映射
+    const listNameToStatus = {};
+    const listStatusToTitle = {};
+    for (const listId of lists.listIds) {
+        const list = lists.lists[listId];
+        if (list) {
+            const title = (list.title || '').trim().toLowerCase();
+            listNameToStatus[title] = list.status;
+            listStatusToTitle[list.status] = list.title || list.status;
+            // 也支持常见别名
+            if (list.status === 'todo' || title === '待办' || title === 'todo') {
+                listNameToStatus['待办'] = list.status;
+                listNameToStatus['todo'] = list.status;
+            }
+            if (list.status === 'doing' || title === '进行中' || title === 'doing') {
+                listNameToStatus['进行中'] = list.status;
+                listNameToStatus['doing'] = list.status;
+            }
+            if (list.status === 'done' || title === '已完成' || title === 'done') {
+                listNameToStatus['已完成'] = list.status;
+                listNameToStatus['done'] = list.status;
+            }
+        }
+    }
+
+    // 检测是否为 TaskPaper 格式（有 "xxx:" 列名行，且有 "- " 开头的条目）
+    const hasTaskPaperHeaders = lines.some(l => {
+        const t = l.trim();
+        return t.endsWith(':') && !t.includes('://') && t.length > 1;
+    });
+    const hasListItems = lines.some(l => l.trim().startsWith('- '));
+    const isTaskPaperFormat = hasTaskPaperHeaders && hasListItems;
+
+    // 解析 TaskPaper 条目的辅助函数
+    function parseTaskPaperItem(content) {
+        let title = content;
+        let assignee = null;
+        let deadline = null;
+
+        // 解析 @due(日期)
+        const dueMatch = title.match(/@due\(([^)]+)\)/);
+        if (dueMatch) {
+            deadline = dueMatch[1].trim();
+            title = title.replace(/@due\([^)]+\)/, '').trim();
+        }
+
+        // 解析 @用户名（排除特殊标签）
+        const assigneeMatch = title.match(/@(\S+)/);
+        if (assigneeMatch && !assigneeMatch[1].includes('(')) {
+            assignee = assigneeMatch[1];
+            title = title.replace(/@\S+/, '').trim();
+        }
+
+        return { title: title.trim(), assignee, deadline };
+    }
+
+    // 创建卡片对象的辅助函数
+    function createCard(title, assignee = null, deadline = null) {
+        return {
+            id: Date.now().toString() + Math.random().toString(36).slice(2, 8),
+            title: title,
+            description: '',
+            author: currentUser,
+            assignee: assignee,
+            created: new Date().toISOString(),
+            deadline: deadline,
+            posts: [],
+            commentsCount: 0
+        };
+    }
+
+    if (isTaskPaperFormat) {
+        // TaskPaper 格式解析
+        result.isTaskPaperFormat = true;
+        let currentStatus = null;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            // 检测列名行（以冒号结尾，不是 URL）
+            if (trimmed.endsWith(':') && !trimmed.includes('://')) {
+                const columnName = trimmed.slice(0, -1).trim().toLowerCase();
+                // 尝试匹配现有列表
+                if (listNameToStatus[columnName]) {
+                    currentStatus = listNameToStatus[columnName];
+                } else {
+                    // 如果列名不匹配，使用第一个列表
+                    currentStatus = lists.lists[lists.listIds[0]]?.status || 'todo';
+                }
+                continue;
+            }
+
+            // 解析条目（以 "- " 开头）
+            if (trimmed.startsWith('- ') && currentStatus) {
+                const itemContent = trimmed.substring(2);
+                const { title, assignee, deadline } = parseTaskPaperItem(itemContent);
+                if (title) {
+                    result.cards.push({
+                        card: createCard(title, assignee, deadline),
+                        status: currentStatus
+                    });
+                }
+            }
+        }
+    } else {
+        // 普通文本格式：每行一个任务（支持 "- " 前缀）
+        const firstStatus = lists.lists[lists.listIds[0]]?.status || 'todo';
+
+        for (const line of lines) {
+            let trimmed = line.trim();
+            if (!trimmed) continue;
+
+            // 去除可能的 "- " 前缀
+            if (trimmed.startsWith('- ')) {
+                trimmed = trimmed.substring(2).trim();
+            }
+            // 去除可能的 "* " 前缀
+            if (trimmed.startsWith('* ')) {
+                trimmed = trimmed.substring(2).trim();
+            }
+            // 去除可能的数字编号前缀 (如 "1. ", "2) ")
+            trimmed = trimmed.replace(/^\d+[\.\)]\s*/, '').trim();
+
+            if (trimmed) {
+                // 也尝试解析 @用户名 和 @due(日期)
+                const { title, assignee, deadline } = parseTaskPaperItem(trimmed);
+                if (title) {
+                    result.cards.push({
+                        card: createCard(title, assignee, deadline),
+                        status: firstStatus
+                    });
+                }
+            }
+        }
+    }
+
+    // 反转数组，使粘贴时第一条在最上面
+    result.cards.reverse();
+
+    return result;
+}
 // ... existing code ...
