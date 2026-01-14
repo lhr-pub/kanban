@@ -2691,7 +2691,7 @@ function inlineEditCardTitle(cardEl){
     setCardInlineEditingState(cardEl.dataset.cardId, true);
     let canceled = false;
     input.addEventListener('keydown',(e)=>{
-        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Enter') { e.preventDefault(); try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; input.blur(); }
         if (e.key === 'Escape') { e.preventDefault(); canceled = true; input.blur(); }
     });
     input.addEventListener('blur', ()=>{
@@ -4272,6 +4272,7 @@ function editCardTitle(cardId, clickEvent) {
         if (e.key === 'Enter') {
             // Enter保存（不再需要Ctrl）
             e.preventDefault();
+            try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){};
             save();
         } else if (e.key === 'Escape') {
             e.preventDefault();
