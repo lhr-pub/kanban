@@ -5238,118 +5238,119 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
-// ===== Lists drag (simple) =====
-let draggingListId = null;
-let listDragImageEl = null; // not used in simple mode
-let listPlaceholderEl = null; // not used in simple mode
+// ===== Lists drag (mouse-based) =====
+let draggingListEl = null;
+let listDragOffsetX = 0;
+let listDragOffsetY = 0;
+let listDragPlaceholder = null;
 
 function enableListsDrag() {
     const container = document.getElementById('listsContainer');
     if (!container) return;
 
-    // Shared reposition handler (no placeholder; directly reorders DOM)
-    const reposition = (e) => {
-        if (!draggingListId) return;
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        const after = getListAfterElement(container, e.clientX);
-        const draggingEl = container.querySelector('.list.dragging');
-        if (!draggingEl) return;
-        if (after == null) {
-            container.insertBefore(draggingEl, container.querySelector('#addListEntry'));
-        } else {
-            container.insertBefore(draggingEl, after);
-        }
-    };
-
-    // Shared finalize handler
-    const finalizeDrop = () => {
-        if (!draggingListId || !clientLists) return;
-        // clear dragging class if any remains
-        const draggingEl = container.querySelector('.list.dragging');
-        if (draggingEl) draggingEl.classList.remove('dragging');
-        const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry)'))
-            .filter(el => el.classList.contains('list'))
-            .map(el => el.getAttribute('data-id'));
+    // Save new order to server
+    const saveListOrder = () => {
+        if (!clientLists) return;
+        const ids = Array.from(container.querySelectorAll('.list:not(#addListEntry):not(.add-list):not(.list-drag-placeholder)'))
+            .map(el => el.getAttribute('data-id'))
+            .filter(Boolean);
         clientLists.listIds = ids;
-        clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
-        draggingListId = null;
+        ids.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
         saveClientListsToStorage();
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
         }
-        renderBoard();
     };
 
-    // Make entire list and header/title draggable; filter bad start targets
+    // Mouse move handler
+    const onMouseMove = (e) => {
+        if (!draggingListEl) return;
+        e.preventDefault();
+
+        // Move the dragging element
+        draggingListEl.style.left = (e.clientX - listDragOffsetX) + 'px';
+        draggingListEl.style.top = (e.clientY - listDragOffsetY) + 'px';
+
+        // Find where to insert placeholder
+        const after = getListAfterElement(container, e.clientX);
+        if (listDragPlaceholder) {
+            if (after == null) {
+                container.insertBefore(listDragPlaceholder, container.querySelector('#addListEntry'));
+            } else if (after !== listDragPlaceholder) {
+                container.insertBefore(listDragPlaceholder, after);
+            }
+        }
+    };
+
+    // Mouse up handler
+    const onMouseUp = (e) => {
+        if (!draggingListEl) return;
+
+        // Remove drag styles
+        draggingListEl.classList.remove('dragging');
+        draggingListEl.style.position = '';
+        draggingListEl.style.left = '';
+        draggingListEl.style.top = '';
+        draggingListEl.style.zIndex = '';
+        draggingListEl.style.pointerEvents = '';
+
+        // Insert element where placeholder is
+        if (listDragPlaceholder && listDragPlaceholder.parentNode) {
+            container.insertBefore(draggingListEl, listDragPlaceholder);
+            listDragPlaceholder.remove();
+        }
+
+        // Save order
+        saveListOrder();
+
+        // Cleanup
+        draggingListEl = null;
+        listDragPlaceholder = null;
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    // Make list header draggable via mouse
     container.querySelectorAll('.list:not(.add-list)').forEach(listEl => {
         const header = listEl.querySelector('.list-header');
-        const title = header ? header.querySelector('.list-title') : null;
+        if (!header) return;
 
-        function startDrag(e){
-            const isInsideCard = !!(e.target && e.target.closest && e.target.closest('.card'));
-            const isComposer = !!(e.target && e.target.closest && e.target.closest('.card-composer, .add-list-form'));
-            const isFormControl = !!(e.target && e.target.closest && e.target.closest('input, textarea, button, select'));
-            if (isInsideCard || isComposer || isFormControl) { if (e.stopPropagation) e.stopPropagation(); return; }
-            const el = (e.currentTarget && e.currentTarget.closest) ? e.currentTarget.closest('.list') : listEl;
-            if (!el) return;
-            draggingListId = el.getAttribute('data-id');
-            el.classList.add('dragging');
-            try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingListId); e.dataTransfer.effectAllowed = 'move'; } catch {}
-        }
-        function endDrag(){
-            const el = container.querySelector('.list.dragging');
-            if (el) el.classList.remove('dragging');
-            draggingListId = null;
-        }
+        // Disable native drag
+        listEl.setAttribute('draggable', 'false');
+        header.setAttribute('draggable', 'false');
 
-        // set draggable attributes and bind events
-        listEl.setAttribute('draggable', 'true');
-        listEl.addEventListener('dragstart', startDrag);
-        listEl.addEventListener('dragend', endDrag);
-        if (header) {
-            header.setAttribute('draggable', 'true');
-            header.addEventListener('dragstart', startDrag);
-            header.addEventListener('dragend', endDrag);
-        }
-        if (title) {
-            title.setAttribute('draggable', 'true');
-            title.addEventListener('dragstart', startDrag);
-            title.addEventListener('dragend', endDrag);
-        }
+        header.addEventListener('mousedown', (e) => {
+            // Ignore if clicking on buttons, inputs, or actions
+            if (e.target.closest('button, input, textarea, select, .list-actions, .list-menu, .list-archive')) return;
+            if (e.button !== 0) return; // Only left click
 
-        // list-level dragover/drop to improve reliability (but only when a list is being dragged)
-        const handleListDragOver = (e) => {
-            if (!draggingListId) return;
-            reposition(e);
-        };
-        const handleListDrop = (e) => {
-            if (!draggingListId) return;
-            if (e && e.preventDefault) e.preventDefault();
-            finalizeDrop();
-        };
-        listEl.addEventListener('dragover', handleListDragOver);
-        listEl.addEventListener('drop', handleListDrop);
+            e.preventDefault();
+
+            const rect = listEl.getBoundingClientRect();
+            listDragOffsetX = e.clientX - rect.left;
+            listDragOffsetY = e.clientY - rect.top;
+
+            // Create placeholder
+            listDragPlaceholder = document.createElement('div');
+            listDragPlaceholder.className = 'list list-drag-placeholder';
+            listDragPlaceholder.style.width = rect.width + 'px';
+            listDragPlaceholder.style.height = rect.height + 'px';
+            listEl.parentNode.insertBefore(listDragPlaceholder, listEl);
+
+            // Style dragging element
+            draggingListEl = listEl;
+            listEl.classList.add('dragging');
+            listEl.style.position = 'fixed';
+            listEl.style.left = rect.left + 'px';
+            listEl.style.top = rect.top + 'px';
+            listEl.style.width = rect.width + 'px';
+            listEl.style.zIndex = '1000';
+            listEl.style.pointerEvents = 'none';
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
     });
-
-    // container-level handlers (guarded to avoid interfering with card drag/drop)
-    if (container.__listDragOverHandler) {
-        container.removeEventListener('dragover', container.__listDragOverHandler);
-    }
-    if (container.__listDropHandler) {
-        container.removeEventListener('drop', container.__listDropHandler);
-    }
-    container.__listDragOverHandler = (e) => {
-        if (!draggingListId) return;
-        reposition(e);
-    };
-    container.__listDropHandler = (e) => {
-        if (!draggingListId) return;
-        if (e && e.preventDefault) e.preventDefault();
-        finalizeDrop();
-    };
-    container.addEventListener('dragover', container.__listDragOverHandler);
-    container.addEventListener('drop', container.__listDropHandler);
 }
 // ===== End Lists drag =====
 
