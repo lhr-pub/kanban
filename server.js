@@ -2766,28 +2766,41 @@ async function handleDeleteCard(ws, data) {
 async function handleArchiveCard(ws, data) {
     const { projectId, boardName, cardId, fromStatus } = data;
 
-    const { success, data: boardData, result: errorMsg } = await withBoardLock(projectId, boardName, (bd) => {
-        if (!Array.isArray(bd[fromStatus])) {
-            return { data: null, result: '找不到要归档的任务' };
-        }
-        const cardIndex = bd[fromStatus].findIndex(card => card.id === cardId);
-        if (cardIndex === -1) {
-            return { data: null, result: '找不到要归档的任务' };
+    const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
+        let actualStatus = (fromStatus && Array.isArray(bd[fromStatus])) ? fromStatus : null;
+        let cardIndex = -1;
+
+        if (actualStatus) {
+            cardIndex = bd[actualStatus].findIndex(card => card.id === cardId);
         }
 
-        const card = bd[fromStatus].splice(cardIndex, 1)[0];
+        if (cardIndex === -1) {
+            const statuses = Object.keys(bd).filter(k => Array.isArray(bd[k]) && k !== 'archived');
+            for (const st of statuses) {
+                const idx = bd[st].findIndex(card => card.id === cardId);
+                if (idx !== -1) {
+                    actualStatus = st;
+                    cardIndex = idx;
+                    break;
+                }
+            }
+        }
+
+        if (!actualStatus || cardIndex === -1) {
+            return { data: bd, result: { changed: false } };
+        }
+
+        const card = bd[actualStatus].splice(cardIndex, 1)[0];
         if (!bd.archived) {
             bd.archived = [];
         }
+        card.archivedFrom = actualStatus;
+        card.archivedAt = Date.now();
         bd.archived.push(card);
-        return { data: bd, result: null };
+        return { data: bd, result: { changed: true } };
     });
 
-    if (!success && errorMsg) {
-        ws.send(JSON.stringify({
-            type: 'error',
-            message: errorMsg
-        }));
+    if (success && result && result.changed === false) {
         return;
     }
 
@@ -2804,39 +2817,50 @@ async function handleArchiveCard(ws, data) {
 async function handleRestoreCard(ws, data) {
     const { projectId, boardName, cardId } = data;
 
-    const { success, data: boardData, result: errorMsg } = await withBoardLock(projectId, boardName, (bd) => {
+    const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
         if (!Array.isArray(bd.archived)) {
-            return { data: null, result: '找不到要还原的任务' };
+            return { data: bd, result: { changed: false } };
         }
         const cardIndex = bd.archived.findIndex(card => card.id === cardId);
         if (cardIndex === -1) {
-            return { data: null, result: '找不到要还原的任务' };
+            return { data: bd, result: { changed: false } };
         }
 
         const card = bd.archived.splice(cardIndex, 1)[0];
 
-        // Ensure 'done' list exists (create if missing)
-        if (!Array.isArray(bd.done)) bd.done = [];
+        let targetStatus = (card && card.archivedFrom) ? card.archivedFrom : null;
+        const listMetas = (bd.lists && bd.lists.lists) ? Object.values(bd.lists.lists) : [];
+        const metaStatuses = listMetas.map(m => m && m.status).filter(Boolean);
+
+        if (!targetStatus || targetStatus === 'archived' || (metaStatuses.length && !metaStatuses.includes(targetStatus))) {
+            if (metaStatuses.includes('done')) {
+                targetStatus = 'done';
+            } else if (metaStatuses.length) {
+                targetStatus = metaStatuses[metaStatuses.length - 1];
+            } else if (Array.isArray(bd.done)) {
+                targetStatus = 'done';
+            } else {
+                const fallback = Object.keys(bd).find(k => Array.isArray(bd[k]) && k !== 'archived');
+                targetStatus = fallback || 'done';
+            }
+        }
+
+        if (!Array.isArray(bd[targetStatus])) bd[targetStatus] = [];
+
         if (!bd.lists || !Array.isArray(bd.lists.listIds) || !bd.lists.lists) {
             bd.lists = { listIds: [], lists: {} };
         }
-        // if no list entry maps to status 'done', add default
-        const hasDoneMeta = Object.values(bd.lists.lists || {}).some(m => m && m.status === 'done');
-        if (!hasDoneMeta) {
-            const id = 'done';
+        if (targetStatus && !metaStatuses.includes(targetStatus)) {
+            const id = targetStatus;
             if (!bd.lists.listIds.includes(id)) bd.lists.listIds.push(id);
-            bd.lists.lists[id] = bd.lists.lists[id] || { id, title:'已完成', pos: bd.lists.listIds.length - 1, status:'done' };
+            bd.lists.lists[id] = bd.lists.lists[id] || { id, title: id === 'done' ? '已完成' : id, pos: bd.lists.listIds.length - 1, status: targetStatus };
         }
 
-        bd.done.push(card);
-        return { data: bd, result: null };
+        bd[targetStatus].push(card);
+        return { data: bd, result: { changed: true } };
     });
 
-    if (!success && errorMsg) {
-        ws.send(JSON.stringify({
-            type: 'error',
-            message: errorMsg
-        }));
+    if (success && result && result.changed === false) {
         return;
     }
 

@@ -709,6 +709,11 @@ h1 {
     transition: all 0.2s;
 }
 
+#toggleCompletedBtn[aria-pressed="true"] {
+    background: #0ea5e9;
+    color: #fff;
+}
+
 #exportBtn {
     background: #059669;
     color: white;
@@ -3709,6 +3714,13 @@ body {
 body.dragging-cards {
     cursor: grabbing;
     user-select: none;
+}
+.card-archived {
+    opacity: 0.7;
+    filter: grayscale(0.1);
+}
+.card-archived .card-title {
+    text-decoration: line-through;
 }
 .card.drag-hidden {
     display: none !important;

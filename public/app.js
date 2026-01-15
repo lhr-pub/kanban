@@ -113,6 +113,8 @@ let draggingOriginContainer = null;
 let draggingCurrentContainer = null;
 let draggingCardPlaceholder = null;
 let draggingCardEl = null;
+let showCompletedCards = false;
+let pendingListsSyncKey = null;
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -155,10 +157,106 @@ function saveClientListsToStorage(){
     try { localStorage.setItem(getClientListsStorageKey(), JSON.stringify(clientLists)); } catch(e) { console.warn('Save clientLists failed', e); }
 }
 
+function getShowCompletedStorageKey(projectId, boardName){
+    const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
+    const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
+    return `kanbanShowCompleted:${pid}:${bname}`;
+}
+
+function getPendingListsSyncStorageKey(projectId, boardName){
+    const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
+    const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
+    return `kanbanPendingListsSync:${pid}:${bname}`;
+}
+
+function markPendingListsSync(){
+    try { localStorage.setItem(getPendingListsSyncStorageKey(), 'true'); } catch(_) {}
+}
+
+function clearPendingListsSync(){
+    try { localStorage.removeItem(getPendingListsSyncStorageKey()); } catch(_) {}
+}
+
+function hasPendingListsSync(){
+    try { return localStorage.getItem(getPendingListsSyncStorageKey()) === 'true'; } catch(_) { return false; }
+}
+
+function updateCompletedToggleButton(){
+    const btn = document.getElementById('toggleCompletedBtn');
+    if (!btn) return;
+    btn.textContent = showCompletedCards ? '隐藏已完成' : '显示已完成';
+    btn.setAttribute('aria-pressed', showCompletedCards ? 'true' : 'false');
+}
+
+function loadShowCompletedPreference(){
+    try {
+        const key = getShowCompletedStorageKey();
+        showCompletedCards = localStorage.getItem(key) === 'true';
+    } catch(_) {
+        showCompletedCards = false;
+    }
+    updateCompletedToggleButton();
+}
+
+function saveShowCompletedPreference(){
+    try {
+        const key = getShowCompletedStorageKey();
+        localStorage.setItem(key, showCompletedCards ? 'true' : 'false');
+    } catch(_) {}
+}
+
+function toggleCompletedView(){
+    showCompletedCards = !showCompletedCards;
+    saveShowCompletedPreference();
+    updateCompletedToggleButton();
+    renderBoard();
+}
+
+function getCurrentBoardKey(){
+    return `${currentProjectId || ''}|${currentBoardName || ''}`;
+}
+
+function queueListsSync(){
+    pendingListsSyncKey = getCurrentBoardKey();
+    markPendingListsSync();
+    trySyncListsToServer();
+}
+
+function trySyncListsToServer(){
+    if (!pendingListsSyncKey || pendingListsSyncKey !== getCurrentBoardKey()) return;
+    if (socket && socket.readyState === WebSocket.OPEN && clientLists) {
+        socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
+        pendingListsSyncKey = null;
+        clearPendingListsSync();
+    }
+}
+
 function ensureClientLists() {
     if (clientLists) return clientLists;
     // Prefer server-provided lists metadata if present
     if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
+        if (hasPendingListsSync()) {
+            const localLists = loadClientListsFromStorage();
+            if (localLists) {
+                clientLists = localLists;
+                const allowed = new Set();
+                clientLists.listIds.forEach(id => {
+                    const st = clientLists.lists[id] && clientLists.lists[id].status;
+                    if (st) allowed.add(st);
+                });
+                Object.keys(boardData || {}).forEach(k => {
+                    if (k !== 'archived' && Array.isArray(boardData[k]) && !allowed.has(k)) {
+                        delete boardData[k];
+                    }
+                });
+                clientLists.listIds.forEach(id => {
+                    const st = clientLists.lists[id] && clientLists.lists[id].status;
+                    if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                });
+                queueListsSync();
+                return clientLists;
+            }
+        }
         clientLists = boardData.lists;
         saveClientListsToStorage();
         return clientLists;
@@ -190,7 +288,23 @@ function ensureClientLists() {
     return clientLists;
 }
 
-function getCardsByStatus(status) { return (boardData[status] || []).slice(); }
+function resolveArchivedStatus(card){
+    if (!card) return null;
+    const from = card.archivedFrom || card.archivedStatus;
+    if (from && from !== 'archived' && Array.isArray(boardData[from])) return from;
+    const ordered = getOrderedStatusKeys();
+    if (ordered.includes('done')) return 'done';
+    return ordered.length ? ordered[ordered.length - 1] : null;
+}
+
+function getCardsByStatus(status) {
+    const active = (boardData[status] || []).slice();
+    if (!showCompletedCards) return active;
+    const archived = (boardData.archived || [])
+        .filter(card => resolveArchivedStatus(card) === status)
+        .map(card => Object.assign({}, card, { __archivedInList: true }));
+    return active.concat(archived);
+}
 
 function getAllStatusKeys(){
     return Object.keys(boardData).filter(k => Array.isArray(boardData[k]));
@@ -436,6 +550,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 移除旧的导入/导出按钮绑定，改为下拉菜单
     const ioMenuBtn = document.getElementById('ioMenuBtn');
     if (ioMenuBtn) ioMenuBtn.addEventListener('click', toggleIOMenu);
+    const toggleCompletedBtn = document.getElementById('toggleCompletedBtn');
+    if (toggleCompletedBtn) toggleCompletedBtn.addEventListener('click', toggleCompletedView);
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
@@ -971,6 +1087,7 @@ function showBoard(replaceHistory) {
     updateHistory('board', !!replaceHistory);
 
     updateBoardHeader();
+    loadShowCompletedPreference();
     const desiredKey = `${currentProjectId}|${currentBoardName}`;
     if (lastLoadedBoardKey === desiredKey) {
         // 同一个看板：直接渲染并确保 WS 已加入，不再重复拉取
@@ -2112,6 +2229,7 @@ function connectWebSocket() {
             }));
             lastJoinedBoardKey = key;
         }
+        trySyncListsToServer();
     };
 
     socket.onmessage = function(event) {
@@ -2180,9 +2298,19 @@ function handleWebSocketMessage(data) {
             break;
         case 'board-renamed':
             if (data.projectId === currentProjectId && data.oldName === currentBoardName) {
+                try {
+                    const oldKey = getShowCompletedStorageKey(currentProjectId, data.oldName);
+                    const newKey = getShowCompletedStorageKey(currentProjectId, data.newName);
+                    const stored = localStorage.getItem(oldKey);
+                    if (stored !== null) {
+                        localStorage.setItem(newKey, stored);
+                        localStorage.removeItem(oldKey);
+                    }
+                } catch (_) {}
                 currentBoardName = data.newName;
                 localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
                 updateBoardHeader();
+                loadShowCompletedPreference();
                 // Keep history state consistent without reloading UI
                 try { updateHistory('board', true); } catch (e) {}
                 // Re-join the renamed board on the existing socket (no reconnect to avoid flicker)
@@ -2532,9 +2660,7 @@ function addClientList(title){
     clientLists.listIds.push(id);
     if (!Array.isArray(boardData[status])) boardData[status] = [];
     saveClientListsToStorage();
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
-    }
+    queueListsSync();
     renderBoard();
 }
 function pickAvailableStatusKey(){
@@ -2565,9 +2691,7 @@ function startListRename(titleEl, list){
         bindListTitleInlineRename(h.closest('.list'), list);
         saveClientListsToStorage();
         // sync to server
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
-        }
+        queueListsSync();
     });
 }
 function bindListMenu(section, list){
@@ -2594,9 +2718,7 @@ function removeClientList(listId){
 
     saveClientListsToStorage();
     // sync to server
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
-    }
+    queueListsSync();
     renderBoard();
 }
 
@@ -2789,6 +2911,12 @@ function createCardElement(card, status) {
     const cardElement = document.createElement('div');
     cardElement.className = 'card';
     cardElement.dataset.cardId = card.id;
+    const isArchivedInList = !!card.__archivedInList;
+    const isArchivedView = status === 'archived' || isArchivedInList;
+    if (isArchivedInList) {
+        cardElement.classList.add('card-archived');
+        cardElement.dataset.archived = 'true';
+    }
     if (inlineEditingCardIds.has(card.id)) {
         cardElement.classList.add('inline-editing');
     }
@@ -2810,14 +2938,14 @@ function createCardElement(card, status) {
     const isInlineEditing = inlineEditingCardIds.has(card.id);
     const moreBtn = isInlineEditing ? '' : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
     const copyBtn = isInlineEditing ? '' : `<button class="card-quick-copy" onclick="event.stopPropagation(); copyCardText('${card.id}')" aria-label="复制" title="复制卡片内容"></button>`;
-    const archiveBtnHtml = (status !== 'archived' && !isInlineEditing)
+    const archiveBtnHtml = (!isArchivedView && !isInlineEditing)
         ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}', '${escapeJs(status)}')" aria-label="归档" title="完成归档"></button>`
         : '';
-    const deleteBtnHtml = (status !== 'archived' && !isInlineEditing)
+    const deleteBtnHtml = (!isArchivedView && !isInlineEditing)
         ? `<button class="card-quick-trash" onclick="event.stopPropagation(); deleteCardById('${card.id}')" aria-label="删除" title="删除卡片"></button>`
         : '';
 
-    const archiveBtn = (status !== 'archived')
+    const archiveBtn = (!isArchivedView)
         ? ``
         : '';
 
@@ -2825,7 +2953,7 @@ function createCardElement(card, status) {
         ? `<button class="card-quick-delete" onclick="event.stopPropagation(); deleteArchivedCard('${card.id}')" aria-label="删除"></button>`
         : '';
 
-    const headerRow = (status === 'archived')
+    const headerRow = (isArchivedView)
         ? `<div class="card-header"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button><div class="card-title">${escapeHtml(card.title || '未命名')}</div></div>`
         : `<div class="card-title">${escapeHtml(card.title || '未命名')}</div>`;
 
@@ -2843,7 +2971,7 @@ function createCardElement(card, status) {
         ${copyBtn}
     `;
 
-    if (status !== 'archived') {
+    if (!isArchivedView) {
         const prevStatus = getAdjacentStatusKey(status, 'prev');
         const nextStatus = getAdjacentStatusKey(status, 'next');
         if (prevStatus) {
@@ -3371,6 +3499,8 @@ function archiveCard(cardId, hintStatus) {
         return;
     }
 
+    cardObj.archivedFrom = fromStatus;
+    cardObj.archivedAt = Date.now();
     boardData.archived = Array.isArray(boardData.archived) ? boardData.archived : [];
     boardData.archived.push(cardObj);
 
@@ -3388,6 +3518,27 @@ function archiveCard(cardId, hintStatus) {
 
 // 还原卡片
 function restoreCard(cardId) {
+    let restored = false;
+    if (Array.isArray(boardData.archived)) {
+        const idx = boardData.archived.findIndex(card => card.id === cardId);
+        if (idx !== -1) {
+            const card = boardData.archived.splice(idx, 1)[0];
+            const targetStatus = resolveArchivedStatus(card) || 'done';
+            if (!Array.isArray(boardData[targetStatus])) boardData[targetStatus] = [];
+            delete card.archivedFrom;
+            delete card.archivedAt;
+            if (!boardData[targetStatus].some(c => c.id === cardId)) {
+                boardData[targetStatus].push(card);
+            }
+            restored = true;
+        }
+    }
+    if (restored) {
+        renderBoard();
+        if (!archivePage.classList.contains('hidden')) {
+            renderArchive();
+        }
+    }
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'restore-card',
@@ -5215,14 +5366,23 @@ function enableColumnDrag(status) {
         const previousContainer = (draggingCurrentContainer && draggingCurrentContainer !== container) ? draggingCurrentContainer : null;
         delete container.dataset.empty;
         const afterEl = getDragAfterElement(container, e.clientY);
+        const firstArchived = container.querySelector('.card[data-archived="true"]');
         if (!draggingCardPlaceholder) {
             if (afterEl == null) {
-                container.appendChild(dragging);
+                if (firstArchived) {
+                    container.insertBefore(dragging, firstArchived);
+                } else {
+                    container.appendChild(dragging);
+                }
             } else {
                 container.insertBefore(dragging, afterEl);
             }
         } else if (afterEl == null) {
-            container.appendChild(draggingCardPlaceholder);
+            if (firstArchived) {
+                container.insertBefore(draggingCardPlaceholder, firstArchived);
+            } else {
+                container.appendChild(draggingCardPlaceholder);
+            }
         } else {
             container.insertBefore(draggingCardPlaceholder, afterEl);
         }
@@ -5238,7 +5398,8 @@ function enableColumnDrag(status) {
         const toStatus = status;
         const fromStatus = draggingFromStatus;
         const movedCardId = draggingCardId;
-        const orderedIds = Array.from(container.querySelectorAll('.card')).map(el => el.dataset.cardId);
+        const orderedIds = Array.from(container.querySelectorAll('.card:not([data-archived="true"])'))
+            .map(el => el.dataset.cardId);
         if (socket && socket.readyState === WebSocket.OPEN) {
             if (movedCardId && fromStatus && fromStatus !== toStatus) {
                 socket.send(JSON.stringify({ type:'move-card', projectId: currentProjectId, boardName: currentBoardName, cardId:movedCardId, fromStatus, toStatus }));
@@ -5261,6 +5422,10 @@ function enableColumnDrag(status) {
 }
 
 function makeDraggable(cardEl) {
+    if (cardEl.dataset.archived === 'true') {
+        cardEl.setAttribute('draggable', 'false');
+        return;
+    }
     cardEl.setAttribute('draggable', 'true');
     cardEl.ondragstart = (e) => {
         cardEl.classList.add('dragging');
@@ -5316,7 +5481,7 @@ function makeDraggable(cardEl) {
 }
 
 function getDragAfterElement(container, y) {
-    const draggableElements = [...container.querySelectorAll('.card:not(.dragging)')];
+    const draggableElements = [...container.querySelectorAll('.card:not(.dragging):not([data-archived="true"])')];
     return draggableElements.reduce((closest, child) => {
         const box = child.getBoundingClientRect();
         const offset = y - box.top - box.height / 2;
@@ -5347,9 +5512,7 @@ function enableListsDrag() {
         clientLists.listIds = ids;
         ids.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
         saveClientListsToStorage();
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
-        }
+        queueListsSync();
     };
 
     // Mouse move handler
@@ -6385,6 +6548,11 @@ async function archiveList(status){
     boardData.archived = boardData.archived || [];
     // copy array to avoid mutation during iteration
     const moving = cards.slice();
+    moving.forEach(c => {
+        if (!c) return;
+        c.archivedFrom = status;
+        c.archivedAt = Date.now();
+    });
     boardData.archived.push(...moving);
     boardData[status] = [];
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -8511,14 +8679,7 @@ document.addEventListener('paste', async function(e) {
         // 保存列表并同步到服务器
         if (newListsCreated > 0) {
             saveClientListsToStorage();
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'save-lists',
-                    projectId: currentProjectId,
-                    boardName: currentBoardName,
-                    lists: clientLists
-                }));
-            }
+            queueListsSync();
         }
     }
 
