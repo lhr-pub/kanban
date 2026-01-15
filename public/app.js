@@ -297,6 +297,7 @@ function flushPendingCardAdds(){
                 type:'add-card',
                 projectId: currentProjectId,
                 boardName: currentBoardName,
+                actor: currentUser,
                 status: item.status,
                 card: item.card,
                 position: item.position || 'bottom'
@@ -314,6 +315,7 @@ function sendCardAdd(status, card, position){
     const payload = {
         projectId: currentProjectId,
         boardName: currentBoardName,
+        actor: currentUser,
         status,
         card,
         position: position || 'bottom'
@@ -336,6 +338,7 @@ function sendArchiveCard(cardId, fromStatus){
     const payload = {
         projectId: currentProjectId,
         boardName: currentBoardName,
+        actor: currentUser,
         cardId,
         fromStatus
     };
@@ -357,6 +360,7 @@ function sendRestoreCard(cardId){
     const payload = {
         projectId: currentProjectId,
         boardName: currentBoardName,
+        actor: currentUser,
         cardId
     };
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -377,6 +381,7 @@ function sendDeleteCard(cardId){
     const payload = {
         projectId: currentProjectId,
         boardName: currentBoardName,
+        actor: currentUser,
         cardId
     };
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -397,6 +402,7 @@ function sendAddArchivedCard(card){
     const payload = {
         projectId: currentProjectId,
         boardName: currentBoardName,
+        actor: currentUser,
         card
     };
     if (typeof fetch === 'function') {
@@ -414,6 +420,7 @@ function sendArchiveList(status){
     const payload = {
         projectId: currentProjectId,
         boardName: currentBoardName,
+        actor: currentUser,
         status
     };
     if (typeof fetch === 'function') {
@@ -490,6 +497,7 @@ function sendListsSync(lists){
     const payload = {
         projectId: currentProjectId,
         boardName: currentBoardName,
+        actor: currentUser,
         lists
     };
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -894,6 +902,7 @@ function moveCardToAdjacent(cardId, fromStatus, direction) {
             type: 'move-card',
             projectId: currentProjectId,
             boardName: currentBoardName,
+            actor: currentUser,
             cardId,
             fromStatus,
             toStatus
@@ -3930,6 +3939,7 @@ function saveCardFromDrawer(){
             type: 'update-card',
             projectId: currentProjectId,
             boardName: currentBoardName,
+            actor: currentUser,
             cardId: drawerCardId,
             updates
         }));
@@ -4020,7 +4030,7 @@ function updateCardImmediately(cardId, updates){
     }
     // ws
     if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type:'update-card', projectId: currentProjectId, boardName: currentBoardName, cardId, updates }));
+        socket.send(JSON.stringify({ type:'update-card', projectId: currentProjectId, boardName: currentBoardName, actor: currentUser, cardId, updates }));
     }
 }
 
@@ -4167,6 +4177,7 @@ function moveCard(cardId, direction) {
             type: 'move-card',
             projectId: currentProjectId,
             boardName: currentBoardName,
+            actor: currentUser,
             cardId: cardId,
             fromStatus: fromStatus,
             toStatus: toStatus
@@ -4284,7 +4295,7 @@ async function clearArchive() {
     const ok = await uiConfirm('确定要清空所有归档任务吗？此操作不可恢复。','清空归档');
     if (!ok) return;
     if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'clear-archive', projectId: currentProjectId, boardName: currentBoardName }));
+        socket.send(JSON.stringify({ type: 'clear-archive', projectId: currentProjectId, boardName: currentBoardName, actor: currentUser }));
     }
 }
 
@@ -4388,6 +4399,7 @@ function saveCard() {
             type: 'update-card',
             projectId: currentProjectId,
             boardName: currentBoardName,
+            actor: currentUser,
             cardId: editingCardId,
             updates: updates
         }));
@@ -4950,6 +4962,7 @@ function confirmImport() {
             type: 'import-board',
             projectId: currentProjectId,
             boardName: currentBoardName,
+            actor: currentUser,
             data: importFileData,
             mode: importMode
         }));
@@ -5273,6 +5286,7 @@ function editCardTitle(cardId, clickEvent) {
                     type: 'update-card',
                     projectId: currentProjectId,
                     boardName: currentBoardName,
+                    actor: currentUser,
                     cardId: cardId,
                     updates: updates
                 }));
@@ -5488,6 +5502,7 @@ function editCardDescription(cardId, clickEvent) {
                     type: 'update-card',
                     projectId: currentProjectId,
                     boardName: currentBoardName,
+                    actor: currentUser,
                     cardId: cardId,
                     updates: updates
                 }));
@@ -5879,6 +5894,7 @@ function updateCardField(cardId, field, value) {
             type: 'update-card',
             projectId: currentProjectId,
             boardName: currentBoardName,
+            actor: currentUser,
             cardId: cardId,
             updates: updates
         }));
@@ -6145,9 +6161,9 @@ function enableColumnDrag(status) {
             .map(el => el.dataset.cardId);
         if (socket && socket.readyState === WebSocket.OPEN) {
             if (movedCardId && fromStatus && fromStatus !== toStatus) {
-                socket.send(JSON.stringify({ type:'move-card', projectId: currentProjectId, boardName: currentBoardName, cardId:movedCardId, fromStatus, toStatus }));
+                socket.send(JSON.stringify({ type:'move-card', projectId: currentProjectId, boardName: currentBoardName, actor: currentUser, cardId:movedCardId, fromStatus, toStatus }));
             }
-            socket.send(JSON.stringify({ type:'reorder-cards', projectId: currentProjectId, boardName: currentBoardName, status: toStatus, orderedIds }));
+            socket.send(JSON.stringify({ type:'reorder-cards', projectId: currentProjectId, boardName: currentBoardName, actor: currentUser, status: toStatus, orderedIds }));
         }
         draggingCardId = null;
         draggingFromStatus = null;

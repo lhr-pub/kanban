@@ -2017,7 +2017,7 @@ app.get('/api/board/:projectId/:boardName', async (req, res) => {
 
 // 归档卡片（HTTP 兜底）
 app.post('/api/archive-card', async (req, res) => {
-    const { projectId, boardName, cardId, fromStatus } = req.body || {};
+    const { projectId, boardName, cardId, fromStatus, actor } = req.body || {};
     if (!projectId || !boardName || !cardId) {
         return res.status(400).json({ message: '参数不完整' });
     }
@@ -2061,12 +2061,7 @@ app.post('/api/archive-card', async (req, res) => {
     }
 
     if (result && result.changed) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 
     return res.json({ success: true });
@@ -2074,7 +2069,7 @@ app.post('/api/archive-card', async (req, res) => {
 
 // 还原卡片（HTTP 兜底）
 app.post('/api/restore-card', async (req, res) => {
-    const { projectId, boardName, cardId } = req.body || {};
+    const { projectId, boardName, cardId, actor } = req.body || {};
     if (!projectId || !boardName || !cardId) {
         return res.status(400).json({ message: '参数不完整' });
     }
@@ -2127,12 +2122,7 @@ app.post('/api/restore-card', async (req, res) => {
     }
 
     if (result && result.changed) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 
     return res.json({ success: true });
@@ -2140,7 +2130,7 @@ app.post('/api/restore-card', async (req, res) => {
 
 // 归档卡组（HTTP 兜底）
 app.post('/api/archive-list', async (req, res) => {
-    const { projectId, boardName, status } = req.body || {};
+    const { projectId, boardName, status, actor } = req.body || {};
     if (!projectId || !boardName || !status) {
         return res.status(400).json({ message: '参数不完整' });
     }
@@ -2167,12 +2157,7 @@ app.post('/api/archive-list', async (req, res) => {
     }
 
     if (result && result.changed) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 
     return res.json({ success: true, count: result ? result.count : 0 });
@@ -2180,7 +2165,7 @@ app.post('/api/archive-list', async (req, res) => {
 
 // 删除卡片（HTTP 兜底）
 app.post('/api/delete-card', async (req, res) => {
-    const { projectId, boardName, cardId } = req.body || {};
+    const { projectId, boardName, cardId, actor } = req.body || {};
     if (!projectId || !boardName || !cardId) {
         return res.status(400).json({ message: '参数不完整' });
     }
@@ -2204,12 +2189,7 @@ app.post('/api/delete-card', async (req, res) => {
     }
 
     if (result && result.changed) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 
     return res.json({ success: true });
@@ -2217,7 +2197,7 @@ app.post('/api/delete-card', async (req, res) => {
 
 // 添加归档卡片（HTTP 兜底）
 app.post('/api/add-archived-card', async (req, res) => {
-    const { projectId, boardName, card } = req.body || {};
+    const { projectId, boardName, card, actor } = req.body || {};
     if (!projectId || !boardName || !card || !card.id) {
         return res.status(400).json({ message: '参数不完整' });
     }
@@ -2238,12 +2218,7 @@ app.post('/api/add-archived-card', async (req, res) => {
     }
 
     if (result && result.changed) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 
     return res.json({ success: true });
@@ -2251,7 +2226,7 @@ app.post('/api/add-archived-card', async (req, res) => {
 
 // 保存列表元数据（HTTP 兜底）
 app.post('/api/save-lists', async (req, res) => {
-    const { projectId, boardName, lists } = req.body || {};
+    const { projectId, boardName, lists, actor } = req.body || {};
     if (!projectId || !boardName || !lists || !Array.isArray(lists.listIds) || typeof lists.lists !== 'object') {
         return res.status(400).json({ message: '无效的列表数据' });
     }
@@ -2290,19 +2265,14 @@ app.post('/api/save-lists', async (req, res) => {
         return res.status(500).json({ message: '保存失败' });
     }
 
-    broadcastToBoard(projectId, boardName, {
-        type: 'board-update',
-        projectId,
-        boardName,
-        board: boardData
-    });
+    broadcastBoardUpdate(projectId, boardName, boardData, actor);
 
     return res.json({ success: true });
 });
 
 // 添加卡片（HTTP 兜底，用于刷新过快/WS 不稳定）
 app.post('/api/add-card', async (req, res) => {
-    const { projectId, boardName, status, card, position } = req.body || {};
+    const { projectId, boardName, status, card, position, actor } = req.body || {};
     if (!projectId || !boardName || !status || !card || !card.id) {
         return res.status(400).json({ message: '参数不完整' });
     }
@@ -2328,12 +2298,7 @@ app.post('/api/add-card', async (req, res) => {
     }
 
     if (result && result.changed) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 
     return res.json({ success: true });
@@ -2892,9 +2857,29 @@ function handleWebSocketMessage(ws, data) {
     }
 }
 
+function getActorFromWs(ws, data) {
+    if (data && (data.actor || data.user)) return data.actor || data.user;
+    if (ws && ws.user) return ws.user;
+    return null;
+}
+
+function broadcastBoardUpdate(projectId, boardName, boardData, actor, excludeWs) {
+    broadcastToBoard(projectId, boardName, {
+        type: 'board-update',
+        projectId,
+        boardName,
+        board: boardData,
+        actor: actor || null
+    }, excludeWs);
+}
+
 async function handleJoin(ws, data) {
     const { user, projectId, boardName } = data;
     const connectionKey = `${user}-${projectId}-${boardName}`;
+
+    ws.user = user;
+    ws.projectId = projectId;
+    ws.boardName = boardName;
 
     connections.set(connectionKey, {
         ws,
@@ -2927,6 +2912,7 @@ async function handleJoin(ws, data) {
 
 async function handleAddCard(ws, data) {
     const { projectId, boardName, status, card, position } = data;
+    const actor = getActorFromWs(ws, data);
 
     const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
         const exists = Object.keys(bd).some(key => Array.isArray(bd[key]) && bd[key].some(c => c && c.id === card.id));
@@ -2952,17 +2938,13 @@ async function handleAddCard(ws, data) {
     }
 
     if (success) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 }
 
 async function handleUpdateCard(ws, data) {
     const { projectId, boardName, cardId, updates } = data;
+    const actor = getActorFromWs(ws, data);
 
     const { success, data: boardData, result: updated } = await withBoardLock(projectId, boardName, (bd) => {
         let found = false;
@@ -2979,17 +2961,13 @@ async function handleUpdateCard(ws, data) {
     });
 
     if (success && updated) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 }
 
 async function handleMoveCard(ws, data) {
     const { projectId, boardName, cardId, fromStatus, toStatus } = data;
+    const actor = getActorFromWs(ws, data);
 
     const { success, data: boardData, result: errorMsg } = await withBoardLock(projectId, boardName, (bd) => {
         const cardIndex = (Array.isArray(bd[fromStatus]) ? bd[fromStatus] : []).findIndex(card => card.id === cardId);
@@ -3012,17 +2990,13 @@ async function handleMoveCard(ws, data) {
     }
 
     if (success) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 }
 
 async function handleReorderCards(ws, data) {
     const { projectId, boardName, status, orderedIds } = data;
+    const actor = getActorFromWs(ws, data);
 
     // 前置校验（无需锁）
     if (!Array.isArray(orderedIds)) {
@@ -3059,17 +3033,13 @@ async function handleReorderCards(ws, data) {
     }
 
     if (success) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 }
 
 async function handleDeleteCard(ws, data) {
     const { projectId, boardName, cardId } = data;
+    const actor = getActorFromWs(ws, data);
 
     const { success, data: boardData, result: deleted } = await withBoardLock(projectId, boardName, (bd) => {
         let found = false;
@@ -3086,17 +3056,13 @@ async function handleDeleteCard(ws, data) {
     });
 
     if (success && deleted) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 }
 
 async function handleArchiveCard(ws, data) {
     const { projectId, boardName, cardId, fromStatus } = data;
+    const actor = getActorFromWs(ws, data);
 
     const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
         let actualStatus = (fromStatus && Array.isArray(bd[fromStatus])) ? fromStatus : null;
@@ -3137,17 +3103,13 @@ async function handleArchiveCard(ws, data) {
     }
 
     if (success) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 }
 
 async function handleRestoreCard(ws, data) {
     const { projectId, boardName, cardId } = data;
+    const actor = getActorFromWs(ws, data);
 
     const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
         if (!Array.isArray(bd.archived)) {
@@ -3197,17 +3159,13 @@ async function handleRestoreCard(ws, data) {
     }
 
     if (success) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 }
 
 async function handleClearArchive(ws, data) {
     const { projectId, boardName } = data;
+    const actor = getActorFromWs(ws, data);
 
     const { success, data: boardData } = await withBoardLock(projectId, boardName, (bd) => {
         bd.archived = [];
@@ -3215,17 +3173,13 @@ async function handleClearArchive(ws, data) {
     });
 
     if (success) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        });
+        broadcastBoardUpdate(projectId, boardName, boardData, actor);
     }
 }
 
 async function handleImportBoard(ws, data) {
     const { projectId, boardName, data: importData, mode } = data;
+    const actor = getActorFromWs(ws, data);
 
     try {
         // Normalize importData structure (before lock, this is read-only)
@@ -3328,12 +3282,7 @@ async function handleImportBoard(ws, data) {
         });
 
         if (success) {
-            broadcastToBoard(projectId, boardName, {
-                type: 'board-update',
-                projectId,
-                boardName,
-                board: boardData
-            });
+            broadcastBoardUpdate(projectId, boardName, boardData, actor);
 
             ws.send(JSON.stringify({
                 type: 'import-success',
@@ -3361,6 +3310,7 @@ function handleCardEditing(ws, data) {
 // persist lists metadata (client dynamic lists)
 async function handleSaveLists(ws, data) {
     const { projectId, boardName, lists } = data;
+    const actor = getActorFromWs(ws, data);
 
     // 前置校验（无需锁）
     if (!lists || !Array.isArray(lists.listIds) || typeof lists.lists !== 'object') {
@@ -3403,12 +3353,7 @@ async function handleSaveLists(ws, data) {
     });
 
     if (success) {
-        broadcastToBoard(projectId, boardName, {
-            type: 'board-update',
-            projectId,
-            boardName,
-            board: boardData
-        }, ws);
+        broadcastBoardUpdate(projectId, boardName, boardData, actor, ws);
     }
 }
 
