@@ -116,6 +116,7 @@ let draggingCardEl = null;
 let showCompletedCards = false;
 let pendingListsSyncKey = null;
 let archiveListFilter = 'all';
+let listHeaderLineStyle = 'short';
 let undoStack = [];
 let redoStack = [];
 let undoBoardKey = null;
@@ -176,6 +177,12 @@ function getArchiveFilterStorageKey(projectId, boardName){
     const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
     const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
     return `kanbanArchiveFilter:${pid}:${bname}`;
+}
+
+function getListHeaderLineStorageKey(projectId, boardName){
+    const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
+    const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
+    return `kanbanListHeaderLine:${pid}:${bname}`;
 }
 
 function getPendingCardAddsStorageKey(projectId, boardName){
@@ -556,6 +563,23 @@ function updateCompletedToggleButton(){
     btn.setAttribute('aria-pressed', showCompletedCards ? 'true' : 'false');
 }
 
+function updateListHeaderLineButton(){
+    const btn = document.getElementById('listHeaderLineBtn');
+    if (!btn) return;
+    const label = listHeaderLineStyle === 'none'
+        ? '无'
+        : (listHeaderLineStyle === 'title' ? '随标题' : '短');
+    btn.textContent = `标题线: ${label}`;
+}
+
+function applyListHeaderLineStyle(){
+    const page = document.getElementById('boardPage');
+    if (!page) return;
+    const style = (listHeaderLineStyle === 'none' || listHeaderLineStyle === 'title') ? listHeaderLineStyle : 'short';
+    page.setAttribute('data-list-header-line', style);
+    updateListHeaderLineButton();
+}
+
 function loadShowCompletedPreference(){
     try {
         const key = getShowCompletedStorageKey();
@@ -566,10 +590,29 @@ function loadShowCompletedPreference(){
     updateCompletedToggleButton();
 }
 
+function loadListHeaderLinePreference(){
+    try {
+        const key = getListHeaderLineStorageKey();
+        const stored = localStorage.getItem(key);
+        listHeaderLineStyle = (stored === 'none' || stored === 'title') ? stored : 'short';
+    } catch(_) {
+        listHeaderLineStyle = 'short';
+    }
+    applyListHeaderLineStyle();
+}
+
 function saveShowCompletedPreference(){
     try {
         const key = getShowCompletedStorageKey();
         localStorage.setItem(key, showCompletedCards ? 'true' : 'false');
+    } catch(_) {}
+}
+
+function saveListHeaderLinePreference(){
+    try {
+        const key = getListHeaderLineStorageKey();
+        const style = (listHeaderLineStyle === 'none' || listHeaderLineStyle === 'title') ? listHeaderLineStyle : 'short';
+        localStorage.setItem(key, style);
     } catch(_) {}
 }
 
@@ -578,6 +621,18 @@ function toggleCompletedView(){
     saveShowCompletedPreference();
     updateCompletedToggleButton();
     renderBoard();
+}
+
+function toggleListHeaderLineStyle(){
+    if (listHeaderLineStyle === 'short') {
+        listHeaderLineStyle = 'title';
+    } else if (listHeaderLineStyle === 'title') {
+        listHeaderLineStyle = 'none';
+    } else {
+        listHeaderLineStyle = 'short';
+    }
+    saveListHeaderLinePreference();
+    applyListHeaderLineStyle();
 }
 
 function getCurrentBoardKey(){
@@ -1043,6 +1098,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (ioMenuBtn) ioMenuBtn.addEventListener('click', toggleIOMenu);
     const toggleCompletedBtn = document.getElementById('toggleCompletedBtn');
     if (toggleCompletedBtn) toggleCompletedBtn.addEventListener('click', toggleCompletedView);
+    const listHeaderLineBtn = document.getElementById('listHeaderLineBtn');
+    if (listHeaderLineBtn) listHeaderLineBtn.addEventListener('click', toggleListHeaderLineStyle);
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
@@ -1579,6 +1636,7 @@ function showBoard(replaceHistory) {
 
     updateBoardHeader();
     loadShowCompletedPreference();
+    loadListHeaderLinePreference();
     const desiredKey = `${currentProjectId}|${currentBoardName}`;
     if (lastLoadedBoardKey === desiredKey) {
         // 同一个看板：直接渲染并确保 WS 已加入，不再重复拉取
@@ -2851,6 +2909,15 @@ function handleWebSocketMessage(data) {
                     }
                 } catch (_) {}
                 try {
+                    const oldKey = getListHeaderLineStorageKey(currentProjectId, data.oldName);
+                    const newKey = getListHeaderLineStorageKey(currentProjectId, data.newName);
+                    const stored = localStorage.getItem(oldKey);
+                    if (stored !== null) {
+                        localStorage.setItem(newKey, stored);
+                        localStorage.removeItem(oldKey);
+                    }
+                } catch (_) {}
+                try {
                     const oldKey = getArchiveFilterStorageKey(currentProjectId, data.oldName);
                     const newKey = getArchiveFilterStorageKey(currentProjectId, data.newName);
                     const stored = localStorage.getItem(oldKey);
@@ -2863,6 +2930,7 @@ function handleWebSocketMessage(data) {
                 localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
                 updateBoardHeader();
                 loadShowCompletedPreference();
+                loadListHeaderLinePreference();
                 // Keep history state consistent without reloading UI
                 try { updateHistory('board', true); } catch (e) {}
                 // Re-join the renamed board on the existing socket (no reconnect to avoid flicker)

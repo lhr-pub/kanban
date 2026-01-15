@@ -5146,12 +5146,24 @@ body {
     margin-left: 14px !important;
     display: inline-block;
 }
-#boardPage .list-header::after {
+#boardPage[data-list-header-line="short"] .list-header::after {
     content: '';
     position: absolute;
     left: 14px;
     right: 14px;
     bottom: 0;
+    height: 1px;
+    background: #e2e8f0;
+}
+#boardPage[data-list-header-line="title"] .list-header .list-title {
+    position: relative;
+}
+#boardPage[data-list-header-line="title"] .list-header .list-title::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -9px;
     height: 1px;
     background: #e2e8f0;
 }
