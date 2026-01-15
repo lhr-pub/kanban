@@ -181,6 +181,22 @@ function hasPendingListsSync(){
     try { return localStorage.getItem(getPendingListsSyncStorageKey()) === 'true'; } catch(_) { return false; }
 }
 
+function listsMatch(localLists, remoteLists){
+    if (!localLists || !remoteLists) return false;
+    if (!Array.isArray(localLists.listIds) || !Array.isArray(remoteLists.listIds)) return false;
+    if (localLists.listIds.length !== remoteLists.listIds.length) return false;
+    for (let i = 0; i < localLists.listIds.length; i++) {
+        const id = localLists.listIds[i];
+        if (id !== remoteLists.listIds[i]) return false;
+        const localMeta = localLists.lists && localLists.lists[id];
+        const remoteMeta = remoteLists.lists && remoteLists.lists[id];
+        if (!localMeta || !remoteMeta) return false;
+        if (localMeta.status !== remoteMeta.status) return false;
+        if (localMeta.title !== remoteMeta.title) return false;
+    }
+    return true;
+}
+
 function updateCompletedToggleButton(){
     const btn = document.getElementById('toggleCompletedBtn');
     if (!btn) return;
@@ -226,8 +242,6 @@ function trySyncListsToServer(){
     if (!pendingListsSyncKey || pendingListsSyncKey !== getCurrentBoardKey()) return;
     if (socket && socket.readyState === WebSocket.OPEN && clientLists) {
         socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
-        pendingListsSyncKey = null;
-        clearPendingListsSync();
     }
 }
 
@@ -2261,13 +2275,49 @@ function handleWebSocketMessage(data) {
                 if (ignoreFirstBoardUpdate) { ignoreFirstBoardUpdate = false; lastLoadedBoardKey = `${currentProjectId}|${currentBoardName}`; break; }
                 boardData = data.board;
                 if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
-                    clientLists = boardData.lists;
-                    // ensure arrays exist for every list status
-                    clientLists.listIds.forEach(id => {
-                        const st = clientLists.lists[id] && clientLists.lists[id].status;
-                        if (st && !Array.isArray(boardData[st])) boardData[st] = [];
-                    });
-                    saveClientListsToStorage();
+                    if (hasPendingListsSync()) {
+                        const localLists = loadClientListsFromStorage();
+                        if (localLists && listsMatch(localLists, boardData.lists)) {
+                            clearPendingListsSync();
+                            pendingListsSyncKey = null;
+                            clientLists = boardData.lists;
+                            // ensure arrays exist for every list status
+                            clientLists.listIds.forEach(id => {
+                                const st = clientLists.lists[id] && clientLists.lists[id].status;
+                                if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                            });
+                            saveClientListsToStorage();
+                        } else if (localLists) {
+                            clientLists = localLists;
+                            boardData.lists = localLists;
+                            const allowed = new Set();
+                            clientLists.listIds.forEach(id => {
+                                const st = clientLists.lists[id] && clientLists.lists[id].status;
+                                if (st) allowed.add(st);
+                            });
+                            Object.keys(boardData || {}).forEach(k => {
+                                if (k !== 'archived' && Array.isArray(boardData[k]) && !allowed.has(k)) {
+                                    delete boardData[k];
+                                }
+                            });
+                            clientLists.listIds.forEach(id => {
+                                const st = clientLists.lists[id] && clientLists.lists[id].status;
+                                if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                            });
+                            queueListsSync();
+                        } else {
+                            clientLists = boardData.lists;
+                            saveClientListsToStorage();
+                        }
+                    } else {
+                        clientLists = boardData.lists;
+                        // ensure arrays exist for every list status
+                        clientLists.listIds.forEach(id => {
+                            const st = clientLists.lists[id] && clientLists.lists[id].status;
+                            if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                        });
+                        saveClientListsToStorage();
+                    }
                 }
                 pendingBoardUpdate = true;
                 initialBoardRendered = true;
@@ -2439,12 +2489,51 @@ async function loadBoardData() {
             boardData = await response.json();
             // Hydrate clientLists from server so list headers refresh immediately on board switch
             if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
-                clientLists = boardData.lists;
-                clientLists.listIds.forEach(id => {
-                    const st = clientLists.lists[id] && clientLists.lists[id].status;
-                    if (st && !Array.isArray(boardData[st])) boardData[st] = [];
-                });
-                saveClientListsToStorage();
+                if (hasPendingListsSync()) {
+                    const localLists = loadClientListsFromStorage();
+                    if (localLists && listsMatch(localLists, boardData.lists)) {
+                        clearPendingListsSync();
+                        pendingListsSyncKey = null;
+                        clientLists = boardData.lists;
+                        clientLists.listIds.forEach(id => {
+                            const st = clientLists.lists[id] && clientLists.lists[id].status;
+                            if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                        });
+                        saveClientListsToStorage();
+                    } else if (localLists) {
+                        clientLists = localLists;
+                        boardData.lists = localLists;
+                        const allowed = new Set();
+                        clientLists.listIds.forEach(id => {
+                            const st = clientLists.lists[id] && clientLists.lists[id].status;
+                            if (st) allowed.add(st);
+                        });
+                        Object.keys(boardData || {}).forEach(k => {
+                            if (k !== 'archived' && Array.isArray(boardData[k]) && !allowed.has(k)) {
+                                delete boardData[k];
+                            }
+                        });
+                        clientLists.listIds.forEach(id => {
+                            const st = clientLists.lists[id] && clientLists.lists[id].status;
+                            if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                        });
+                        queueListsSync();
+                    } else {
+                        clientLists = boardData.lists;
+                        clientLists.listIds.forEach(id => {
+                            const st = clientLists.lists[id] && clientLists.lists[id].status;
+                            if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                        });
+                        saveClientListsToStorage();
+                    }
+                } else {
+                    clientLists = boardData.lists;
+                    clientLists.listIds.forEach(id => {
+                        const st = clientLists.lists[id] && clientLists.lists[id].status;
+                        if (st && !Array.isArray(boardData[st])) boardData[st] = [];
+                    });
+                    saveClientListsToStorage();
+                }
             } else {
                 // Fallback to per-board storage/defaults when server has no lists meta
                 clientLists = null;
