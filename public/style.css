@@ -3706,6 +3706,13 @@ body {
     transform: scale(0.998);
     box-shadow: var(--shadow-md);
 }
+body.dragging-cards {
+    cursor: grabbing;
+    user-select: none;
+}
+.card.drag-hidden {
+    display: none !important;
+}
 
 /* 顶部添加区域更轻盈 */
 .add-card-top {
@@ -4507,7 +4514,14 @@ body {
 .card-composer .composer-open:hover { background: rgba(9,30,66,.06); }
 
 /* card dragging placeholder */
-.card-placeholder { background: rgba(236,238,240,.6); border: 2px dashed #d0d4da; border-radius: 10px; box-shadow: inset 0 0 0 2px rgba(9,30,66,.05), 0 3px 6px rgba(9,30,66,.12); }
+.card-placeholder {
+    background: rgba(236,238,240,.6);
+    border: 2px dashed #d0d4da;
+    border-radius: 10px;
+    box-shadow: inset 0 0 0 2px rgba(9,30,66,.05), 0 3px 6px rgba(9,30,66,.12);
+    min-height: 44px;
+    margin: 0 0 10px;
+}
 
 /* replace icons: list menu delete X and edit pencil */
 .list .list-header .list-menu { color: #ef4444; font-weight: 700; }

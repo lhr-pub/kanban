@@ -111,6 +111,8 @@ let draggingCardId = null;
 let draggingFromStatus = null;
 let draggingOriginContainer = null;
 let draggingCurrentContainer = null;
+let draggingCardPlaceholder = null;
+let draggingCardEl = null;
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -5179,6 +5181,20 @@ function updateContainerEmptyState(container) {
     }
 }
 
+function placeDraggingCard(container) {
+    if (!draggingCardEl) return;
+    if (draggingCardPlaceholder) {
+        if (container && draggingCardPlaceholder.parentNode !== container) {
+            container.appendChild(draggingCardPlaceholder);
+        }
+        if (draggingCardPlaceholder.parentNode) {
+            draggingCardPlaceholder.replaceWith(draggingCardEl);
+        }
+        draggingCardPlaceholder = null;
+    }
+    draggingCardEl.classList.remove('drag-hidden');
+}
+
 // 列内拖拽排序
 function enableColumnDrag(status) {
     // Support legacy ids and new dynamic containers
@@ -5194,15 +5210,21 @@ function enableColumnDrag(status) {
     const handleDragOver = (e) => {
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        const dragging = document.querySelector('.card.dragging');
+        const dragging = draggingCardEl || document.querySelector('.card.dragging');
         if (!dragging) return;
         const previousContainer = (draggingCurrentContainer && draggingCurrentContainer !== container) ? draggingCurrentContainer : null;
         delete container.dataset.empty;
         const afterEl = getDragAfterElement(container, e.clientY);
-        if (afterEl == null) {
-            container.appendChild(dragging);
+        if (!draggingCardPlaceholder) {
+            if (afterEl == null) {
+                container.appendChild(dragging);
+            } else {
+                container.insertBefore(dragging, afterEl);
+            }
+        } else if (afterEl == null) {
+            container.appendChild(draggingCardPlaceholder);
         } else {
-            container.insertBefore(dragging, afterEl);
+            container.insertBefore(draggingCardPlaceholder, afterEl);
         }
         draggingCurrentContainer = container;
         if (previousContainer && previousContainer !== container) {
@@ -5212,6 +5234,7 @@ function enableColumnDrag(status) {
 
     const handleDrop = () => {
         delete container.dataset.empty;
+        placeDraggingCard(container);
         const toStatus = status;
         const fromStatus = draggingFromStatus;
         const movedCardId = draggingCardId;
@@ -5241,11 +5264,33 @@ function makeDraggable(cardEl) {
     cardEl.setAttribute('draggable', 'true');
     cardEl.ondragstart = (e) => {
         cardEl.classList.add('dragging');
+        draggingCardEl = cardEl;
         const col = cardEl.closest('.column, .list');
         draggingFromStatus = col ? col.getAttribute('data-status') : null;
         draggingCardId = cardEl.dataset.cardId;
         draggingOriginContainer = cardEl.closest('.cards');
         draggingCurrentContainer = draggingOriginContainer;
+        if (draggingCardPlaceholder && draggingCardPlaceholder.parentNode) {
+            draggingCardPlaceholder.remove();
+        }
+        draggingCardPlaceholder = document.createElement('div');
+        draggingCardPlaceholder.className = 'card-placeholder';
+        draggingCardPlaceholder.setAttribute('aria-hidden', 'true');
+        try {
+            const rect = cardEl.getBoundingClientRect();
+            draggingCardPlaceholder.style.height = `${rect.height}px`;
+            const style = window.getComputedStyle(cardEl);
+            draggingCardPlaceholder.style.marginTop = style.marginTop;
+            draggingCardPlaceholder.style.marginBottom = style.marginBottom;
+        } catch (e) {}
+        if (draggingOriginContainer) {
+            cardEl.after(draggingCardPlaceholder);
+        }
+        requestAnimationFrame(() => {
+            if (draggingCardPlaceholder && cardEl.classList.contains('dragging')) {
+                cardEl.classList.add('drag-hidden');
+            }
+        });
         if (draggingOriginContainer) delete draggingOriginContainer.dataset.empty;
         document.body.classList.add('dragging-cards');
         try { e.dataTransfer && e.dataTransfer.setData('text/plain', draggingCardId); e.dataTransfer.effectAllowed = 'move'; } catch (e) {}
@@ -5253,6 +5298,7 @@ function makeDraggable(cardEl) {
     cardEl.ondragend = () => {
         cardEl.classList.remove('dragging');
         document.body.classList.remove('dragging-cards');
+        placeDraggingCard(draggingCurrentContainer || draggingOriginContainer);
         const currentContainer = cardEl.closest('.cards');
         updateContainerEmptyState(currentContainer);
         if (draggingOriginContainer && draggingOriginContainer !== currentContainer) {
@@ -5265,6 +5311,7 @@ function makeDraggable(cardEl) {
         draggingFromStatus = null;
         draggingOriginContainer = null;
         draggingCurrentContainer = null;
+        draggingCardEl = null;
     };
 }
 
@@ -8770,4 +8817,3 @@ function parsePasteContent(text, existingLists) {
     return result;
 }
 // ... existing code ...
-
