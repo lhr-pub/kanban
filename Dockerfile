@@ -1,5 +1,18 @@
 # syntax=docker/dockerfile:1
 
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Install dependencies (including dev for build tools)
+COPY package*.json ./
+RUN npm ci
+
+# Copy assets and build minified CSS
+COPY postcss.config.cjs ./postcss.config.cjs
+COPY server.js ./server.js
+COPY public ./public
+RUN npm run build:css:min && cp public/style.merged.min.css public/style.css
+
 FROM node:20-alpine AS base
 WORKDIR /app
 
@@ -11,7 +24,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 # Copy application source
-COPY public ./public
+COPY --from=build /app/public ./public
 COPY server.js ./server.js
 COPY index.html ./index.html
 COPY kanban.js ./kanban.js
