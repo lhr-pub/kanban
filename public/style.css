@@ -5119,7 +5119,32 @@ body {
 }
 
 /* list header actions */
-.list-header { display:flex; align-items:center; justify-content:space-between; }
+.list-header {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--list-bg, #ebecf0);
+}
+
+/* sticky header must cover list edges to avoid background seams */
+#boardPage .list-header {
+    margin: 0 -6px 4px !important;
+    padding: 6px 12px 6px !important;
+    top: -6px;
+    background: var(--list-bg) !important;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    border-bottom: 1px solid #e2e8f0;
+}
+#boardPage .list-header .list-title {
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    margin-left: 14px !important;
+}
 .list-actions { display:inline-flex; align-items:center; gap:0px; }
 .list-archive, .list-menu {
     width:28px; height:28px; border:0;
