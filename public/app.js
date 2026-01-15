@@ -9027,23 +9027,10 @@ document.addEventListener('paste', async function(e) {
     if (!boardPage || boardPage.classList.contains('hidden')) return;
 
     // 检查是否有输入框激活（如果是，让默认粘贴行为生效）
-    const activeEl = document.activeElement;
-    const isEditable = activeEl && (
-        activeEl.tagName === 'INPUT' ||
-        activeEl.tagName === 'TEXTAREA' ||
-        activeEl.isContentEditable ||
-        activeEl.contentEditable === 'true' ||
-        activeEl.closest('[contenteditable="true"]') ||
-        activeEl.closest('.card-composer') ||
-        activeEl.closest('.add-list-form')
-    );
-    if (isEditable) return;
+    if (isGlobalTextInputActive()) return;
 
     // 检查是否有弹窗打开（不拦截弹窗内的粘贴）
-    const hasModal = document.querySelector('.modal:not(.hidden)') ||
-                     document.querySelector('#editModal:not(.hidden)') ||
-                     document.querySelector('.drawer.open');
-    if (hasModal) return;
+    if (hasOpenModal()) return;
 
     // 获取剪贴板内容
     let clipboardText = '';
@@ -9156,6 +9143,44 @@ document.addEventListener('paste', async function(e) {
     }
 });
 
+function isGlobalTextInputActive(){
+    const activeEl = document.activeElement;
+    if (!activeEl) return false;
+    return !!(
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.isContentEditable ||
+        activeEl.contentEditable === 'true' ||
+        activeEl.closest('[contenteditable="true"]') ||
+        activeEl.closest('.card-composer') ||
+        activeEl.closest('.add-list-form')
+    );
+}
+
+function hasOpenModal(){
+    return !!(
+        document.querySelector('.modal:not(.hidden)') ||
+        document.querySelector('#editModal:not(.hidden)') ||
+        document.querySelector('.drawer.open')
+    );
+}
+
+document.addEventListener('keydown', function(e){
+    if (!lastPasteUndo) return;
+    if (!boardPage || boardPage.classList.contains('hidden')) return;
+    if (e.isComposing || e.keyCode === 229) return;
+    if (isGlobalTextInputActive()) return;
+    if (hasOpenModal()) return;
+    const key = (e.key || '').toLowerCase();
+    if (key !== 'z') return;
+    if (!(e.ctrlKey || e.metaKey)) return;
+    if (e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    undoPasteImport(lastPasteUndo);
+    lastPasteUndo = null;
+    if (lastPasteUndoTimer) { clearTimeout(lastPasteUndoTimer); lastPasteUndoTimer = null; }
+}, true);
+
 function schedulePasteUndo(message, payload){
     if (!payload || !Array.isArray(payload.cards) || payload.cards.length === 0) {
         uiToast(message, 'success');
@@ -9239,19 +9264,38 @@ function parsePasteContent(text, existingLists) {
         // 构建现有列表的 status 集合和名称映射
         const existingStatusSet = new Set();
         const existingNameToStatus = {};
+        const normalizeListTitleForMatch = (value) => {
+            return (value || '').replace(/\u3000/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+        };
+        const stripLeadingEmoji = (value) => {
+            return (value || '').replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
+        };
         for (const listId of existingLists.listIds) {
             const list = existingLists.lists[listId];
             if (list) {
                 existingStatusSet.add(list.status);
-                const title = (list.title || '').trim().toLowerCase();
-                existingNameToStatus[title] = list.status;
+                const title = normalizeListTitleForMatch(list.title);
+                if (title) existingNameToStatus[title] = list.status;
                 // 支持去除 emoji 后的名称
-                const titleNoEmoji = title.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
-                if (titleNoEmoji !== title) {
+                const titleNoEmoji = normalizeListTitleForMatch(stripLeadingEmoji(list.title || ''));
+                if (titleNoEmoji && titleNoEmoji !== title) {
                     existingNameToStatus[titleNoEmoji] = list.status;
                 }
             }
         }
+        const usedStatuses = new Set(existingStatusSet);
+        const makeUniqueStatus = () => {
+            let key = '';
+            for (let i = 0; i < 6; i++) {
+                key = 'list_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+                if (!usedStatuses.has(key) && key !== 'archived') break;
+            }
+            while (usedStatuses.has(key) || key === 'archived') {
+                key = 'list_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+            }
+            usedStatuses.add(key);
+            return key;
+        };
 
         // 处理解析出的列表和卡片
         const parsedLists = parsedBoard.lists;
@@ -9263,7 +9307,7 @@ function parsePasteContent(text, existingLists) {
                 if (!list) continue;
 
                 const listTitle = list.title || '';
-                const listTitleLower = listTitle.toLowerCase();
+                const listTitleLower = normalizeListTitleForMatch(listTitle);
                 const parsedStatus = list.status;
 
                 // 尝试匹配现有列表
@@ -9279,21 +9323,26 @@ function parsePasteContent(text, existingLists) {
                 }
 
                 // 2. 按名称匹配
-                if (!targetStatus && existingNameToStatus[listTitleLower]) {
+                if (!targetStatus && listTitleLower && existingNameToStatus[listTitleLower]) {
                     targetStatus = existingNameToStatus[listTitleLower];
                 }
 
                 // 3. 去除 emoji 后按名称匹配
                 if (!targetStatus) {
-                    const titleNoEmoji = listTitleLower.replace(/^[\u{1F300}-\u{1F9FF}]\s*/u, '');
-                    if (existingNameToStatus[titleNoEmoji]) {
+                    const titleNoEmoji = normalizeListTitleForMatch(stripLeadingEmoji(listTitle));
+                    if (titleNoEmoji && existingNameToStatus[titleNoEmoji]) {
                         targetStatus = existingNameToStatus[titleNoEmoji];
                     }
                 }
 
                 // 4. 如果都不匹配，创建新列表
                 if (!targetStatus) {
-                    targetStatus = parsedStatus;
+                    if (parsedStatus && !usedStatuses.has(parsedStatus) && parsedStatus !== 'archived') {
+                        targetStatus = parsedStatus;
+                        usedStatuses.add(targetStatus);
+                    } else {
+                        targetStatus = makeUniqueStatus();
+                    }
                     result.newLists.push({ title: listTitle, status: targetStatus });
                 }
 
