@@ -2178,6 +2178,43 @@ app.post('/api/archive-list', async (req, res) => {
     return res.json({ success: true, count: result ? result.count : 0 });
 });
 
+// 删除卡片（HTTP 兜底）
+app.post('/api/delete-card', async (req, res) => {
+    const { projectId, boardName, cardId } = req.body || {};
+    if (!projectId || !boardName || !cardId) {
+        return res.status(400).json({ message: '参数不完整' });
+    }
+
+    const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
+        let found = false;
+        for (const status of Object.keys(bd)) {
+            if (!Array.isArray(bd[status])) continue;
+            const cardIndex = bd[status].findIndex(card => card.id === cardId);
+            if (cardIndex !== -1) {
+                bd[status].splice(cardIndex, 1);
+                found = true;
+                break;
+            }
+        }
+        return { data: bd, result: { changed: found } };
+    });
+
+    if (!success) {
+        return res.status(500).json({ message: '删除失败' });
+    }
+
+    if (result && result.changed) {
+        broadcastToBoard(projectId, boardName, {
+            type: 'board-update',
+            projectId,
+            boardName,
+            board: boardData
+        });
+    }
+
+    return res.json({ success: true });
+});
+
 // 保存列表元数据（HTTP 兜底）
 app.post('/api/save-lists', async (req, res) => {
     const { projectId, boardName, lists } = req.body || {};

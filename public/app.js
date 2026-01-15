@@ -116,6 +116,8 @@ let draggingCardEl = null;
 let showCompletedCards = false;
 let pendingListsSyncKey = null;
 let archiveListFilter = 'all';
+let lastPasteUndo = null;
+let lastPasteUndoTimer = null;
 const CARD_ADD_RETRY_MS = 8000;
 const CARD_ADD_MAX_RETRIES = 4;
 
@@ -198,6 +200,15 @@ function dropPendingCardAddsForStatus(status){
     const pending = loadPendingCardAdds();
     if (!pending.length) return;
     const next = pending.filter(item => item && item.status !== status);
+    if (next.length !== pending.length) savePendingCardAdds(next);
+}
+
+function dropPendingCardAddsByIds(idSet){
+    const pending = loadPendingCardAdds();
+    if (!pending.length) return;
+    const ids = (idSet instanceof Set) ? idSet : new Set(idSet || []);
+    if (!ids.size) return;
+    const next = pending.filter(item => !(item && item.card && ids.has(item.card.id)));
     if (next.length !== pending.length) savePendingCardAdds(next);
 }
 
@@ -342,6 +353,26 @@ function sendRestoreCard(cardId){
     }
     if (typeof fetch === 'function') {
         fetch('/api/restore-card', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        }).catch(() => {});
+    }
+}
+
+function sendDeleteCard(cardId){
+    if (!currentProjectId || !currentBoardName || !cardId) return;
+    const payload = {
+        projectId: currentProjectId,
+        boardName: currentBoardName,
+        cardId
+    };
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(Object.assign({ type:'delete-card' }, payload)));
+    }
+    if (typeof fetch === 'function') {
+        fetch('/api/delete-card', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -570,6 +601,16 @@ function getCardsByStatus(status) {
 
 function getAllStatusKeys(){
     return Object.keys(boardData).filter(k => Array.isArray(boardData[k]));
+}
+
+function findListIdByStatus(status){
+    if (!clientLists || !Array.isArray(clientLists.listIds)) return null;
+    return clientLists.listIds.find(id => clientLists.lists[id] && clientLists.lists[id].status === status) || null;
+}
+
+function reindexClientLists(){
+    if (!clientLists || !Array.isArray(clientLists.listIds)) return;
+    clientLists.listIds.forEach((id, idx) => { if (clientLists.lists[id]) clientLists.lists[id].pos = idx; });
 }
 
 function getOrderedStatusKeys() {
@@ -3473,14 +3514,7 @@ async function deleteCardById(cardId) {
         }
     }
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'delete-card',
-            projectId: currentProjectId,
-            boardName: currentBoardName,
-            cardId: cardId
-        }));
-    }
+    sendDeleteCard(cardId);
 
     renderBoard();
     uiToast('卡片已删除', 'success');
@@ -3625,11 +3659,7 @@ function saveCardFromDrawer(){
 async function deleteCardFromDrawer(){
     if(!drawerCardId) return;
     { const ok = await uiConfirm('确定要删除这个任务吗？','删除任务'); if (!ok) return; }
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId: drawerCardId
-        }));
-    }
+    sendDeleteCard(drawerCardId);
     closeCardModal();
 }
 
@@ -4060,11 +4090,7 @@ async function deleteCard() {
     if (!editingCardId) return;
     const ok = await uiConfirm('确定要删除这个任务吗？','删除任务');
     if (!ok) return;
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId: editingCardId
-        }));
-    }
+    sendDeleteCard(editingCardId);
     closeEditModal();
 }
 
@@ -4402,6 +4428,20 @@ function cancelImportText() {
     if (importTextArea) importTextArea.value = '';
 }
 
+function isTaskPaperHeaderLine(line){
+    const trimmed = (line || '').trim();
+    if (!trimmed) return false;
+    if (trimmed.startsWith('#')) return false;
+    if (!/[：:]$/.test(trimmed)) return false;
+    if (trimmed.includes('://') || trimmed.includes('：//')) return false;
+    return true;
+}
+
+function getTaskPaperHeaderTitle(line){
+    if (!isTaskPaperHeaderLine(line)) return null;
+    return line.trim().replace(/[：:]$/, '').trim();
+}
+
 // 解析 Markdown 为看板数据
 /**
  * TaskPaper 风格解析（兼容旧格式）
@@ -4431,7 +4471,7 @@ function parseMarkdownToBoard(markdown) {
     let listCounter = 0;
 
     // 检测是否为 TaskPaper 格式（简单判断：有 "xxx:" 开头的行且没有 ## 开头的行）
-    const hasTaskPaperHeaders = lines.some(l => /^[^#\s][^:]*:$/.test(l.trim()));
+    const hasTaskPaperHeaders = lines.some(l => isTaskPaperHeaderLine(l));
     const hasMarkdownHeaders = lines.some(l => /^##\s+/.test(l));
     const isTaskPaperFormat = hasTaskPaperHeaders && !hasMarkdownHeaders;
 
@@ -4440,7 +4480,7 @@ function parseMarkdownToBoard(markdown) {
     }
 
     function normalizeHeadingToKey(h){
-        const t = h.trim().replace(/^##\s+/, '').replace(/:$/, '');
+        const t = h.trim().replace(/^##\s+/, '').replace(/[：:]$/, '');
         // legacy quick mapping
         if (t.startsWith('📋') || /\bTODO\b/i.test(t) || t === '待办') return 'todo';
         if (t.startsWith('🔄') || /\bDOING\b/i.test(t) || t === '进行中') return 'doing';
@@ -4491,8 +4531,8 @@ function parseMarkdownToBoard(markdown) {
         if (!trimmedLine) continue;
 
         // TaskPaper 格式：列名以冒号结尾（不是 URL）
-        if (isTaskPaperFormat && trimmedLine.endsWith(':') && !trimmedLine.includes('://')) {
-            const columnName = trimmedLine.slice(0, -1).trim();
+        if (isTaskPaperFormat && isTaskPaperHeaderLine(trimmedLine)) {
+            const columnName = getTaskPaperHeaderTitle(trimmedLine);
             if (columnName) {
                 const key = normalizeHeadingToKey(columnName);
                 currentSectionKey = key;
@@ -6916,15 +6956,42 @@ function uiToast(message, type) {
     setTimeout(() => { t.classList.remove('show'); t.addEventListener('transitionend', () => t.remove(), { once: true }); }, 2500);
 }
 
+function uiToastAction(message, actionLabel, onAction, type, timeoutMs){
+    const container = ensureToastContainer();
+    const t = document.createElement('div');
+    t.className = 'toast toast-action ' + (type ? 'toast-' + type : '');
+    const msg = document.createElement('div');
+    msg.className = 'toast-message';
+    msg.textContent = message;
+    const btn = document.createElement('button');
+    btn.className = 'toast-action-btn';
+    btn.type = 'button';
+    btn.textContent = actionLabel || '撤销';
+    let closed = false;
+    let timer = null;
+    const close = () => {
+        if (closed) return;
+        closed = true;
+        if (timer) clearTimeout(timer);
+        t.classList.remove('show');
+        t.addEventListener('transitionend', () => t.remove(), { once: true });
+    };
+    btn.onclick = () => { if (typeof onAction === 'function') onAction(); close(); };
+    t.appendChild(msg);
+    t.appendChild(btn);
+    container.appendChild(t);
+    setTimeout(() => { t.classList.add('show'); }, 10);
+    const delay = typeof timeoutMs === 'number' ? timeoutMs : 5000;
+    timer = setTimeout(close, delay);
+}
+
 // 删除归档卡片
 async function deleteArchivedCard(cardId){
     const ok = await uiConfirm('确定要删除该归档任务吗？此操作不可恢复。','删除任务');
     if (!ok) return;
     const idx = (boardData.archived||[]).findIndex(c=>c.id===cardId);
     if (idx !== -1) { boardData.archived.splice(idx,1); }
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type:'delete-card', projectId: currentProjectId, boardName: currentBoardName, cardId }));
-    }
+    sendDeleteCard(cardId);
     renderArchive();
 }
 
@@ -9016,6 +9083,7 @@ document.addEventListener('paste', async function(e) {
 
     // 先创建需要的新列表
     let newListsCreated = 0;
+    const createdListStatuses = [];
     if (result.newLists && result.newLists.length > 0) {
         ensureClientLists();
         for (const newList of result.newLists) {
@@ -9029,6 +9097,7 @@ document.addEventListener('paste', async function(e) {
                 // 清空可能残留的旧数据（被删除的列表可能留有数据）
                 boardData[newList.status] = [];
                 newListsCreated++;
+                createdListStatuses.push(newList.status);
             }
         }
         // 保存列表并同步到服务器
@@ -9046,6 +9115,7 @@ document.addEventListener('paste', async function(e) {
     // 收集新建列表的 status（这些列表的 boardData 已在上面清空）
     const newListStatuses = new Set((result.newLists || []).map(nl => nl.status));
 
+    const createdCards = [];
     for (const { card, status } of result.cards) {
         // 更新本地数据
         if (!Array.isArray(boardData[status])) boardData[status] = [];
@@ -9060,6 +9130,7 @@ document.addEventListener('paste', async function(e) {
         // 通过 WebSocket/HTTP 同步到服务器（始终落本地队列以防刷新丢失）
         queuePendingCardAdd(status, card, 'top');
         sendCardAdd(status, card, 'top');
+        createdCards.push({ id: card.id, status });
         createdCount++;
     }
 
@@ -9076,14 +9147,74 @@ document.addEventListener('paste', async function(e) {
         if (newListsCreated > 0) {
             msg += `（新建 ${newListsCreated} 个列表）`;
         }
-        uiToast(msg, 'success');
+        schedulePasteUndo(msg, { cards: createdCards, createdListStatuses });
     } else {
         const firstListId = updatedLists.listIds[0];
         const firstList = updatedLists.lists[firstListId];
         const listTitle = firstList?.title || firstList?.status || '列表';
-        uiToast(`已在「${listTitle}」创建 ${createdCount} 张卡片`, 'success');
+        schedulePasteUndo(`已在「${listTitle}」创建 ${createdCount} 张卡片`, { cards: createdCards, createdListStatuses });
     }
 });
+
+function schedulePasteUndo(message, payload){
+    if (!payload || !Array.isArray(payload.cards) || payload.cards.length === 0) {
+        uiToast(message, 'success');
+        return;
+    }
+    const ttlMs = 8000;
+    lastPasteUndo = payload;
+    if (lastPasteUndoTimer) { clearTimeout(lastPasteUndoTimer); lastPasteUndoTimer = null; }
+    lastPasteUndoTimer = setTimeout(() => { lastPasteUndo = null; lastPasteUndoTimer = null; }, ttlMs);
+    uiToastAction(message, '撤销', () => {
+        if (!lastPasteUndo) return;
+        undoPasteImport(lastPasteUndo);
+        lastPasteUndo = null;
+        if (lastPasteUndoTimer) { clearTimeout(lastPasteUndoTimer); lastPasteUndoTimer = null; }
+    }, 'success', ttlMs);
+}
+
+function undoPasteImport(payload){
+    if (!payload || !Array.isArray(payload.cards) || payload.cards.length === 0) return;
+    const ids = new Set(payload.cards.map(item => item && item.id).filter(Boolean));
+    if (!ids.size) return;
+
+    getAllStatusKeys().forEach(status => {
+        const arr = boardData[status];
+        if (!Array.isArray(arr)) return;
+        const next = arr.filter(card => !(card && ids.has(card.id)));
+        boardData[status] = next;
+    });
+
+    dropPendingCardAddsByIds(ids);
+    ids.forEach(id => sendDeleteCard(id));
+
+    const createdListStatuses = Array.isArray(payload.createdListStatuses) ? payload.createdListStatuses : [];
+    if (createdListStatuses.length) {
+        ensureClientLists();
+        createdListStatuses.forEach(status => {
+            const listId = findListIdByStatus(status);
+            const hasCards = Array.isArray(boardData[status]) && boardData[status].length > 0;
+            if (!hasCards) {
+                if (listId) {
+                    clientLists.listIds = clientLists.listIds.filter(id => id !== listId);
+                    delete clientLists.lists[listId];
+                }
+                if (Array.isArray(boardData[status]) && boardData[status].length === 0) {
+                    delete boardData[status];
+                }
+            }
+        });
+        reindexClientLists();
+        saveClientListsToStorage();
+        queueListsSync();
+    }
+
+    renderBoard();
+    if (!archivePage.classList.contains('hidden')) {
+        renderArchive();
+    }
+    uiToast('已撤销导入', 'info');
+}
 
 /**
  * 解析粘贴内容，复用 parseMarkdownToBoard 进行 TaskPaper/Markdown 解析
@@ -9096,7 +9227,7 @@ function parsePasteContent(text, existingLists) {
     const result = { cards: [], isTaskPaperFormat: false, newLists: [] };
 
     // 检测是否为 TaskPaper/Markdown 格式
-    const hasTaskPaperHeaders = lines.some(l => /^[^#\s][^:]*:$/.test(l.trim()));
+    const hasTaskPaperHeaders = lines.some(l => isTaskPaperHeaderLine(l));
     const hasMarkdownHeaders = lines.some(l => /^##\s+/.test(l));
     const isStructuredFormat = hasTaskPaperHeaders || hasMarkdownHeaders;
 

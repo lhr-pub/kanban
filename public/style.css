@@ -4744,6 +4744,22 @@ body {
     transition: all .25s ease;
     max-width: 320px;
 }
+.toast-action {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.toast-message { flex: 1 1 auto; }
+.toast-action-btn {
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: #fff;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.toast-action-btn:hover { background: rgba(255, 255, 255, 0.28); }
 .toast.show { transform: translateY(0); opacity: 1; }
 .toast-success { background: #047857; }
 .toast-error { background: #b91c1c; }
