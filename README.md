@@ -192,7 +192,7 @@ sequenceDiagram
     C->>S: POST /api/move-board
     S->>D: Move file to {toPid}_{board}.json
     S->>D: Update projects.json (from→to)
-    S->>D: Update users.json stars projectId; clear pinnedBoards[from]
+    S->>D: Update users.json stars projectId, clear pinnedBoards
     S-->>C: 200 OK
     S-->>C: WS board-moved
   end
