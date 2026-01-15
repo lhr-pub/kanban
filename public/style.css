@@ -5145,14 +5145,13 @@ body {
     border: 0 !important;
     margin-left: 14px !important;
     display: inline-block;
-    position: relative;
 }
-#boardPage .list-header .list-title::after {
+#boardPage .list-header::after {
     content: '';
     position: absolute;
-    left: 0;
-    right: 0;
-    bottom: -9px;
+    left: 14px;
+    right: 14px;
+    bottom: 0;
     height: 1px;
     background: #e2e8f0;
 }
