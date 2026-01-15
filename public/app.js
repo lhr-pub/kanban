@@ -117,6 +117,7 @@ let showCompletedCards = false;
 let pendingListsSyncKey = null;
 let archiveListFilter = 'all';
 let listHeaderLineStyle = 'short';
+let boardDragScrollEnabled = true;
 let undoStack = [];
 let redoStack = [];
 let undoBoardKey = null;
@@ -183,6 +184,12 @@ function getListHeaderLineStorageKey(projectId, boardName){
     const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
     const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
     return `kanbanListHeaderLine:${pid}:${bname}`;
+}
+
+function getBoardDragScrollStorageKey(projectId, boardName){
+    const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
+    const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
+    return `kanbanBoardDragScroll:${pid}:${bname}`;
 }
 
 function getPendingCardAddsStorageKey(projectId, boardName){
@@ -580,6 +587,29 @@ function updateListHeaderLineButton(){
     btn.textContent = `标题线: ${label}`;
 }
 
+function updateBoardDragScrollButton(){
+    const btn = document.getElementById('boardDragScrollBtn');
+    if (!btn) return;
+    const label = boardDragScrollEnabled ? '开' : '关';
+    btn.textContent = `拖动移动: ${label}`;
+    btn.setAttribute('aria-pressed', boardDragScrollEnabled ? 'true' : 'false');
+    if (btn.classList && btn.classList.toggle) {
+        btn.classList.toggle('active', boardDragScrollEnabled);
+    }
+}
+
+function applyBoardDragScrollState(){
+    const container = document.getElementById('listsContainer');
+    if (container) {
+        if (boardDragScrollEnabled) {
+            container.classList.remove('drag-scroll-disabled');
+        } else {
+            container.classList.add('drag-scroll-disabled');
+        }
+    }
+    updateBoardDragScrollButton();
+}
+
 function applyListHeaderLineStyle(){
     const page = document.getElementById('boardPage');
     if (!page) return;
@@ -609,6 +639,20 @@ function loadListHeaderLinePreference(){
     applyListHeaderLineStyle();
 }
 
+function loadBoardDragScrollPreference(){
+    try {
+        const key = getBoardDragScrollStorageKey();
+        const stored = localStorage.getItem(key);
+        boardDragScrollEnabled = stored !== 'false';
+    } catch(_) {
+        boardDragScrollEnabled = true;
+    }
+    applyBoardDragScrollState();
+    if (!boardDragScrollEnabled) {
+        stopBoardDragScroll();
+    }
+}
+
 function saveShowCompletedPreference(){
     try {
         const key = getShowCompletedStorageKey();
@@ -621,6 +665,13 @@ function saveListHeaderLinePreference(){
         const key = getListHeaderLineStorageKey();
         const style = (listHeaderLineStyle === 'none' || listHeaderLineStyle === 'title') ? listHeaderLineStyle : 'short';
         localStorage.setItem(key, style);
+    } catch(_) {}
+}
+
+function saveBoardDragScrollPreference(){
+    try {
+        const key = getBoardDragScrollStorageKey();
+        localStorage.setItem(key, boardDragScrollEnabled ? 'true' : 'false');
     } catch(_) {}
 }
 
@@ -641,6 +692,16 @@ function toggleListHeaderLineStyle(){
     }
     saveListHeaderLinePreference();
     applyListHeaderLineStyle();
+}
+
+function toggleBoardDragScroll(){
+    boardDragScrollEnabled = !boardDragScrollEnabled;
+    saveBoardDragScrollPreference();
+    applyBoardDragScrollState();
+    if (!boardDragScrollEnabled) {
+        stopBoardDragScroll();
+    }
+    adjustBoardCentering();
 }
 
 function getCurrentBoardKey(){
@@ -1109,6 +1170,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (toggleCompletedBtn) toggleCompletedBtn.addEventListener('click', toggleCompletedView);
     const listHeaderLineBtn = document.getElementById('listHeaderLineBtn');
     if (listHeaderLineBtn) listHeaderLineBtn.addEventListener('click', toggleListHeaderLineStyle);
+    const boardDragScrollBtn = document.getElementById('boardDragScrollBtn');
+    if (boardDragScrollBtn) boardDragScrollBtn.addEventListener('click', toggleBoardDragScroll);
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
@@ -1425,6 +1488,8 @@ function toggleBgMenu(e){
         menu.style.left = `${window.scrollX + rect.left}px`;
         menu.classList.remove('hidden');
         bindBgMenuOnce();
+        updateListHeaderLineButton();
+        updateBoardDragScrollButton();
     } else {
         hideBgMenu();
     }
@@ -1436,6 +1501,8 @@ function bindBgMenuOnce(){
     const useDefault = document.getElementById('bgUseDefault');
     const clearBg = document.getElementById('bgClear');
     const uploadServer = document.getElementById('bgUploadServer');
+    const listHeaderLineBtn = document.getElementById('listHeaderLineBtn');
+    const boardDragScrollBtn = document.getElementById('boardDragScrollBtn');
     // Expand default options if multiple defaults available
     if (!menu._defaultsBound) {
         menu._defaultsBound = true;
@@ -1462,6 +1529,8 @@ function bindBgMenuOnce(){
     // no manual text color options
     if (uploadServer) uploadServer.onclick = () => { hideBgMenu(); const fileInput = document.getElementById('bgUploadFile'); fileInput && fileInput.click(); };
     if (clearBg) clearBg.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/clear', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser }) }); if (rs.ok) { applyBoardBackground(''); uiToast('已清除背景','success'); } else { const rj = await rs.json().catch(()=>({})); uiToast((rj && rj.message) || '清除失败','error'); } } catch (err) { uiToast('清除失败','error'); } };
+    if (listHeaderLineBtn) listHeaderLineBtn.onclick = () => { hideBgMenu(); toggleListHeaderLineStyle(); };
+    if (boardDragScrollBtn) boardDragScrollBtn.onclick = () => { hideBgMenu(); toggleBoardDragScroll(); };
     if (!bgMenuOutsideClickHandler) {
         bgMenuOutsideClickHandler = (ev) => {
             const m = document.getElementById('bgMenu');
@@ -1647,6 +1716,7 @@ function showBoard(replaceHistory) {
     updateBoardHeader();
     loadShowCompletedPreference();
     loadListHeaderLinePreference();
+    loadBoardDragScrollPreference();
     const desiredKey = `${currentProjectId}|${currentBoardName}`;
     if (lastLoadedBoardKey === desiredKey) {
         // 同一个看板：直接渲染并确保 WS 已加入，不再重复拉取
@@ -2936,11 +3006,21 @@ function handleWebSocketMessage(data) {
                         localStorage.removeItem(oldKey);
                     }
                 } catch (_) {}
+                try {
+                    const oldKey = getBoardDragScrollStorageKey(currentProjectId, data.oldName);
+                    const newKey = getBoardDragScrollStorageKey(currentProjectId, data.newName);
+                    const stored = localStorage.getItem(oldKey);
+                    if (stored !== null) {
+                        localStorage.setItem(newKey, stored);
+                        localStorage.removeItem(oldKey);
+                    }
+                } catch (_) {}
                 currentBoardName = data.newName;
                 localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
                 updateBoardHeader();
                 loadShowCompletedPreference();
                 loadListHeaderLinePreference();
+                loadBoardDragScrollPreference();
                 // Keep history state consistent without reloading UI
                 try { updateHistory('board', true); } catch (e) {}
                 // Re-join the renamed board on the existing socket (no reconnect to avoid flicker)
@@ -6258,6 +6338,8 @@ let boardDragBound = false;
 let boardDragActive = false;
 let boardDragStartX = 0;
 let boardDragStartScrollLeft = 0;
+let boardDragOnMouseMove = null;
+let boardDragOnMouseUp = null;
 
 function bindBoardDragScroll() {
     if (boardDragBound) return;
@@ -6304,14 +6386,17 @@ function bindBoardDragScroll() {
         boardDragActive = false;
         container.classList.remove('drag-scroll-active');
         document.body.classList.remove('dragging-board');
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', stopDrag);
+        if (boardDragOnMouseMove) document.removeEventListener('mousemove', boardDragOnMouseMove);
+        if (boardDragOnMouseUp) document.removeEventListener('mouseup', boardDragOnMouseUp);
     };
+    boardDragOnMouseMove = onMouseMove;
+    boardDragOnMouseUp = stopDrag;
 
     const onMouseDown = (e) => {
         if (e.button !== 0) return;
         if (e.defaultPrevented) return;
         if (draggingListEl || draggingCardEl || document.body.classList.contains('dragging-cards')) return;
+        if (!boardDragScrollEnabled) return;
         if (isBlockedTarget(e.target)) return;
 
         boardDragActive = true;
@@ -6321,13 +6406,23 @@ function bindBoardDragScroll() {
         document.body.classList.add('dragging-board');
         e.preventDefault();
 
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', stopDrag);
+        document.addEventListener('mousemove', boardDragOnMouseMove);
+        document.addEventListener('mouseup', boardDragOnMouseUp);
     };
 
     container.addEventListener('mousedown', onMouseDown);
 }
 // ===== End Board drag scroll =====
+
+function stopBoardDragScroll(){
+    if (!boardDragActive) return;
+    boardDragActive = false;
+    const container = document.getElementById('listsContainer');
+    if (container) container.classList.remove('drag-scroll-active');
+    document.body.classList.remove('dragging-board');
+    if (boardDragOnMouseMove) document.removeEventListener('mousemove', boardDragOnMouseMove);
+    if (boardDragOnMouseUp) document.removeEventListener('mouseup', boardDragOnMouseUp);
+}
 
 // ===== Lists drag (mouse-based) =====
 let draggingListEl = null;
@@ -7583,7 +7678,7 @@ function adjustBoardCentering() {
         } catch(_){}
         const viewportWidth = container.clientWidth || 0;
         const centerPad = Math.max(0, Math.floor((viewportWidth - addWidth) / 2));
-        const panSlack = 80;
+        const panSlack = boardDragScrollEnabled ? 80 : 0;
         const pad = centerPad + panSlack;
         container.style.paddingLeft = `${pad}px`;
         container.style.paddingRight = `${pad}px`;
@@ -7597,7 +7692,7 @@ function adjustBoardCentering() {
     const viewportWidth = container.clientWidth;
     if (totalWidth <= viewportWidth) {
         const centerPad = Math.max(0, (viewportWidth - totalWidth) / 2);
-        const panSlack = 80;
+        const panSlack = boardDragScrollEnabled ? 80 : 0;
         const pad = centerPad + panSlack;
         container.style.paddingLeft = `${pad}px`;
         container.style.paddingRight = `${pad}px`;
