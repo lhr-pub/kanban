@@ -116,10 +116,14 @@ let draggingCardEl = null;
 let showCompletedCards = false;
 let pendingListsSyncKey = null;
 let archiveListFilter = 'all';
-let lastPasteUndo = null;
-let lastPasteUndoTimer = null;
+let undoStack = [];
+let redoStack = [];
+let undoBoardKey = null;
+let undoRedoInProgress = false;
 const CARD_ADD_RETRY_MS = 8000;
 const CARD_ADD_MAX_RETRIES = 4;
+const UNDO_LIMIT = 20;
+const UNDO_TTL_MS = 10 * 60 * 1000;
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -381,6 +385,23 @@ function sendDeleteCard(cardId){
     }
 }
 
+function sendAddArchivedCard(card){
+    if (!currentProjectId || !currentBoardName || !card || !card.id) return;
+    const payload = {
+        projectId: currentProjectId,
+        boardName: currentBoardName,
+        card
+    };
+    if (typeof fetch === 'function') {
+        fetch('/api/add-archived-card', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        }).catch(() => {});
+    }
+}
+
 function sendArchiveList(status){
     if (!currentProjectId || !currentBoardName || !status) return;
     const payload = {
@@ -396,6 +417,65 @@ function sendArchiveList(status){
             keepalive: true
         }).catch(() => {});
     }
+}
+
+function performDeleteCardById(cardId){
+    if (!cardId) return;
+    removeCardByIdFromBoardData(cardId);
+    dropPendingCardAddsByIds(new Set([cardId]));
+    sendDeleteCard(cardId);
+    renderBoard();
+    if (!archivePage.classList.contains('hidden')) {
+        renderArchive();
+    }
+}
+
+function restoreDeletedCard(card, status, index){
+    if (!card || !card.id) return;
+    removeCardByIdFromBoardData(card.id);
+    if (status === 'archived') {
+        insertCardIntoStatus(card, 'archived', index);
+        sendAddArchivedCard(card);
+    } else {
+        ensureListExistsForStatus(status);
+        insertCardIntoStatus(card, status, index);
+        const pos = index === 0 ? 'top' : 'bottom';
+        queuePendingCardAdd(status, card, pos);
+        sendCardAdd(status, card, pos);
+    }
+    renderBoard();
+    if (!archivePage.classList.contains('hidden')) {
+        renderArchive();
+    }
+}
+
+function restoreArchivedCard(cardSnapshot, fromStatus, index){
+    if (!cardSnapshot || !cardSnapshot.id) return;
+    removeCardByIdFromBoardData(cardSnapshot.id);
+    const restoredCard = cloneDeep(cardSnapshot);
+    delete restoredCard.archivedFrom;
+    delete restoredCard.archivedAt;
+    ensureListExistsForStatus(fromStatus);
+    insertCardIntoStatus(restoredCard, fromStatus, index);
+    sendRestoreCard(restoredCard.id);
+    renderBoard();
+    if (!archivePage.classList.contains('hidden')) {
+        renderArchive();
+    }
+}
+
+function registerDeleteCardUndo(cardId){
+    if (undoRedoInProgress) return;
+    const loc = getCardLocation(cardId);
+    if (!loc || !loc.card) return;
+    const cardCopy = cloneDeep(loc.card);
+    pushUndoAction({
+        type: 'delete-card',
+        label: '删除任务',
+        createdAt: Date.now(),
+        undo: () => restoreDeletedCard(cardCopy, loc.status, loc.index),
+        redo: () => performDeleteCardById(cardCopy.id)
+    });
 }
 
 function sendListsSync(lists){
@@ -502,6 +582,114 @@ function toggleCompletedView(){
 
 function getCurrentBoardKey(){
     return `${currentProjectId || ''}|${currentBoardName || ''}`;
+}
+
+function resetUndoRedo(){
+    undoStack = [];
+    redoStack = [];
+    undoBoardKey = getCurrentBoardKey();
+}
+
+function pruneUndoRedo(){
+    const now = Date.now();
+    undoStack = undoStack.filter(item => item && (now - item.createdAt) <= UNDO_TTL_MS);
+    redoStack = redoStack.filter(item => item && (now - item.createdAt) <= UNDO_TTL_MS);
+}
+
+function pushUndoAction(action){
+    if (!action || undoRedoInProgress) return;
+    const key = getCurrentBoardKey();
+    if (undoBoardKey !== key) {
+        resetUndoRedo();
+    }
+    pruneUndoRedo();
+    undoStack.push(action);
+    if (undoStack.length > UNDO_LIMIT) undoStack.shift();
+    redoStack = [];
+}
+
+function performUndo(){
+    pruneUndoRedo();
+    if (undoBoardKey !== getCurrentBoardKey()) {
+        resetUndoRedo();
+        return false;
+    }
+    const action = undoStack.pop();
+    if (!action || typeof action.undo !== 'function') return false;
+    undoRedoInProgress = true;
+    try { action.undo(); } catch(_) {} finally { undoRedoInProgress = false; }
+    redoStack.push(action);
+    uiToast(`已撤销${action.label ? '：' + action.label : ''}`, 'info');
+    return true;
+}
+
+function performRedo(){
+    pruneUndoRedo();
+    if (undoBoardKey !== getCurrentBoardKey()) {
+        resetUndoRedo();
+        return false;
+    }
+    const action = redoStack.pop();
+    if (!action || typeof action.redo !== 'function') return false;
+    undoRedoInProgress = true;
+    try { action.redo(); } catch(_) {} finally { undoRedoInProgress = false; }
+    undoStack.push(action);
+    uiToast(`已重做${action.label ? '：' + action.label : ''}`, 'info');
+    return true;
+}
+
+function cloneDeep(value){
+    if (!value) return value;
+    try { return JSON.parse(JSON.stringify(value)); } catch(_) { return value; }
+}
+
+function getCardLocation(cardId){
+    if (!cardId) return null;
+    for (const s of getAllStatusKeys()){
+        const arr = boardData[s] || [];
+        const idx = arr.findIndex(c => c && c.id === cardId);
+        if (idx !== -1) {
+            return { card: arr[idx], status: s, index: idx };
+        }
+    }
+    return null;
+}
+
+function removeCardByIdFromBoardData(cardId){
+    if (!cardId) return null;
+    for (const s of getAllStatusKeys()){
+        const arr = boardData[s] || [];
+        const idx = arr.findIndex(c => c && c.id === cardId);
+        if (idx !== -1) {
+            const card = arr.splice(idx, 1)[0];
+            return { card, status: s, index: idx };
+        }
+    }
+    return null;
+}
+
+function insertCardIntoStatus(card, status, index){
+    if (!card || !status) return;
+    if (!Array.isArray(boardData[status])) boardData[status] = [];
+    const arr = boardData[status];
+    const idx = (typeof index === 'number' && index >= 0 && index <= arr.length) ? index : arr.length;
+    arr.splice(idx, 0, card);
+}
+
+function ensureListExistsForStatus(status, title){
+    if (!status) return null;
+    ensureClientLists();
+    const existingId = findListIdByStatus(status);
+    if (existingId) return existingId;
+    const id = status;
+    const pos = clientLists.listIds.length;
+    const titleMap = { todo: '待办', doing: '进行中', done: '已完成' };
+    const listTitle = title || titleMap[status] || status;
+    clientLists.lists[id] = { id, title: listTitle, pos, status };
+    clientLists.listIds.push(id);
+    saveClientListsToStorage();
+    queueListsSync();
+    return id;
 }
 
 function queueListsSync(){
@@ -1397,6 +1585,7 @@ function showBoard(replaceHistory) {
         connectWebSocket();
         renderBoard();
     } else {
+        resetUndoRedo();
         // 切换到新看板：先占位避免显示旧内容，再拉取与加入
         // 重置 clientLists，使其从新看板的 localStorage 或默认值初始化，避免沿用上一个看板的表头
         clientLists = null;
@@ -3107,11 +3296,48 @@ function bindListMenu(section, list){
         if(ok){ removeClientList(list.id); }
     };
 }
-function removeClientList(listId){
+function removeClientList(listId, options){
+    const opts = options || {};
     ensureClientLists();
     // 获取列表的 status，以便清理 boardData
     const list = clientLists.lists[listId];
     const status = list ? list.status : null;
+
+    if (!opts.skipUndo && !undoRedoInProgress && list && status) {
+        const listIndex = clientLists.listIds.indexOf(listId);
+        const listSnapshot = cloneDeep(list);
+        const cardsSnapshot = Array.isArray(boardData[status]) ? boardData[status].map(cloneDeep) : [];
+        pushUndoAction({
+            type: 'delete-list',
+            label: '删除卡组',
+            createdAt: Date.now(),
+            undo: () => {
+                ensureClientLists();
+                const existingId = findListIdByStatus(listSnapshot.status);
+                if (!existingId) {
+                    const id = listSnapshot.id || listSnapshot.status;
+                    const pos = Math.max(0, Math.min(listIndex, clientLists.listIds.length));
+                    clientLists.listIds.splice(pos, 0, id);
+                    clientLists.lists[id] = { id, title: listSnapshot.title, pos, status: listSnapshot.status };
+                    reindexClientLists();
+                    saveClientListsToStorage();
+                    queueListsSync();
+                }
+                if (!Array.isArray(boardData[listSnapshot.status])) boardData[listSnapshot.status] = [];
+                const incoming = cardsSnapshot.map(cloneDeep);
+                const incomingIds = new Set(incoming.map(c => c && c.id));
+                const existing = boardData[listSnapshot.status].filter(c => !(c && incomingIds.has(c.id)));
+                boardData[listSnapshot.status] = incoming.concat(existing);
+                incoming.forEach(card => {
+                    if (!card || !card.id) return;
+                    queuePendingCardAdd(listSnapshot.status, card, 'bottom');
+                    sendCardAdd(listSnapshot.status, card, 'bottom');
+                });
+                renderBoard();
+            },
+            redo: () => removeClientList(listSnapshot.id, { skipUndo: true })
+        });
+    }
 
     clientLists.listIds = clientLists.listIds.filter(id=>id!==listId);
     delete clientLists.lists[listId];
@@ -3504,19 +3730,8 @@ function copyCardText(cardId) {
 async function deleteCardById(cardId) {
     const ok = await uiConfirm('确定要删除这个任务吗？', '删除任务');
     if (!ok) return;
-
-    // 从本地数据中移除
-    for (const status of getAllStatusKeys()) {
-        const idx = (boardData[status] || []).findIndex(c => c.id === cardId);
-        if (idx !== -1) {
-            boardData[status].splice(idx, 1);
-            break;
-        }
-    }
-
-    sendDeleteCard(cardId);
-
-    renderBoard();
+    registerDeleteCardUndo(cardId);
+    performDeleteCardById(cardId);
     uiToast('卡片已删除', 'success');
 }
 
@@ -3659,7 +3874,8 @@ function saveCardFromDrawer(){
 async function deleteCardFromDrawer(){
     if(!drawerCardId) return;
     { const ok = await uiConfirm('确定要删除这个任务吗？','删除任务'); if (!ok) return; }
-    sendDeleteCard(drawerCardId);
+    registerDeleteCardUndo(drawerCardId);
+    performDeleteCardById(drawerCardId);
     closeCardModal();
 }
 
@@ -3891,10 +4107,12 @@ function moveCard(cardId, direction) {
 }
 
 // 归档卡片
-function archiveCard(cardId, hintStatus) {
+function archiveCard(cardId, hintStatus, options) {
+    const opts = options || {};
     // find card from any non-archived column (supports dynamic lists)
     let fromStatus = null;
     let cardObj = null;
+    let cardIndex = -1;
 
     const candidates = [];
     try {
@@ -3923,6 +4141,7 @@ function archiveCard(cardId, hintStatus) {
         if (idx !== -1) {
             fromStatus = s;
             cardObj = arr[idx];
+            cardIndex = idx;
             arr.splice(idx, 1);
             break;
         }
@@ -3933,23 +4152,38 @@ function archiveCard(cardId, hintStatus) {
         return;
     }
 
+    const cardSnapshot = cloneDeep(cardObj);
+    if (!opts.skipUndo && !undoRedoInProgress) {
+        pushUndoAction({
+            type: 'archive-card',
+            label: '归档任务',
+            createdAt: Date.now(),
+            undo: () => restoreArchivedCard(cardSnapshot, fromStatus, cardIndex),
+            redo: () => archiveCard(cardId, fromStatus, { skipUndo: true })
+        });
+    }
+
     cardObj.archivedFrom = fromStatus;
     cardObj.archivedAt = Date.now();
     boardData.archived = Array.isArray(boardData.archived) ? boardData.archived : [];
     boardData.archived.push(cardObj);
 
     sendArchiveCard(cardId, fromStatus);
-    renderBoard();
+    if (!opts.skipRender) {
+        renderBoard();
+    }
 }
 
 // 还原卡片
-function restoreCard(cardId) {
+function restoreCard(cardId, options) {
+    const opts = options || {};
     let restored = false;
+    let targetStatus = null;
     if (Array.isArray(boardData.archived)) {
         const idx = boardData.archived.findIndex(card => card.id === cardId);
         if (idx !== -1) {
             const card = boardData.archived.splice(idx, 1)[0];
-            const targetStatus = resolveArchivedStatus(card) || 'done';
+            targetStatus = resolveArchivedStatus(card) || 'done';
             if (!Array.isArray(boardData[targetStatus])) boardData[targetStatus] = [];
             delete card.archivedFrom;
             delete card.archivedAt;
@@ -3959,7 +4193,16 @@ function restoreCard(cardId) {
             restored = true;
         }
     }
-    if (restored) {
+    if (restored && !opts.skipUndo && !undoRedoInProgress) {
+        pushUndoAction({
+            type: 'restore-card',
+            label: '还原任务',
+            createdAt: Date.now(),
+            undo: () => archiveCard(cardId, targetStatus, { skipUndo: true }),
+            redo: () => restoreCard(cardId, { skipUndo: true })
+        });
+    }
+    if (restored && !opts.skipRender) {
         renderBoard();
         if (!archivePage.classList.contains('hidden')) {
             renderArchive();
@@ -4090,7 +4333,8 @@ async function deleteCard() {
     if (!editingCardId) return;
     const ok = await uiConfirm('确定要删除这个任务吗？','删除任务');
     if (!ok) return;
-    sendDeleteCard(editingCardId);
+    registerDeleteCardUndo(editingCardId);
+    performDeleteCardById(editingCardId);
     closeEditModal();
 }
 
@@ -4672,6 +4916,8 @@ function logout() {
     localStorage.removeItem('kanbanCurrentProjectId');
     localStorage.removeItem('kanbanCurrentProjectName');
     localStorage.removeItem('kanbanCurrentBoardName');
+
+    resetUndoRedo();
 
     showLoginPage();
 
@@ -6989,18 +7235,38 @@ function uiToastAction(message, actionLabel, onAction, type, timeoutMs){
 async function deleteArchivedCard(cardId){
     const ok = await uiConfirm('确定要删除该归档任务吗？此操作不可恢复。','删除任务');
     if (!ok) return;
-    const idx = (boardData.archived||[]).findIndex(c=>c.id===cardId);
-    if (idx !== -1) { boardData.archived.splice(idx,1); }
-    sendDeleteCard(cardId);
-    renderArchive();
+    registerDeleteCardUndo(cardId);
+    performDeleteCardById(cardId);
 }
 
 // 归档整列（卡组）
-async function archiveList(status){
+async function archiveList(status, options){
+    const opts = options || {};
     const cards = (boardData[status]||[]);
     if (!cards.length) { uiToast('此卡组没有可归档的卡片','info'); return; }
-    const ok = await uiConfirm('将该卡组的所有卡片归档？','归档卡组');
-    if (!ok) return;
+    if (!opts.skipConfirm) {
+        const ok = await uiConfirm('将该卡组的所有卡片归档？','归档卡组');
+        if (!ok) return;
+    }
+    const cardIds = cards.map(c => c && c.id).filter(Boolean);
+    if (!opts.skipUndo && !undoRedoInProgress && cardIds.length) {
+        pushUndoAction({
+            type: 'archive-list',
+            label: '归档卡组',
+            createdAt: Date.now(),
+            undo: () => {
+                cardIds.forEach(id => restoreCard(id, { skipUndo: true, skipRender: true }));
+                renderBoard();
+                if (!archivePage.classList.contains('hidden')) {
+                    renderArchive();
+                }
+            },
+            redo: () => {
+                cardIds.forEach(id => archiveCard(id, status, { skipUndo: true, skipRender: true }));
+                renderBoard();
+            }
+        });
+    }
     boardData.archived = boardData.archived || [];
     // copy array to avoid mutation during iteration
     const moving = cards.slice();
@@ -7012,8 +7278,12 @@ async function archiveList(status){
     boardData.archived.push(...moving);
     boardData[status] = [];
     sendArchiveList(status);
-    renderBoard();
-    uiToast('已归档该卡组全部卡片','success');
+    if (!opts.skipRender) {
+        renderBoard();
+    }
+    if (!opts.skipToast) {
+        uiToast('已归档该卡组全部卡片','success');
+    }
 }
 
 // === Posts (讨论/评论) helpers ===
@@ -9070,7 +9340,7 @@ document.addEventListener('paste', async function(e) {
 
     // 先创建需要的新列表
     let newListsCreated = 0;
-    const createdListStatuses = [];
+    const createdListMetas = [];
     if (result.newLists && result.newLists.length > 0) {
         ensureClientLists();
         for (const newList of result.newLists) {
@@ -9084,7 +9354,7 @@ document.addEventListener('paste', async function(e) {
                 // 清空可能残留的旧数据（被删除的列表可能留有数据）
                 boardData[newList.status] = [];
                 newListsCreated++;
-                createdListStatuses.push(newList.status);
+                createdListMetas.push({ id, title: newList.title, pos, status: newList.status });
             }
         }
         // 保存列表并同步到服务器
@@ -9109,15 +9379,16 @@ document.addEventListener('paste', async function(e) {
         // 新建的列表直接 push（因为已清空），现有列表插入顶部
         if (newListStatuses.has(status)) {
             boardData[status].push(card);
+            createdCards.push({ card: cloneDeep(card), status, index: boardData[status].length - 1 });
         } else {
             boardData[status] = [card, ...boardData[status]];
+            createdCards.push({ card: cloneDeep(card), status, index: 0 });
         }
         affectedStatuses.add(status);
 
         // 通过 WebSocket/HTTP 同步到服务器（始终落本地队列以防刷新丢失）
         queuePendingCardAdd(status, card, 'top');
         sendCardAdd(status, card, 'top');
-        createdCards.push({ id: card.id, status });
         createdCount++;
     }
 
@@ -9134,12 +9405,12 @@ document.addEventListener('paste', async function(e) {
         if (newListsCreated > 0) {
             msg += `（新建 ${newListsCreated} 个列表）`;
         }
-        schedulePasteUndo(msg, { cards: createdCards, createdListStatuses });
+        schedulePasteUndo(msg, { cards: createdCards, createdLists: createdListMetas });
     } else {
         const firstListId = updatedLists.listIds[0];
         const firstList = updatedLists.lists[firstListId];
         const listTitle = firstList?.title || firstList?.status || '列表';
-        schedulePasteUndo(`已在「${listTitle}」创建 ${createdCount} 张卡片`, { cards: createdCards, createdListStatuses });
+        schedulePasteUndo(`已在「${listTitle}」创建 ${createdCount} 张卡片`, { cards: createdCards, createdLists: createdListMetas });
     }
 });
 
@@ -9166,19 +9437,24 @@ function hasOpenModal(){
 }
 
 document.addEventListener('keydown', function(e){
-    if (!lastPasteUndo) return;
-    if (!boardPage || boardPage.classList.contains('hidden')) return;
+    const boardVisible = boardPage && !boardPage.classList.contains('hidden');
+    const archiveVisible = archivePage && !archivePage.classList.contains('hidden');
+    if (!boardVisible && !archiveVisible) return;
     if (e.isComposing || e.keyCode === 229) return;
     if (isGlobalTextInputActive()) return;
     if (hasOpenModal()) return;
     const key = (e.key || '').toLowerCase();
-    if (key !== 'z') return;
-    if (!(e.ctrlKey || e.metaKey)) return;
-    if (e.shiftKey || e.altKey) return;
-    e.preventDefault();
-    undoPasteImport(lastPasteUndo);
-    lastPasteUndo = null;
-    if (lastPasteUndoTimer) { clearTimeout(lastPasteUndoTimer); lastPasteUndoTimer = null; }
+    const hasMod = e.ctrlKey || e.metaKey;
+    if (!hasMod) return;
+    const isUndo = key === 'z' && !e.shiftKey && !e.altKey;
+    const isRedo = (key === 'z' && e.shiftKey && !e.altKey) || (key === 'y' && !e.shiftKey && !e.altKey);
+    if (isUndo) {
+        if (performUndo()) e.preventDefault();
+        return;
+    }
+    if (isRedo) {
+        if (performRedo()) e.preventDefault();
+    }
 }, true);
 
 function schedulePasteUndo(message, payload){
@@ -9186,21 +9462,22 @@ function schedulePasteUndo(message, payload){
         uiToast(message, 'success');
         return;
     }
-    const ttlMs = 8000;
-    lastPasteUndo = payload;
-    if (lastPasteUndoTimer) { clearTimeout(lastPasteUndoTimer); lastPasteUndoTimer = null; }
-    lastPasteUndoTimer = setTimeout(() => { lastPasteUndo = null; lastPasteUndoTimer = null; }, ttlMs);
+    const action = {
+        type: 'paste-import',
+        label: '导入',
+        createdAt: Date.now(),
+        undo: () => undoPasteImport(payload),
+        redo: () => redoPasteImport(payload)
+    };
+    pushUndoAction(action);
     uiToastAction(message, '撤销', () => {
-        if (!lastPasteUndo) return;
-        undoPasteImport(lastPasteUndo);
-        lastPasteUndo = null;
-        if (lastPasteUndoTimer) { clearTimeout(lastPasteUndoTimer); lastPasteUndoTimer = null; }
-    }, 'success', ttlMs);
+        performUndo();
+    }, 'success', 8000);
 }
 
 function undoPasteImport(payload){
     if (!payload || !Array.isArray(payload.cards) || payload.cards.length === 0) return;
-    const ids = new Set(payload.cards.map(item => item && item.id).filter(Boolean));
+    const ids = new Set(payload.cards.map(item => item && item.card && item.card.id).filter(Boolean));
     if (!ids.size) return;
 
     getAllStatusKeys().forEach(status => {
@@ -9213,19 +9490,20 @@ function undoPasteImport(payload){
     dropPendingCardAddsByIds(ids);
     ids.forEach(id => sendDeleteCard(id));
 
-    const createdListStatuses = Array.isArray(payload.createdListStatuses) ? payload.createdListStatuses : [];
-    if (createdListStatuses.length) {
+    const createdLists = Array.isArray(payload.createdLists) ? payload.createdLists : [];
+    if (createdLists.length) {
         ensureClientLists();
-        createdListStatuses.forEach(status => {
-            const listId = findListIdByStatus(status);
-            const hasCards = Array.isArray(boardData[status]) && boardData[status].length > 0;
+        createdLists.forEach(meta => {
+            if (!meta || !meta.status) return;
+            const listId = findListIdByStatus(meta.status);
+            const hasCards = Array.isArray(boardData[meta.status]) && boardData[meta.status].length > 0;
             if (!hasCards) {
                 if (listId) {
                     clientLists.listIds = clientLists.listIds.filter(id => id !== listId);
                     delete clientLists.lists[listId];
                 }
-                if (Array.isArray(boardData[status]) && boardData[status].length === 0) {
-                    delete boardData[status];
+                if (Array.isArray(boardData[meta.status]) && boardData[meta.status].length === 0) {
+                    delete boardData[meta.status];
                 }
             }
         });
@@ -9238,7 +9516,44 @@ function undoPasteImport(payload){
     if (!archivePage.classList.contains('hidden')) {
         renderArchive();
     }
-    uiToast('已撤销导入', 'info');
+}
+
+function redoPasteImport(payload){
+    if (!payload || !Array.isArray(payload.cards) || payload.cards.length === 0) return;
+    ensureClientLists();
+    const createdLists = Array.isArray(payload.createdLists) ? payload.createdLists : [];
+    if (createdLists.length) {
+        createdLists.forEach(meta => {
+            if (!meta || !meta.status) return;
+            const existingId = findListIdByStatus(meta.status);
+            if (existingId) return;
+            const id = meta.id || meta.status;
+            const pos = Math.max(0, Math.min(meta.pos || 0, clientLists.listIds.length));
+            clientLists.listIds.splice(pos, 0, id);
+            clientLists.lists[id] = { id, title: meta.title || meta.status, pos, status: meta.status };
+        });
+        reindexClientLists();
+        saveClientListsToStorage();
+        queueListsSync();
+    }
+
+    payload.cards.forEach(item => {
+        if (!item || !item.card || !item.card.id) return;
+        const card = cloneDeep(item.card);
+        const status = item.status;
+        if (!status) return;
+        removeCardByIdFromBoardData(card.id);
+        if (!Array.isArray(boardData[status])) boardData[status] = [];
+        insertCardIntoStatus(card, status, item.index);
+        const pos = item.index === 0 ? 'top' : 'bottom';
+        queuePendingCardAdd(status, card, pos);
+        sendCardAdd(status, card, pos);
+    });
+
+    renderBoard();
+    if (!archivePage.classList.contains('hidden')) {
+        renderArchive();
+    }
 }
 
 /**

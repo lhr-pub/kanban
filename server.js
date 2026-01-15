@@ -2215,6 +2215,40 @@ app.post('/api/delete-card', async (req, res) => {
     return res.json({ success: true });
 });
 
+// 添加归档卡片（HTTP 兜底）
+app.post('/api/add-archived-card', async (req, res) => {
+    const { projectId, boardName, card } = req.body || {};
+    if (!projectId || !boardName || !card || !card.id) {
+        return res.status(400).json({ message: '参数不完整' });
+    }
+
+    const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
+        const exists = Object.keys(bd).some(key => Array.isArray(bd[key]) && bd[key].some(c => c && c.id === card.id));
+        if (exists) {
+            return { data: bd, result: { changed: false } };
+        }
+        if (!Array.isArray(bd.archived)) bd.archived = [];
+        if (!card.archivedAt) card.archivedAt = Date.now();
+        bd.archived.push(card);
+        return { data: bd, result: { changed: true } };
+    });
+
+    if (!success) {
+        return res.status(500).json({ message: '保存失败' });
+    }
+
+    if (result && result.changed) {
+        broadcastToBoard(projectId, boardName, {
+            type: 'board-update',
+            projectId,
+            boardName,
+            board: boardData
+        });
+    }
+
+    return res.json({ success: true });
+});
+
 // 保存列表元数据（HTTP 兜底）
 app.post('/api/save-lists', async (req, res) => {
     const { projectId, boardName, lists } = req.body || {};
