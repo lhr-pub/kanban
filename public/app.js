@@ -7505,6 +7505,13 @@ function adjustBoardCentering() {
             }
         } catch(_){}
         const viewportWidth = container.clientWidth || 0;
+        const needsScroll = addWidth > viewportWidth;
+        if (needsScroll) {
+            container.classList.remove('no-horizontal-scroll');
+        } else {
+            container.classList.add('no-horizontal-scroll');
+            container.scrollLeft = 0;
+        }
         const leftPad = Math.max(0, Math.floor((viewportWidth - addWidth) / 2));
         container.style.paddingLeft = `${leftPad}px`;
         return;
@@ -7515,10 +7522,13 @@ function adjustBoardCentering() {
     const totalWidth = n * listWidth + (n - 1) * gap;
 
     const viewportWidth = container.clientWidth;
-    if (totalWidth < viewportWidth) {
+    if (totalWidth <= viewportWidth) {
+        container.classList.add('no-horizontal-scroll');
+        container.scrollLeft = 0;
         const padding = (viewportWidth - totalWidth) / 2;
         container.style.paddingLeft = `${padding}px`;
     } else {
+        container.classList.remove('no-horizontal-scroll');
         container.style.paddingLeft = '0px';
     }
 }

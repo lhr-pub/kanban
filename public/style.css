@@ -1387,41 +1387,11 @@ h1 {
     border-color: #94a3b8;
     background: #f1f5f9;
 }
-/*
-.add-card button {
-    width: 100%;
-    margin: 0;
-    padding: 0.875rem 1.25rem;
-    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
-    color: white;
-    border: none;
-    border-radius: var(--border-radius-lg);
-    cursor: pointer;
-    font-size: 0.875rem;
-    font-weight: 600;
-    transition: var(--transition);
-    box-shadow: var(--shadow);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-} */
-
-/* .add-card button:hover {
-    background: linear-gradient(135deg, var(--primary-dark), #1e40af);
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
-} */
-/*
-.add-card button:active {
-    transform: translateY(0);
-    box-shadow: var(--shadow);
-}
-/* */
+/* Legacy add-card button styles removed; keep focus/disabled states. */
 .add-card button:focus {
     outline: none;
     box-shadow: var(--shadow), 0 0 0 3px rgba(59, 130, 246, 0.3);
-} */
+}
 
 .add-card button:disabled {
     background: #9ca3af;
@@ -4050,6 +4020,7 @@ body {
     background: #ebecf0; /* Trello 列背景 */
     box-shadow: none;
     border: none;
+    overflow-x: hidden;
 }
 
 .column h3, .archive-column h3 {
@@ -4068,18 +4039,19 @@ body {
 }
 
 /* 卡片更像 Trello：白底、轻边框、少阴影、紧凑间距 */
-.cards { gap: 8px; margin-bottom: 0px; }
+.cards { gap: 8px; margin-bottom: 0px; overflow-x: hidden; }
 .card {
     border: 1px solid #dfe1e6;
     box-shadow: none;
     border-radius: 8px;
     padding: 8px 10px;
+    overflow-x: hidden;
 }
 
 .card:hover { background: #fafbfc; border-color: #c1c7d0; }
 
-.card-title { font-size: 14px; margin-bottom: 6px; }
-.card-description { font-size: 12px; color: #6b778c; margin-bottom: 6px; max-height: 100px; }
+.card-title { font-size: 14px; margin-bottom: 6px; word-break: break-word; overflow-wrap: anywhere; }
+.card-description { font-size: 12px; color: #6b778c; margin-bottom: 6px; max-height: 100px; word-break: break-word; overflow-wrap: anywhere; }
 
 .card-footer, .card-meta { border-top: none; padding-top: 0; margin-top: 4px; color: #6b778c; font-size: 11px; }
 
@@ -4257,6 +4229,11 @@ body {
 #boardPage .header.header-text-light { --header-fg:#ffffff; --header-link:#e5edff; }
 #boardPage .header.header-text-dark { --header-fg:#374151; --header-link:#3b82f6; }
 
+/* Prevent horizontal scroll when lists fit in viewport */
+#boardPage .board-container.no-horizontal-scroll {
+    overflow-x: hidden !important;
+}
+
 #boardPage .board-breadcrumb #breadcrumbHome,
 #boardPage .board-breadcrumb .project-link {
     color: var(--header-fg) !important;
@@ -4420,7 +4397,7 @@ body {
 /* === Trello-like lists & composer visuals === */
 .list { background: #ebecf0; border: 1px solid #dfe1e6; border-radius: 8px; padding: 8px; width: var(--list-width); min-width: var(--list-width); max-width: var(--list-width); display:flex; flex-direction:column; gap:8px; }
 .list-header { display:flex; align-items:center; justify-content:space-between; margin: 2px 4px 6px; cursor: grab; -webkit-user-select: none; user-select: none; }
-.list-title { font-size: 14px; font-weight:600; margin:0; cursor: text; -webkit-user-drag: none; user-select: text; }
+.list-title { font-size: 14px; font-weight:600; margin:0; cursor: text; -webkit-user-drag: none; user-select: text; word-break: break-word; overflow-wrap: anywhere; }
 .list-title-input { width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-weight:600; background:#fff; }
 .list-menu { width:28px; height:28px; border:0; background:transparent; border-radius:6px; color:#6b778c; cursor:pointer; }
 .list-menu:hover { background:rgba(9,30,66,.08); }
