@@ -753,6 +753,15 @@ h1 {
     margin: 0 auto;
 }
 
+#archiveListFilter {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    background: #fff;
+    color: #374151;
+    font-size: 0.875rem;
+}
+
 .archive-column {
     background: white;
     border-radius: 8px;

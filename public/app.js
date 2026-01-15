@@ -115,6 +115,7 @@ let draggingCardPlaceholder = null;
 let draggingCardEl = null;
 let showCompletedCards = false;
 let pendingListsSyncKey = null;
+let archiveListFilter = 'all';
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -161,6 +162,29 @@ function getShowCompletedStorageKey(projectId, boardName){
     const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
     const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
     return `kanbanShowCompleted:${pid}:${bname}`;
+}
+
+function getArchiveFilterStorageKey(projectId, boardName){
+    const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
+    const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
+    return `kanbanArchiveFilter:${pid}:${bname}`;
+}
+
+function loadArchiveFilterPreference(){
+    try {
+        const key = getArchiveFilterStorageKey();
+        const stored = localStorage.getItem(key);
+        archiveListFilter = stored || 'all';
+    } catch(_) {
+        archiveListFilter = 'all';
+    }
+}
+
+function saveArchiveFilterPreference(){
+    try {
+        const key = getArchiveFilterStorageKey();
+        localStorage.setItem(key, archiveListFilter || 'all');
+    } catch(_) {}
 }
 
 function getPendingListsSyncStorageKey(projectId, boardName){
@@ -309,6 +333,13 @@ function resolveArchivedStatus(card){
     const ordered = getOrderedStatusKeys();
     if (ordered.includes('done')) return 'done';
     return ordered.length ? ordered[ordered.length - 1] : null;
+}
+
+function getArchivedFilterStatus(card){
+    if (!card) return null;
+    const from = card.archivedFrom || card.archivedStatus;
+    if (from && from !== 'archived') return from;
+    return resolveArchivedStatus(card);
 }
 
 function getCardsByStatus(status) {
@@ -1167,6 +1198,17 @@ function showArchive(replaceHistory) {
         }
         setTimeout(()=>{ try{ search.focus(); }catch(_){} }, 0);
     }
+
+    const filter = document.getElementById('archiveListFilter');
+    if (filter && !filter._bound) {
+        filter._bound = true;
+        filter.addEventListener('change', () => {
+            archiveListFilter = filter.value || 'all';
+            saveArchiveFilterPreference();
+            renderArchive();
+        });
+    }
+    loadArchiveFilterPreference();
 
     renderArchive();
 }
@@ -2357,6 +2399,15 @@ function handleWebSocketMessage(data) {
                         localStorage.removeItem(oldKey);
                     }
                 } catch (_) {}
+                try {
+                    const oldKey = getArchiveFilterStorageKey(currentProjectId, data.oldName);
+                    const newKey = getArchiveFilterStorageKey(currentProjectId, data.newName);
+                    const stored = localStorage.getItem(oldKey);
+                    if (stored !== null) {
+                        localStorage.setItem(newKey, stored);
+                        localStorage.removeItem(oldKey);
+                    }
+                } catch (_) {}
                 currentBoardName = data.newName;
                 localStorage.setItem('kanbanCurrentBoardName', currentBoardName);
                 updateBoardHeader();
@@ -2973,17 +3024,65 @@ function renderArchive() {
     archivedCards.innerHTML = '';
     const cards = boardData.archived || [];
 
+    const filterEl = document.getElementById('archiveListFilter');
+    const listMetas = (clientLists && clientLists.listIds)
+        ? clientLists.listIds
+            .map(id => clientLists.lists[id])
+            .filter(Boolean)
+            .sort((a, b) => (a.pos || 0) - (b.pos || 0))
+        : [];
+    const knownStatuses = new Set(listMetas.map(m => m.status));
+    const hasUnknown = cards.some(card => {
+        const st = getArchivedFilterStatus(card);
+        return !st || (knownStatuses.size > 0 && !knownStatuses.has(st));
+    });
+
+    if (filterEl) {
+        const currentValue = archiveListFilter || filterEl.value || 'all';
+        const options = [{ value: 'all', label: '全部卡组' }];
+        listMetas.forEach(meta => {
+            if (meta && meta.status) options.push({ value: meta.status, label: meta.title || meta.status });
+        });
+        if (hasUnknown) options.push({ value: 'unknown', label: '已删除卡组' });
+
+        filterEl.innerHTML = '';
+        options.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt.value;
+            option.textContent = opt.label;
+            filterEl.appendChild(option);
+        });
+        if (options.some(opt => opt.value === currentValue)) {
+            filterEl.value = currentValue;
+        } else {
+            filterEl.value = 'all';
+            archiveListFilter = 'all';
+            saveArchiveFilterPreference();
+        }
+    }
+
     const search = document.getElementById('archiveSearch');
     const q = (search && search.value ? search.value.trim().toLowerCase() : '');
+    const activeFilter = (filterEl && filterEl.value) ? filterEl.value : (archiveListFilter || 'all');
 
     const filtered = q
-        ? cards.filter(c =>
-            ((c.title||'').toLowerCase().includes(q)) ||
-            ((c.description||'').toLowerCase().includes(q)) ||
-            ((Array.isArray(c.labels)?c.labels.join(','):'').toLowerCase().includes(q)) ||
-            ((c.assignee||'').toLowerCase().includes(q))
-          )
-        : cards;
+        ? cards.filter(c => {
+            const st = getArchivedFilterStatus(c);
+            const isUnknown = !st || (knownStatuses.size > 0 && !knownStatuses.has(st));
+            if (activeFilter === 'unknown') { if (!isUnknown) return false; }
+            else if (activeFilter !== 'all' && st !== activeFilter) return false;
+            return ((c.title||'').toLowerCase().includes(q)) ||
+                ((c.description||'').toLowerCase().includes(q)) ||
+                ((Array.isArray(c.labels)?c.labels.join(','):'').toLowerCase().includes(q)) ||
+                ((c.assignee||'').toLowerCase().includes(q));
+          })
+        : cards.filter(c => {
+            const st = getArchivedFilterStatus(c);
+            const isUnknown = !st || (knownStatuses.size > 0 && !knownStatuses.has(st));
+            if (activeFilter === 'unknown') return isUnknown;
+            if (activeFilter !== 'all') return st === activeFilter;
+            return true;
+          });
 
     archivedCount.textContent = filtered.length;
 
@@ -8580,36 +8679,6 @@ async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
         console.error('Move board error:', e);
         uiToast('移动失败','error');
     }
-}
-
-// 渲染归档页面（支持搜索过滤）
-function renderArchive() {
-    const archivedCards = document.getElementById('archivedCards');
-    const archivedCount = document.getElementById('archivedCount');
-
-    archivedCards.innerHTML = '';
-    const cards = boardData.archived || [];
-
-    const search = document.getElementById('archiveSearch');
-    const q = (search && search.value ? search.value.trim().toLowerCase() : '');
-
-    const filtered = q
-        ? cards.filter(c =>
-            ((c.title||'').toLowerCase().includes(q)) ||
-            ((c.description||'').toLowerCase().includes(q)) ||
-            ((Array.isArray(c.labels)?c.labels.join(','):'').toLowerCase().includes(q)) ||
-            ((c.assignee||'').toLowerCase().includes(q))
-          )
-        : cards;
-
-    archivedCount.textContent = filtered.length;
-
-    const sortedCards = filtered.slice();
-
-    sortedCards.forEach(card => {
-        const cardElement = createCardElement(card, 'archived');
-        archivedCards.appendChild(cardElement);
-    });
 }
 
 // ... existing code ...
