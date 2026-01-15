@@ -5137,13 +5137,24 @@ body {
     background: var(--list-bg) !important;
     border-top-left-radius: 12px;
     border-top-right-radius: 12px;
-    border-bottom: 1px solid #e2e8f0;
+    position: sticky;
 }
 #boardPage .list-header .list-title {
     margin: 0 !important;
     padding: 0 !important;
     border: 0 !important;
     margin-left: 14px !important;
+    display: inline-block;
+    position: relative;
+}
+#boardPage .list-header .list-title::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -9px;
+    height: 1px;
+    background: #e2e8f0;
 }
 .list-actions { display:inline-flex; align-items:center; gap:0px; }
 .list-archive, .list-menu {
