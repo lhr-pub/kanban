@@ -590,8 +590,8 @@ function updateListHeaderLineButton(){
 function updateBoardDragScrollButton(){
     const btn = document.getElementById('boardDragScrollBtn');
     if (!btn) return;
-    const label = boardDragScrollEnabled ? '开' : '关';
-    btn.textContent = `拖动移动: ${label}`;
+    const label = boardDragScrollEnabled ? '大' : '常规';
+    btn.textContent = `拖动范围: ${label}`;
     btn.setAttribute('aria-pressed', boardDragScrollEnabled ? 'true' : 'false');
     if (btn.classList && btn.classList.toggle) {
         btn.classList.toggle('active', boardDragScrollEnabled);
@@ -6391,7 +6391,6 @@ function bindBoardDragScroll() {
         if (e.button !== 0) return;
         if (e.defaultPrevented) return;
         if (draggingListEl || draggingCardEl || document.body.classList.contains('dragging-cards')) return;
-        if (!boardDragScrollEnabled) return;
         if (isBlockedTarget(e.target)) return;
 
         boardDragActive = true;
