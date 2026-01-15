@@ -116,6 +116,8 @@ let draggingCardEl = null;
 let showCompletedCards = false;
 let pendingListsSyncKey = null;
 let archiveListFilter = 'all';
+const CARD_ADD_RETRY_MS = 8000;
+const CARD_ADD_MAX_RETRIES = 4;
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -168,6 +170,221 @@ function getArchiveFilterStorageKey(projectId, boardName){
     const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
     const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
     return `kanbanArchiveFilter:${pid}:${bname}`;
+}
+
+function getPendingCardAddsStorageKey(projectId, boardName){
+    const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
+    const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
+    return `kanbanPendingCardAdds:${pid}:${bname}`;
+}
+
+function loadPendingCardAdds(){
+    try {
+        const raw = localStorage.getItem(getPendingCardAddsStorageKey());
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+function savePendingCardAdds(items){
+    try { localStorage.setItem(getPendingCardAddsStorageKey(), JSON.stringify(items || [])); } catch (_) {}
+}
+
+function dropPendingCardAddsForStatus(status){
+    if (!status) return;
+    const pending = loadPendingCardAdds();
+    if (!pending.length) return;
+    const next = pending.filter(item => item && item.status !== status);
+    if (next.length !== pending.length) savePendingCardAdds(next);
+}
+
+function queuePendingCardAdd(status, card, position){
+    if (!status || !card || !card.id) return;
+    const pending = loadPendingCardAdds();
+    if (pending.some(item => item && item.card && item.card.id === card.id)) return;
+    pending.push({ status, card, position: position || 'bottom', sentAt: 0, retries: 0 });
+    savePendingCardAdds(pending);
+}
+
+function doesCardExistInBoardData(cardId){
+    if (!cardId) return false;
+    for (const s of getAllStatusKeys()){
+        const found = (boardData[s] || []).some(c => c && c.id === cardId);
+        if (found) return true;
+    }
+    return false;
+}
+
+function prunePendingCardAdds(){
+    const pending = loadPendingCardAdds();
+    if (!pending.length) return;
+    const next = pending.filter(item => !(item && item.card && doesCardExistInBoardData(item.card.id)));
+    if (next.length !== pending.length) savePendingCardAdds(next);
+}
+
+function applyPendingCardAddsToBoardData(){
+    const pending = loadPendingCardAdds();
+    if (!pending.length) return;
+    const listStatuses = new Set();
+    if (clientLists && clientLists.listIds && clientLists.lists) {
+        clientLists.listIds.forEach(id => {
+            const st = clientLists.lists[id] && clientLists.lists[id].status;
+            if (st) listStatuses.add(st);
+        });
+    }
+    pending.forEach(item => {
+        if (!item || !item.card || !item.card.id) return;
+        if (doesCardExistInBoardData(item.card.id)) return;
+        const status = item.status;
+        if (!status) return;
+        if (listStatuses.size > 0 && !listStatuses.has(status)) return;
+        if (!Array.isArray(boardData[status])) boardData[status] = [];
+        if (item.position === 'top') {
+            boardData[status] = [item.card, ...boardData[status]];
+        } else {
+            boardData[status] = [...boardData[status], item.card];
+        }
+    });
+}
+
+function flushPendingCardAdds(){
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    const pending = loadPendingCardAdds();
+    if (!pending.length) return;
+    const now = Date.now();
+    const listStatuses = new Set();
+    if (clientLists && clientLists.listIds && clientLists.lists) {
+        clientLists.listIds.forEach(id => {
+            const st = clientLists.lists[id] && clientLists.lists[id].status;
+            if (st) listStatuses.add(st);
+        });
+    }
+    const next = [];
+    pending.forEach(item => {
+        if (!item || !item.card || !item.card.id) return;
+        if (doesCardExistInBoardData(item.card.id)) return;
+        const sentAt = item.sentAt || 0;
+        const retries = item.retries || 0;
+        if (listStatuses.size > 0 && !listStatuses.has(item.status)) return;
+        if (retries >= CARD_ADD_MAX_RETRIES) return;
+        if (!sentAt || (now - sentAt) > CARD_ADD_RETRY_MS) {
+            socket.send(JSON.stringify({
+                type:'add-card',
+                projectId: currentProjectId,
+                boardName: currentBoardName,
+                status: item.status,
+                card: item.card,
+                position: item.position || 'bottom'
+            }));
+            item.sentAt = now;
+            item.retries = retries + 1;
+        }
+        next.push(item);
+    });
+    savePendingCardAdds(next);
+}
+
+function sendCardAdd(status, card, position){
+    if (!currentProjectId || !currentBoardName || !status || !card) return;
+    const payload = {
+        projectId: currentProjectId,
+        boardName: currentBoardName,
+        status,
+        card,
+        position: position || 'bottom'
+    };
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(Object.assign({ type:'add-card' }, payload)));
+    }
+    if (typeof fetch === 'function') {
+        fetch('/api/add-card', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        }).catch(() => {});
+    }
+}
+
+function sendArchiveCard(cardId, fromStatus){
+    if (!currentProjectId || !currentBoardName || !cardId) return;
+    const payload = {
+        projectId: currentProjectId,
+        boardName: currentBoardName,
+        cardId,
+        fromStatus
+    };
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(Object.assign({ type:'archive-card' }, payload)));
+    }
+    if (typeof fetch === 'function') {
+        fetch('/api/archive-card', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        }).catch(() => {});
+    }
+}
+
+function sendRestoreCard(cardId){
+    if (!currentProjectId || !currentBoardName || !cardId) return;
+    const payload = {
+        projectId: currentProjectId,
+        boardName: currentBoardName,
+        cardId
+    };
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(Object.assign({ type:'restore-card' }, payload)));
+    }
+    if (typeof fetch === 'function') {
+        fetch('/api/restore-card', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        }).catch(() => {});
+    }
+}
+
+function sendArchiveList(status){
+    if (!currentProjectId || !currentBoardName || !status) return;
+    const payload = {
+        projectId: currentProjectId,
+        boardName: currentBoardName,
+        status
+    };
+    if (typeof fetch === 'function') {
+        fetch('/api/archive-list', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        }).catch(() => {});
+    }
+}
+
+function sendListsSync(lists){
+    if (!currentProjectId || !currentBoardName || !lists) return;
+    const payload = {
+        projectId: currentProjectId,
+        boardName: currentBoardName,
+        lists
+    };
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(Object.assign({ type:'save-lists' }, payload)));
+    }
+    if (typeof fetch === 'function') {
+        fetch('/api/save-lists', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+        }).catch(() => {});
+    }
 }
 
 function loadArchiveFilterPreference(){
@@ -264,8 +481,8 @@ function queueListsSync(){
 
 function trySyncListsToServer(){
     if (!pendingListsSyncKey || pendingListsSyncKey !== getCurrentBoardKey()) return;
-    if (socket && socket.readyState === WebSocket.OPEN && clientLists) {
-        socket.send(JSON.stringify({ type:'save-lists', projectId: currentProjectId, boardName: currentBoardName, lists: clientLists }));
+    if (clientLists) {
+        sendListsSync(clientLists);
     }
 }
 
@@ -2286,6 +2503,7 @@ function connectWebSocket() {
             lastJoinedBoardKey = key;
         }
         trySyncListsToServer();
+        flushPendingCardAdds();
     };
 
     socket.onmessage = function(event) {
@@ -2361,6 +2579,9 @@ function handleWebSocketMessage(data) {
                         saveClientListsToStorage();
                     }
                 }
+                prunePendingCardAdds();
+                applyPendingCardAddsToBoardData();
+                flushPendingCardAdds();
                 pendingBoardUpdate = true;
                 initialBoardRendered = true;
                 if (initialBoardTimeout) { try{ clearTimeout(initialBoardTimeout); }catch(_){} initialBoardTimeout = null; }
@@ -2590,6 +2811,9 @@ async function loadBoardData() {
                 clientLists = null;
             }
             lastLoadedBoardKey = key;
+            prunePendingCardAdds();
+            applyPendingCardAddsToBoardData();
+            flushPendingCardAdds();
             renderBoard();
         }
     } catch (error) {
@@ -2855,6 +3079,7 @@ function removeClientList(listId){
     if (status && boardData && Array.isArray(boardData[status])) {
         delete boardData[status];
     }
+    dropPendingCardAddsForStatus(status);
 
     saveClientListsToStorage();
     // sync to server
@@ -2950,9 +3175,8 @@ function bindComposer(section, list){
         };
         if (!Array.isArray(boardData[status])) boardData[status]=[];
         boardData[status] = [...boardData[status], card];
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type:'add-card', projectId: currentProjectId, boardName: currentBoardName, status, card, position:'bottom' }));
-        }
+        queuePendingCardAdd(status, card, 'bottom');
+        sendCardAdd(status, card, 'bottom');
         // keep composer open for quick multi-add
         // append new card DOM directly
         let cardsContainer = section.querySelector('.cards');
@@ -3562,16 +3786,8 @@ function addCard(status, position = 'bottom') {
         commentsCount: 0
     };
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'add-card',
-            projectId: currentProjectId,
-            boardName: currentBoardName,
-            status: status,
-            card: card,
-            position: isTop ? 'top' : 'bottom'
-        }));
-    }
+    queuePendingCardAdd(status, card, isTop ? 'top' : 'bottom');
+    sendCardAdd(status, card, isTop ? 'top' : 'bottom');
 
     // 本地立即更新以确保位置正确反馈
     if (!Array.isArray(boardData[status])) boardData[status] = [];
@@ -3692,15 +3908,7 @@ function archiveCard(cardId, hintStatus) {
     boardData.archived = Array.isArray(boardData.archived) ? boardData.archived : [];
     boardData.archived.push(cardObj);
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'archive-card',
-            projectId: currentProjectId,
-            boardName: currentBoardName,
-            cardId: cardId,
-            fromStatus
-        }));
-    }
+    sendArchiveCard(cardId, fromStatus);
     renderBoard();
 }
 
@@ -3727,14 +3935,7 @@ function restoreCard(cardId) {
             renderArchive();
         }
     }
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'restore-card',
-            projectId: currentProjectId,
-            boardName: currentBoardName,
-            cardId: cardId
-        }));
-    }
+    sendRestoreCard(cardId);
 }
 
 // 清空归档
@@ -6743,11 +6944,7 @@ async function archiveList(status){
     });
     boardData.archived.push(...moving);
     boardData[status] = [];
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        moving.forEach(c => {
-            socket.send(JSON.stringify({ type:'archive-card', projectId: currentProjectId, boardName: currentBoardName, cardId: c.id, fromStatus: status }));
-        });
-    }
+    sendArchiveList(status);
     renderBoard();
     uiToast('已归档该卡组全部卡片','success');
 }
@@ -8860,17 +9057,9 @@ document.addEventListener('paste', async function(e) {
         }
         affectedStatuses.add(status);
 
-        // 通过 WebSocket 同步到服务器
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'add-card',
-                projectId: currentProjectId,
-                boardName: currentBoardName,
-                status: status,
-                card: card,
-                position: 'top'
-            }));
-        }
+        // 通过 WebSocket/HTTP 同步到服务器（始终落本地队列以防刷新丢失）
+        queuePendingCardAdd(status, card, 'top');
+        sendCardAdd(status, card, 'top');
         createdCount++;
     }
 

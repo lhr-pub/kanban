@@ -2015,6 +2015,259 @@ app.get('/api/board/:projectId/:boardName', async (req, res) => {
     res.json(boardData);
 });
 
+// 归档卡片（HTTP 兜底）
+app.post('/api/archive-card', async (req, res) => {
+    const { projectId, boardName, cardId, fromStatus } = req.body || {};
+    if (!projectId || !boardName || !cardId) {
+        return res.status(400).json({ message: '参数不完整' });
+    }
+
+    const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
+        let actualStatus = (fromStatus && Array.isArray(bd[fromStatus])) ? fromStatus : null;
+        let cardIndex = -1;
+
+        if (actualStatus) {
+            cardIndex = bd[actualStatus].findIndex(card => card.id === cardId);
+        }
+
+        if (cardIndex === -1) {
+            const statuses = Object.keys(bd).filter(k => Array.isArray(bd[k]) && k !== 'archived');
+            for (const st of statuses) {
+                const idx = bd[st].findIndex(card => card.id === cardId);
+                if (idx !== -1) {
+                    actualStatus = st;
+                    cardIndex = idx;
+                    break;
+                }
+            }
+        }
+
+        if (!actualStatus || cardIndex === -1) {
+            return { data: bd, result: { changed: false } };
+        }
+
+        const card = bd[actualStatus].splice(cardIndex, 1)[0];
+        if (!bd.archived) {
+            bd.archived = [];
+        }
+        card.archivedFrom = actualStatus;
+        card.archivedAt = Date.now();
+        bd.archived.push(card);
+        return { data: bd, result: { changed: true } };
+    });
+
+    if (!success) {
+        return res.status(500).json({ message: '归档失败' });
+    }
+
+    if (result && result.changed) {
+        broadcastToBoard(projectId, boardName, {
+            type: 'board-update',
+            projectId,
+            boardName,
+            board: boardData
+        });
+    }
+
+    return res.json({ success: true });
+});
+
+// 还原卡片（HTTP 兜底）
+app.post('/api/restore-card', async (req, res) => {
+    const { projectId, boardName, cardId } = req.body || {};
+    if (!projectId || !boardName || !cardId) {
+        return res.status(400).json({ message: '参数不完整' });
+    }
+
+    const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
+        if (!Array.isArray(bd.archived)) {
+            return { data: bd, result: { changed: false } };
+        }
+        const cardIndex = bd.archived.findIndex(card => card.id === cardId);
+        if (cardIndex === -1) {
+            return { data: bd, result: { changed: false } };
+        }
+
+        const card = bd.archived.splice(cardIndex, 1)[0];
+        let targetStatus = (card && card.archivedFrom) ? card.archivedFrom : null;
+        const listMetas = (bd.lists && bd.lists.lists) ? Object.values(bd.lists.lists) : [];
+        const metaStatuses = listMetas.map(m => m && m.status).filter(Boolean);
+
+        if (!targetStatus || targetStatus === 'archived' || (metaStatuses.length && !metaStatuses.includes(targetStatus))) {
+            if (metaStatuses.includes('done')) {
+                targetStatus = 'done';
+            } else if (metaStatuses.length) {
+                targetStatus = metaStatuses[metaStatuses.length - 1];
+            } else if (Array.isArray(bd.done)) {
+                targetStatus = 'done';
+            } else {
+                const fallback = Object.keys(bd).find(k => Array.isArray(bd[k]) && k !== 'archived');
+                targetStatus = fallback || 'done';
+            }
+        }
+
+        if (!Array.isArray(bd[targetStatus])) bd[targetStatus] = [];
+        if (!bd.lists || !Array.isArray(bd.lists.listIds) || !bd.lists.lists) {
+            bd.lists = { listIds: [], lists: {} };
+        }
+        if (targetStatus && !metaStatuses.includes(targetStatus)) {
+            const id = targetStatus;
+            if (!bd.lists.listIds.includes(id)) bd.lists.listIds.push(id);
+            bd.lists.lists[id] = bd.lists.lists[id] || { id, title: id === 'done' ? '已完成' : id, pos: bd.lists.listIds.length - 1, status: targetStatus };
+        }
+
+        delete card.archivedFrom;
+        delete card.archivedAt;
+        bd[targetStatus].push(card);
+        return { data: bd, result: { changed: true } };
+    });
+
+    if (!success) {
+        return res.status(500).json({ message: '还原失败' });
+    }
+
+    if (result && result.changed) {
+        broadcastToBoard(projectId, boardName, {
+            type: 'board-update',
+            projectId,
+            boardName,
+            board: boardData
+        });
+    }
+
+    return res.json({ success: true });
+});
+
+// 归档卡组（HTTP 兜底）
+app.post('/api/archive-list', async (req, res) => {
+    const { projectId, boardName, status } = req.body || {};
+    if (!projectId || !boardName || !status) {
+        return res.status(400).json({ message: '参数不完整' });
+    }
+
+    const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
+        const list = Array.isArray(bd[status]) ? bd[status] : [];
+        if (!list.length) {
+            return { data: bd, result: { changed: false, count: 0 } };
+        }
+        if (!bd.archived) bd.archived = [];
+        const now = Date.now();
+        list.forEach(card => {
+            if (!card) return;
+            card.archivedFrom = status;
+            card.archivedAt = now;
+            bd.archived.push(card);
+        });
+        bd[status] = [];
+        return { data: bd, result: { changed: true, count: list.length } };
+    });
+
+    if (!success) {
+        return res.status(500).json({ message: '归档失败' });
+    }
+
+    if (result && result.changed) {
+        broadcastToBoard(projectId, boardName, {
+            type: 'board-update',
+            projectId,
+            boardName,
+            board: boardData
+        });
+    }
+
+    return res.json({ success: true, count: result ? result.count : 0 });
+});
+
+// 保存列表元数据（HTTP 兜底）
+app.post('/api/save-lists', async (req, res) => {
+    const { projectId, boardName, lists } = req.body || {};
+    if (!projectId || !boardName || !lists || !Array.isArray(lists.listIds) || typeof lists.lists !== 'object') {
+        return res.status(400).json({ message: '无效的列表数据' });
+    }
+
+    const { success, data: boardData } = await withBoardLock(projectId, boardName, (bd) => {
+        const newStatuses = new Set();
+        for (const listId of lists.listIds) {
+            const list = lists.lists[listId];
+            if (list && list.status) {
+                newStatuses.add(list.status);
+            }
+        }
+
+        const oldStatuses = new Set();
+        if (bd.lists && bd.lists.listIds && bd.lists.lists) {
+            for (const listId of bd.lists.listIds) {
+                const list = bd.lists.lists[listId];
+                if (list && list.status) {
+                    oldStatuses.add(list.status);
+                }
+            }
+        }
+
+        for (const oldStatus of oldStatuses) {
+            if (!newStatuses.has(oldStatus) && oldStatus !== 'archived') {
+                delete bd[oldStatus];
+            }
+        }
+
+        bd.lists = lists;
+        ensureListStatusArrays(bd);
+        return bd;
+    });
+
+    if (!success) {
+        return res.status(500).json({ message: '保存失败' });
+    }
+
+    broadcastToBoard(projectId, boardName, {
+        type: 'board-update',
+        projectId,
+        boardName,
+        board: boardData
+    });
+
+    return res.json({ success: true });
+});
+
+// 添加卡片（HTTP 兜底，用于刷新过快/WS 不稳定）
+app.post('/api/add-card', async (req, res) => {
+    const { projectId, boardName, status, card, position } = req.body || {};
+    if (!projectId || !boardName || !status || !card || !card.id) {
+        return res.status(400).json({ message: '参数不完整' });
+    }
+
+    const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
+        const exists = Object.keys(bd).some(key => Array.isArray(bd[key]) && bd[key].some(c => c && c.id === card.id));
+        if (exists) {
+            return { data: bd, result: { changed: false } };
+        }
+        if (!Array.isArray(bd[status])) {
+            bd[status] = [];
+        }
+        if (position === 'top') {
+            bd[status].unshift(card);
+        } else {
+            bd[status].push(card);
+        }
+        return { data: bd, result: { changed: true } };
+    });
+
+    if (!success) {
+        return res.status(500).json({ message: '保存失败' });
+    }
+
+    if (result && result.changed) {
+        broadcastToBoard(projectId, boardName, {
+            type: 'board-update',
+            projectId,
+            boardName,
+            board: boardData
+        });
+    }
+
+    return res.json({ success: true });
+});
+
 // 导出API
 // 导出 Markdown（详细格式，包含描述、创建者等元数据）
 app.get('/api/export/:projectId/:boardName', (req, res) => {
@@ -2604,7 +2857,11 @@ async function handleJoin(ws, data) {
 async function handleAddCard(ws, data) {
     const { projectId, boardName, status, card, position } = data;
 
-    const { success, data: boardData } = await withBoardLock(projectId, boardName, (bd) => {
+    const { success, data: boardData, result } = await withBoardLock(projectId, boardName, (bd) => {
+        const exists = Object.keys(bd).some(key => Array.isArray(bd[key]) && bd[key].some(c => c && c.id === card.id));
+        if (exists) {
+            return { data: bd, result: { changed: false } };
+        }
         // Accept dynamic statuses; create bucket if missing
         if (!Array.isArray(bd[status])) {
             bd[status] = [];
@@ -2616,8 +2873,12 @@ async function handleAddCard(ws, data) {
         } else {
             bd[status].push(card);
         }
-        return bd;
+        return { data: bd, result: { changed: true } };
     });
+
+    if (success && result && result.changed === false) {
+        return;
+    }
 
     if (success) {
         broadcastToBoard(projectId, boardName, {
