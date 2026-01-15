@@ -144,18 +144,18 @@
 
 ```mermaid
 flowchart LR
-  client[Browser SPA\n(public/)]
+  client["Browser SPA (public/)"]
 
-  subgraph Server[Node.js + Express + ws\n(server.js)]
+  subgraph Server["Node.js + Express + ws (server.js)"]
     api[REST APIs]
     hub[WebSocket Hub]
     mail[(SMTP Mailer)]
   end
 
-  subgraph Storage[File Storage (data/)]
+  subgraph Storage["File Storage (data/)"]
     users[(users.json)]
     projects[(projects.json)]
-    boards[({projectId}_{board}.json)]
+    boards[("boards .json")]
     backups[(backups/)]
   end
 
@@ -192,7 +192,7 @@ sequenceDiagram
     C->>S: POST /api/move-board
     S->>D: Move file to {toPid}_{board}.json
     S->>D: Update projects.json (from→to)
-    S->>D: Update users.json stars projectId; clear pinnedBoards[from]
+    S->>D: Update users.json stars projectId, clear pinnedBoards
     S-->>C: 200 OK
     S-->>C: WS board-moved
   end
@@ -211,18 +211,18 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   autonumber
-  participant U as Applicant (Client)
-  participant S as Server (Express)
-  participant P as Project Data (projects.json)
+  participant U as Applicant
+  participant S as Server
+  participant P as Project Data
 
-  U->>S: POST /api/join-project (inviteCode)
-  S->>P: pendingRequests += user
-  S-->>U: 200 OK (submitted)
-  S-->>U: WS join-request (to project participants)
+  U->>S: POST /api/join-project
+  S->>P: Add to pendingRequests
+  S-->>U: 200 OK
+  S-->>U: WS join-request
 
-  participant O as Owner (Client)
-  O->>S: POST /api/approve-join (or equivalent)
-  S->>P: members += user; remove pendingRequests
+  participant O as Owner
+  O->>S: POST /api/approve-join
+  S->>P: Add member, clear request
   S-->>O: 200 OK
   S-->>U: WS member-added
 ```
@@ -272,10 +272,10 @@ flowchart TB
     IO[/Import/Export/]
     Hub[WebSocket Hub]
   end
-  subgraph Storage[data/]
+  subgraph Storage["data/"]
     U[(users.json)]
     P[(projects.json)]
-    F[({pid}_{board}.json)]
+    F[("board files")]
     BK[(backups/)]
   end
 
