@@ -601,10 +601,9 @@ function updateBoardDragScrollButton(){
 function applyBoardDragScrollState(){
     const container = document.getElementById('listsContainer');
     if (container) {
+        container.classList.remove('drag-scroll-disabled');
         if (boardDragScrollEnabled) {
-            container.classList.remove('drag-scroll-disabled');
-        } else {
-            container.classList.add('drag-scroll-disabled');
+            container.dataset.boardPanOffset = '';
         }
     }
     updateBoardDragScrollButton();
@@ -1168,10 +1167,6 @@ document.addEventListener('DOMContentLoaded', function() {
     if (ioMenuBtn) ioMenuBtn.addEventListener('click', toggleIOMenu);
     const toggleCompletedBtn = document.getElementById('toggleCompletedBtn');
     if (toggleCompletedBtn) toggleCompletedBtn.addEventListener('click', toggleCompletedView);
-    const listHeaderLineBtn = document.getElementById('listHeaderLineBtn');
-    if (listHeaderLineBtn) listHeaderLineBtn.addEventListener('click', toggleListHeaderLineStyle);
-    const boardDragScrollBtn = document.getElementById('boardDragScrollBtn');
-    if (boardDragScrollBtn) boardDragScrollBtn.addEventListener('click', toggleBoardDragScroll);
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
     document.getElementById('backToBoardSelect').addEventListener('click', goBack);
     document.getElementById('backToBoard').addEventListener('click', showBoard);
@@ -7665,6 +7660,17 @@ function adjustBoardCentering() {
 
     const lists = container.querySelectorAll('.list:not(#addListEntry)');
     const n = lists.length;
+    const listWidth = 272; // var(--list-width)
+    const gap = 12; // var(--list-gap)
+    const addListBias = (boardDragScrollEnabled && n > 0) ? (listWidth + gap) : 0;
+    const calcPanSlack = (viewportWidth, targetWidth, basePad) => {
+        if (!boardDragScrollEnabled) return 0;
+        const needed = Math.max(0, Math.floor((viewportWidth - targetWidth) / 2));
+        if (typeof basePad === 'number') {
+            return Math.max(0, needed - basePad);
+        }
+        return needed;
+    };
     // When there are no lists, center the add-list entry horizontally
     if (n === 0) {
         const add = document.getElementById('addListEntry');
@@ -7678,28 +7684,48 @@ function adjustBoardCentering() {
         } catch(_){}
         const viewportWidth = container.clientWidth || 0;
         const centerPad = Math.max(0, Math.floor((viewportWidth - addWidth) / 2));
-        const panSlack = boardDragScrollEnabled ? 80 : 0;
+        const panSlack = calcPanSlack(viewportWidth, addWidth, centerPad);
         const pad = centerPad + panSlack;
         container.style.paddingLeft = `${pad}px`;
         container.style.paddingRight = `${pad}px`;
+        primeBoardPan(container, panSlack, 0);
         return;
     }
 
-    const listWidth = 272; // var(--list-width)
-    const gap = 12; // var(--list-gap)
     const totalWidth = n * listWidth + (n - 1) * gap;
 
     const viewportWidth = container.clientWidth;
+    let panSlack = 0;
     if (totalWidth <= viewportWidth) {
         const centerPad = Math.max(0, (viewportWidth - totalWidth) / 2);
-        const panSlack = boardDragScrollEnabled ? 80 : 0;
-        const pad = centerPad + panSlack;
-        container.style.paddingLeft = `${pad}px`;
-        container.style.paddingRight = `${pad}px`;
+        panSlack = calcPanSlack(viewportWidth, listWidth, centerPad);
+        const leftPad = centerPad + panSlack + addListBias;
+        const rightPad = centerPad + panSlack;
+        container.style.paddingLeft = `${leftPad}px`;
+        container.style.paddingRight = `${rightPad}px`;
     } else {
-        container.style.paddingLeft = '';
-        container.style.paddingRight = '';
+        panSlack = calcPanSlack(viewportWidth, listWidth);
+        const leftPad = panSlack + addListBias;
+        const rightPad = panSlack;
+        container.style.paddingLeft = leftPad ? `${leftPad}px` : '';
+        container.style.paddingRight = rightPad ? `${rightPad}px` : '';
     }
+    primeBoardPan(container, panSlack, addListBias);
+}
+
+function primeBoardPan(container, panSlack, leftBias){
+    if (!container || !boardDragScrollEnabled) return;
+    const offset = Math.max(0, (panSlack || 0) + (leftBias || 0));
+    const key = getCurrentBoardKey();
+    if (container.dataset.boardPanKey !== key) {
+        container.dataset.boardPanKey = key;
+        container.dataset.boardPanOffset = '';
+    }
+    if (container.dataset.boardPanOffset === String(offset)) return;
+    const maxScroll = Math.max(0, container.scrollWidth - container.clientWidth);
+    const desired = Math.min(offset, maxScroll);
+    container.scrollLeft = desired;
+    container.dataset.boardPanOffset = String(offset);
 }
 
 // Call after render and on resize
