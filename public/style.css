@@ -3694,6 +3694,14 @@ body.dragging-cards {
     cursor: grabbing;
     user-select: none;
 }
+body.dragging-board {
+    cursor: grabbing;
+    user-select: none;
+}
+#boardPage .board-container.drag-scroll-active,
+#boardPage .board-container.drag-scroll-active * {
+    cursor: grabbing !important;
+}
 .card-archived {
     opacity: 0.7;
     filter: grayscale(0.1);
@@ -4229,10 +4237,6 @@ body {
 #boardPage .header.header-text-light { --header-fg:#ffffff; --header-link:#e5edff; }
 #boardPage .header.header-text-dark { --header-fg:#374151; --header-link:#3b82f6; }
 
-/* Prevent horizontal scroll when lists fit in viewport */
-#boardPage .board-container.no-horizontal-scroll {
-    overflow-x: hidden !important;
-}
 
 #boardPage .board-breadcrumb #breadcrumbHome,
 #boardPage .board-breadcrumb .project-link {

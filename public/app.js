@@ -1114,6 +1114,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('backToBoard').addEventListener('click', showBoard);
     const changePwdBoard = document.getElementById('changePasswordBoard');
     if (changePwdBoard) changePwdBoard.addEventListener('click', changePasswordFlow);
+    bindBoardDragScroll();
 
     // 背景菜单（默认/导入(本地)/清除）
     const bgBtn = document.getElementById('bgBtn');
@@ -6252,6 +6253,82 @@ function getDragAfterElement(container, y) {
     }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
 
+// ===== Board drag scroll =====
+let boardDragBound = false;
+let boardDragActive = false;
+let boardDragStartX = 0;
+let boardDragStartScrollLeft = 0;
+
+function bindBoardDragScroll() {
+    if (boardDragBound) return;
+    const container = document.getElementById('listsContainer');
+    if (!container) return;
+    boardDragBound = true;
+
+    const isBlockedTarget = (target) => {
+        if (!target) return true;
+        return !!target.closest([
+            'button',
+            'input',
+            'textarea',
+            'select',
+            'a',
+            '[contenteditable="true"]',
+            '.card',
+            '.card-composer',
+            '.add-card',
+            '.add-list',
+            '.list-header',
+            '.list-actions',
+            '.list-menu',
+            '.list-archive',
+            '.list-title',
+            '.list-title-input',
+            '.card-quick',
+            '.card-center-actions',
+            '.card-move-button',
+            '.card-title-input',
+            '.list-drag-placeholder'
+        ].join(', '));
+    };
+
+    const onMouseMove = (e) => {
+        if (!boardDragActive) return;
+        e.preventDefault();
+        const delta = e.clientX - boardDragStartX;
+        container.scrollLeft = boardDragStartScrollLeft - delta;
+    };
+
+    const stopDrag = () => {
+        if (!boardDragActive) return;
+        boardDragActive = false;
+        container.classList.remove('drag-scroll-active');
+        document.body.classList.remove('dragging-board');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', stopDrag);
+    };
+
+    const onMouseDown = (e) => {
+        if (e.button !== 0) return;
+        if (e.defaultPrevented) return;
+        if (draggingListEl || draggingCardEl || document.body.classList.contains('dragging-cards')) return;
+        if (isBlockedTarget(e.target)) return;
+
+        boardDragActive = true;
+        boardDragStartX = e.clientX;
+        boardDragStartScrollLeft = container.scrollLeft;
+        container.classList.add('drag-scroll-active');
+        document.body.classList.add('dragging-board');
+        e.preventDefault();
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', stopDrag);
+    };
+
+    container.addEventListener('mousedown', onMouseDown);
+}
+// ===== End Board drag scroll =====
+
 // ===== Lists drag (mouse-based) =====
 let draggingListEl = null;
 let listDragOffsetX = 0;
@@ -7505,15 +7582,11 @@ function adjustBoardCentering() {
             }
         } catch(_){}
         const viewportWidth = container.clientWidth || 0;
-        const needsScroll = addWidth > viewportWidth;
-        if (needsScroll) {
-            container.classList.remove('no-horizontal-scroll');
-        } else {
-            container.classList.add('no-horizontal-scroll');
-            container.scrollLeft = 0;
-        }
-        const leftPad = Math.max(0, Math.floor((viewportWidth - addWidth) / 2));
-        container.style.paddingLeft = `${leftPad}px`;
+        const centerPad = Math.max(0, Math.floor((viewportWidth - addWidth) / 2));
+        const panSlack = 80;
+        const pad = centerPad + panSlack;
+        container.style.paddingLeft = `${pad}px`;
+        container.style.paddingRight = `${pad}px`;
         return;
     }
 
@@ -7523,13 +7596,14 @@ function adjustBoardCentering() {
 
     const viewportWidth = container.clientWidth;
     if (totalWidth <= viewportWidth) {
-        container.classList.add('no-horizontal-scroll');
-        container.scrollLeft = 0;
-        const padding = (viewportWidth - totalWidth) / 2;
-        container.style.paddingLeft = `${padding}px`;
+        const centerPad = Math.max(0, (viewportWidth - totalWidth) / 2);
+        const panSlack = 80;
+        const pad = centerPad + panSlack;
+        container.style.paddingLeft = `${pad}px`;
+        container.style.paddingRight = `${pad}px`;
     } else {
-        container.classList.remove('no-horizontal-scroll');
-        container.style.paddingLeft = '0px';
+        container.style.paddingLeft = '';
+        container.style.paddingRight = '';
     }
 }
 
