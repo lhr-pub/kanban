@@ -5,8 +5,9 @@
 ## 常用命令
 
 ```bash
-# 启动开发服务
-npm start                  # 默认端口 3000
+# 启动服务
+npm start                  # 生产模式，默认端口 3000
+npm run dev                # 开发模式（修改 server.js 后自动重启）
 PORT=3001 npm start        # 指定端口
 
 # CSS 构建
@@ -61,6 +62,7 @@ kanban/
 | 邮件 | nodemailer（SMTP / Ethereal 预览） |
 | 并发控制 | async-lock（防止 JSON 文件竞态） |
 | 配置 | dotenv |
+| 开发热重载 | nodemon（`npm run dev`） |
 | CSS 构建 | PostCSS（import/autoprefixer/cssnano/purgecss） |
 
 ## 快速开始
@@ -73,7 +75,8 @@ npm install
 # 必需配置：SMTP 或启用 USE_ETHEREAL=true
 
 # 启动服务
-npm start              # 或 node -r dotenv/config server.js
+npm start              # 生产模式
+npm run dev            # 开发模式（自动重启）
 PORT=3001 npm start    # 指定端口
 
 # Docker 开发

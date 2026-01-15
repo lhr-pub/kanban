@@ -778,6 +778,7 @@ kanban/
 - 存储：文件型 JSON（可直接查看/备份/版本化）
 - 邮件：nodemailer（自定义 SMTP 或 Ethereal 预览）
 - 配置：dotenv
+- 开发热重载：nodemon（`npm run dev`）
 
 ## 🛠️ 快速开始
 
@@ -811,7 +812,12 @@ ADMIN_EMAIL=
 
 ### 3) 启动服务
 ```bash
+# 生产模式
 npm start
+
+# 开发模式（修改 server.js 后自动重启）
+npm run dev
+
 # 或临时指定端口
 PORT=3001 node server.js
 ```
@@ -868,7 +874,8 @@ docker compose -f docker-compose.prod.yml up -d
 ## 📐 项目规范（Project Standards）
 
 ### 运行与端口
-- 本地启动：`npm start`（自动加载 `.env`）
+- 生产模式：`npm start`（自动加载 `.env`）
+- 开发模式：`npm run dev`（修改 server.js 后自动重启）
 - 也可：`node server.js` 或 `PORT=xxxx node server.js`
 
 ### Git 流程

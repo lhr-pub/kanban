@@ -282,7 +282,21 @@ function bindPopstateRouter() {
     window.addEventListener('popstate', function(e) {
         const s = e.state || {};
         isHandlingPopstate = true;
+
+        // 检查是否从归档页面后退（归档页面正在显示）
+        const isCurrentlyOnArchive = !archivePage.classList.contains('hidden');
+
         try {
+            // 如果当前在归档页面且后退，优先回到看板页面
+            if (isCurrentlyOnArchive && s.page !== 'archive') {
+                // 从归档页面后退，始终回到看板页面
+                currentProjectId = s.projectId || currentProjectId;
+                currentProjectName = s.projectName || currentProjectName;
+                currentBoardName = s.boardName || currentBoardName;
+                showBoard(true);
+                return;
+            }
+
             switch (s.page) {
                 case 'board':
                     currentProjectId = s.projectId || currentProjectId;
@@ -989,8 +1003,27 @@ function showArchive(replaceHistory) {
     // 保存页面状态
     localStorage.setItem('kanbanPageState', 'archive');
 
-    // History
-    updateHistory('archive', !!replaceHistory);
+    // History: 确保后退时能回到看板页面
+    // 如果不是 replaceHistory 模式，先确保 board 状态存在，再 push archive
+    if (!replaceHistory && !isHandlingPopstate) {
+        // 先用 replaceState 确保当前状态是 board，再 pushState archive
+        const boardState = {
+            page: 'board',
+            projectId: currentProjectId,
+            projectName: currentProjectName,
+            boardName: currentBoardName
+        };
+        try { window.history.replaceState(boardState, ''); } catch(e){}
+        const archiveState = {
+            page: 'archive',
+            projectId: currentProjectId,
+            projectName: currentProjectName,
+            boardName: currentBoardName
+        };
+        try { window.history.pushState(archiveState, ''); } catch(e){}
+    } else {
+        updateHistory('archive', !!replaceHistory);
+    }
 
     const search = document.getElementById('archiveSearch');
     if (search) {
@@ -8243,30 +8276,6 @@ async function moveBoardRequest(fromProjectId, toProjectId, boardName, isHome){
         console.error('Move board error:', e);
         uiToast('移动失败','error');
     }
-}
-
-// 显示归档并启用搜索
-function showArchive(replaceHistory) {
-    boardPage.classList.add('hidden');
-    archivePage.classList.remove('hidden');
-
-    // 保存页面状态
-    localStorage.setItem('kanbanPageState', 'archive');
-
-    // History
-    updateHistory('archive', !!replaceHistory);
-
-    const search = document.getElementById('archiveSearch');
-    if (search) {
-        search.style.display = '';
-        if (!search._bound) {
-            search._bound = true;
-            search.addEventListener('input', ()=> renderArchive());
-        }
-        setTimeout(()=>{ try{ search.focus(); }catch(_){} }, 0);
-    }
-
-    renderArchive();
 }
 
 // 渲染归档页面（支持搜索过滤）
