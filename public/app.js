@@ -118,6 +118,7 @@ let pendingListsSyncKey = null;
 let archiveListFilter = 'all';
 let listHeaderLineStyle = 'short';
 let boardDragScrollEnabled = true;
+let faviconStyle = 'k';
 let undoStack = [];
 let redoStack = [];
 let undoBoardKey = null;
@@ -190,6 +191,10 @@ function getBoardDragScrollStorageKey(projectId, boardName){
     const pid = projectId || currentProjectId || localStorage.getItem('kanbanCurrentProjectId') || '__';
     const bname = boardName || currentBoardName || localStorage.getItem('kanbanCurrentBoardName') || '__';
     return `kanbanBoardDragScroll:${pid}:${bname}`;
+}
+
+function getFaviconStyleStorageKey(){
+    return 'kanbanFaviconStyle';
 }
 
 function getPendingCardAddsStorageKey(projectId, boardName){
@@ -587,6 +592,15 @@ function updateListHeaderLineButton(){
     btn.textContent = `标题线: ${label}`;
 }
 
+function updateFaviconStyleButton(){
+    const btn = document.getElementById('faviconStyleBtn');
+    if (!btn) return;
+    const label = faviconStyle === 'classic'
+        ? '经典'
+        : (faviconStyle === 'board' ? '看板' : '字母');
+    btn.textContent = `图标: ${label}`;
+}
+
 function updateBoardDragScrollButton(){
     const btn = document.getElementById('boardDragScrollBtn');
     if (!btn) return;
@@ -617,6 +631,16 @@ function applyListHeaderLineStyle(){
     updateListHeaderLineButton();
 }
 
+function applyFaviconStyle(){
+    const link = document.getElementById('faviconLink');
+    if (!link) return;
+    const href = faviconStyle === 'classic'
+        ? 'favicon-classic.svg'
+        : (faviconStyle === 'board' ? 'favicon-board.svg' : 'favicon-k.svg');
+    link.setAttribute('href', href);
+    updateFaviconStyleButton();
+}
+
 function loadShowCompletedPreference(){
     try {
         const key = getShowCompletedStorageKey();
@@ -636,6 +660,17 @@ function loadListHeaderLinePreference(){
         listHeaderLineStyle = 'short';
     }
     applyListHeaderLineStyle();
+}
+
+function loadFaviconStylePreference(){
+    try {
+        const key = getFaviconStyleStorageKey();
+        const stored = localStorage.getItem(key);
+        faviconStyle = (stored === 'classic' || stored === 'board' || stored === 'k') ? stored : 'k';
+    } catch(_) {
+        faviconStyle = 'k';
+    }
+    applyFaviconStyle();
 }
 
 function loadBoardDragScrollPreference(){
@@ -667,6 +702,13 @@ function saveListHeaderLinePreference(){
     } catch(_) {}
 }
 
+function saveFaviconStylePreference(){
+    try {
+        const key = getFaviconStyleStorageKey();
+        localStorage.setItem(key, faviconStyle);
+    } catch(_) {}
+}
+
 function saveBoardDragScrollPreference(){
     try {
         const key = getBoardDragScrollStorageKey();
@@ -691,6 +733,18 @@ function toggleListHeaderLineStyle(){
     }
     saveListHeaderLinePreference();
     applyListHeaderLineStyle();
+}
+
+function toggleFaviconStyle(){
+    if (faviconStyle === 'classic') {
+        faviconStyle = 'board';
+    } else if (faviconStyle === 'board') {
+        faviconStyle = 'k';
+    } else {
+        faviconStyle = 'classic';
+    }
+    saveFaviconStylePreference();
+    applyFaviconStyle();
 }
 
 function toggleBoardDragScroll(){
@@ -1064,6 +1118,7 @@ let lastHoveredListSection = null;
 document.addEventListener('DOMContentLoaded', function() {
     // 渲染静态图标
     renderIconsInDom(document);
+    loadFaviconStylePreference();
 
     // 邮箱验证成功提示
     try {
@@ -1485,6 +1540,7 @@ function toggleBgMenu(e){
         bindBgMenuOnce();
         updateListHeaderLineButton();
         updateBoardDragScrollButton();
+        updateFaviconStyleButton();
     } else {
         hideBgMenu();
     }
@@ -1498,6 +1554,7 @@ function bindBgMenuOnce(){
     const uploadServer = document.getElementById('bgUploadServer');
     const listHeaderLineBtn = document.getElementById('listHeaderLineBtn');
     const boardDragScrollBtn = document.getElementById('boardDragScrollBtn');
+    const faviconStyleBtn = document.getElementById('faviconStyleBtn');
     // Expand default options if multiple defaults available
     if (!menu._defaultsBound) {
         menu._defaultsBound = true;
@@ -1526,6 +1583,7 @@ function bindBgMenuOnce(){
     if (clearBg) clearBg.onclick = async () => { hideBgMenu(); try { const rs = await fetch('/api/user-background/clear', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username: currentUser }) }); if (rs.ok) { applyBoardBackground(''); uiToast('已清除背景','success'); } else { const rj = await rs.json().catch(()=>({})); uiToast((rj && rj.message) || '清除失败','error'); } } catch (err) { uiToast('清除失败','error'); } };
     if (listHeaderLineBtn) listHeaderLineBtn.onclick = () => { hideBgMenu(); toggleListHeaderLineStyle(); };
     if (boardDragScrollBtn) boardDragScrollBtn.onclick = () => { hideBgMenu(); toggleBoardDragScroll(); };
+    if (faviconStyleBtn) faviconStyleBtn.onclick = () => { hideBgMenu(); toggleFaviconStyle(); };
     if (!bgMenuOutsideClickHandler) {
         bgMenuOutsideClickHandler = (ev) => {
             const m = document.getElementById('bgMenu');
