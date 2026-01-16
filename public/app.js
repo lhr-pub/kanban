@@ -116,9 +116,9 @@ let draggingCardEl = null;
 let showCompletedCards = false;
 let pendingListsSyncKey = null;
 let archiveListFilter = 'all';
-let listHeaderLineStyle = 'short';
-let boardDragScrollEnabled = true;
-let faviconStyle = 'k';
+let listHeaderLineStyle = 'title';
+let boardDragScrollEnabled = false;
+let faviconStyle = 'board';
 let undoStack = [];
 let redoStack = [];
 let undoBoardKey = null;
@@ -655,9 +655,9 @@ function loadListHeaderLinePreference(){
     try {
         const key = getListHeaderLineStorageKey();
         const stored = localStorage.getItem(key);
-        listHeaderLineStyle = (stored === 'none' || stored === 'title') ? stored : 'short';
+        listHeaderLineStyle = (stored === 'none' || stored === 'title') ? stored : 'title';
     } catch(_) {
-        listHeaderLineStyle = 'short';
+        listHeaderLineStyle = 'title';
     }
     applyListHeaderLineStyle();
 }
@@ -666,9 +666,9 @@ function loadFaviconStylePreference(){
     try {
         const key = getFaviconStyleStorageKey();
         const stored = localStorage.getItem(key);
-        faviconStyle = (stored === 'classic' || stored === 'board' || stored === 'k' || stored === 'k-yellow') ? stored : 'k';
+        faviconStyle = (stored === 'classic' || stored === 'board' || stored === 'k' || stored === 'k-yellow') ? stored : 'board';
     } catch(_) {
-        faviconStyle = 'k';
+        faviconStyle = 'board';
     }
     applyFaviconStyle();
 }
@@ -677,9 +677,9 @@ function loadBoardDragScrollPreference(){
     try {
         const key = getBoardDragScrollStorageKey();
         const stored = localStorage.getItem(key);
-        boardDragScrollEnabled = stored !== 'false';
+        boardDragScrollEnabled = stored === 'true';
     } catch(_) {
-        boardDragScrollEnabled = true;
+        boardDragScrollEnabled = false;
     }
     applyBoardDragScrollState();
     if (!boardDragScrollEnabled) {
