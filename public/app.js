@@ -597,7 +597,7 @@ function updateFaviconStyleButton(){
     if (!btn) return;
     const label = faviconStyle === 'classic'
         ? '经典'
-        : (faviconStyle === 'board' ? '看板' : '字母');
+        : (faviconStyle === 'board' ? '看板' : (faviconStyle === 'k-yellow' ? '黄色K' : '字母'));
     btn.textContent = `图标: ${label}`;
 }
 
@@ -636,7 +636,7 @@ function applyFaviconStyle(){
     if (!link) return;
     const href = faviconStyle === 'classic'
         ? 'favicon-classic.svg'
-        : (faviconStyle === 'board' ? 'favicon-board.svg' : 'favicon-k.svg');
+        : (faviconStyle === 'board' ? 'favicon-board.svg' : (faviconStyle === 'k-yellow' ? 'favicon-k-yellow.svg' : 'favicon-k.svg'));
     link.setAttribute('href', href);
     updateFaviconStyleButton();
 }
@@ -666,7 +666,7 @@ function loadFaviconStylePreference(){
     try {
         const key = getFaviconStyleStorageKey();
         const stored = localStorage.getItem(key);
-        faviconStyle = (stored === 'classic' || stored === 'board' || stored === 'k') ? stored : 'k';
+        faviconStyle = (stored === 'classic' || stored === 'board' || stored === 'k' || stored === 'k-yellow') ? stored : 'k';
     } catch(_) {
         faviconStyle = 'k';
     }
@@ -740,6 +740,8 @@ function toggleFaviconStyle(){
         faviconStyle = 'board';
     } else if (faviconStyle === 'board') {
         faviconStyle = 'k';
+    } else if (faviconStyle === 'k') {
+        faviconStyle = 'k-yellow';
     } else {
         faviconStyle = 'classic';
     }
