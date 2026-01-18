@@ -534,41 +534,6 @@ classDiagram
 2. 首页创建项目，或在“邀请管理”中输入邀请码发起加入申请
 3. 进入项目选择看板，或在导航栏点击看板名打开切换器进行切换/创建/重命名（下拉不展示已归档看板）
 
-### 🎬 录屏生成 GIF（建议放在 PR 或发布说明中）
-
-- macOS（推荐）：
-  - 录屏：按 Command+Shift+5 选择“录制所选区域”，保存为 `.mov`。
-  - 转 GIF（需要 ffmpeg 与 gifski）：
-    ```bash
-    # 使用 Homebrew 安装
-    brew install ffmpeg gifski
-    # 先缩放并导出高质量 GIF（12fps，可以根据需要调整）
-    ffmpeg -i screen.mov -vf "fps=12,scale=960:-1:flags=lanczos" -f gif - | gifski -o demo.gif --fps 12 --quality 80 -
-    ```
-
-- Windows：
-  - 录屏：可使用 PowerToys 的屏幕录像或 OBS 录制为 `.mp4`。
-  - 转 GIF（使用调色板提高清晰度）：
-    ```bash
-    ffmpeg -y -i screen.mp4 -vf "fps=12,scale=960:-1:flags=lanczos,palettegen" palette.png
-    ffmpeg -i screen.mp4 -i palette.png -lavfi "fps=12,scale=960:-1:flags=lanczos,paletteuse" demo.gif
-    ```
-
-- Linux：
-  - 录屏：可用 Peek（GUI）或 ffmpeg 直接录制 X11/Wayland。
-  - 例：用 ffmpeg 录制并转 GIF：
-    ```bash
-    # 录制屏幕区域到 mp4（自行调整 -video_size 与 -offset）
-    ffmpeg -f x11grab -video_size 1280x720 -framerate 30 -i :0.0+100,200 -c:v libx264 -preset ultrafast screen.mp4
-    # 生成高质量 GIF
-    ffmpeg -y -i screen.mp4 -vf "fps=12,scale=960:-1:flags=lanczos,palettegen" palette.png
-    ffmpeg -i screen.mp4 -i palette.png -lavfi "fps=12,scale=960:-1:flags=lanczos,paletteuse" demo.gif
-    ```
-
-小贴士：
-- 建议控制分辨率（如宽度 960px）与帧率（如 10–12fps），在清晰度与体积间取得平衡。
-- 可用 `gifsicle -O3 demo.gif -o demo.min.gif` 进一步压缩体积。
-
 ### 看板与卡片
 - 每个卡组底部提供“添加卡片”入口（点击展开、Enter 添加、Esc 取消），在列表空白处按 Enter 也可展开；提交后保持打开便于连续添加
 - 卡片正面：标签点、标题、徽标行（描述/评论/截止日期/负责人）
