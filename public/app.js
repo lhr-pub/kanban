@@ -3,6 +3,8 @@ let socket;
 let bgMenuOutsideClickHandler = null;
 let bgMenuKeyHandler = null;
 let currentUser = null;
+let currentUserDisplayName = '';
+let userDisplayNameMap = Object.create(null);
 let currentProjectId = null;
 let currentProjectName = null;
 let currentBoardName = null;
@@ -61,6 +63,56 @@ let keepAddingLists = false;
 
 // Track last time we handled Esc for add-list to avoid keyup double-handling
 let escAddListHandledAt = 0;
+
+function setCurrentUserDisplayName(name) {
+    const trimmed = (name && String(name).trim()) || '';
+    currentUserDisplayName = trimmed;
+    if (currentUser) {
+        userDisplayNameMap[currentUser] = trimmed || currentUser;
+    }
+    try { localStorage.setItem('kanbanDisplayName', trimmed); } catch(_) {}
+}
+
+function mergeUserDisplayNames(map) {
+    if (!map || typeof map !== 'object') return;
+    Object.keys(map).forEach((key) => {
+        const val = map[key];
+        if (val) userDisplayNameMap[key] = String(val);
+    });
+}
+
+function getDisplayNameForUser(username) {
+    if (!username) return '';
+    if (currentUser && username === currentUser && currentUserDisplayName) {
+        return currentUserDisplayName;
+    }
+    return (userDisplayNameMap && userDisplayNameMap[username]) ? userDisplayNameMap[username] : username;
+}
+
+function formatUserList(usernames) {
+    if (!Array.isArray(usernames)) return '';
+    return usernames.map(u => getDisplayNameForUser(u)).join(', ');
+}
+
+async function refreshCurrentUserProfile() {
+    if (!currentUser) return;
+    try {
+        const resp = await fetch(`/api/user-profile/${encodeURIComponent(currentUser)}`);
+        if (!resp.ok) return;
+        const data = await resp.json().catch(()=>null);
+        if (data && data.displayName) {
+            setCurrentUserDisplayName(data.displayName);
+            const nameEl = document.getElementById('currentUserName');
+            if (nameEl) nameEl.textContent = getDisplayNameForUser(currentUser);
+            const membersEl = document.getElementById('projectMembers');
+            if (membersEl && window.currentProjectMembers) {
+                membersEl.textContent = formatUserList(window.currentProjectMembers);
+            }
+            updateAssigneeOptions();
+            if (window.currentOnlineUsers) updateOnlineUsers(window.currentOnlineUsers);
+        }
+    } catch(_) {}
+}
 
 // Unified closer for the add-list entry. Returns true if it closed something.
 function closeAddListEntry(e) {
@@ -1167,6 +1219,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const savedUser = localStorage.getItem('kanbanUser');
     if (savedUser) {
         currentUser = savedUser;
+        try {
+            const savedDisplayName = localStorage.getItem('kanbanDisplayName');
+            setCurrentUserDisplayName(savedDisplayName || currentUser);
+        } catch(_) {}
         // 恢复页面状态
         const savedPageState = localStorage.getItem('kanbanPageState');
         const savedCurrentProjectId = localStorage.getItem('kanbanCurrentProjectId');
@@ -1203,8 +1259,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('logoutFromProject').addEventListener('click', logout);
     const invitesBtn = document.getElementById('invitesBtn');
     if (invitesBtn) invitesBtn.addEventListener('click', openInvitesModal);
-    const changeUserProj = document.getElementById('changeUsernameProject');
-    if (changeUserProj) changeUserProj.addEventListener('click', changeUsernameFlow);
+    const changeDisplayNameProj = document.getElementById('changeDisplayNameProject');
+    if (changeDisplayNameProj) changeDisplayNameProj.addEventListener('click', changeDisplayNameFlow);
     const changePwdProj = document.getElementById('changePasswordProject');
     if (changePwdProj) changePwdProj.addEventListener('click', changePasswordFlow);
     const userBackupBtn = document.getElementById('userBackupBtn');
@@ -1680,6 +1736,7 @@ function showProjectPage(replaceHistory) {
     updateHistory('project', !!replaceHistory);
 
     stopMembershipGuard();
+    try { refreshCurrentUserProfile(); } catch(_) {}
     loadUserInvites();
     // First load shows lightweight placeholders; subsequent loads only when marked dirty
     const qab = document.getElementById('quickAccessBoards');
@@ -1941,6 +1998,8 @@ async function handleAuth(e) {
                 const canonical = (result && result.username) ? result.username : username;
                 currentUser = canonical;
                 localStorage.setItem('kanbanUser', canonical);
+                const displayName = (result && result.displayName) ? result.displayName : canonical;
+                setCurrentUserDisplayName(displayName);
                 showProjectPage();
             } else {
                 if (authMessage) {
@@ -2007,8 +2066,8 @@ async function loadUserProjects() {
         const projects = await response.json();
         const prevScrollY = window.scrollY;
 
-        // 设置用户名
-        document.getElementById('currentUserName').textContent = currentUser;
+        // 设置显示名
+        document.getElementById('currentUserName').textContent = getDisplayNameForUser(currentUser);
 
         if (projects.length === 0) {
             if (token !== userProjectsLoadToken) return;
@@ -2068,6 +2127,7 @@ async function loadUserProjects() {
         const plFrag = document.createDocumentFragment();
 
         const renderOne = ({ project, boardsData }, isPinned) => {
+            mergeUserDisplayNames(boardsData.userDisplayNames);
             // 添加快速访问看板
             const archivedSet = new Set(Array.isArray(boardsData.archivedBoards) ? boardsData.archivedBoards : []);
             (Array.isArray(boardsData.boards) ? boardsData.boards : []).filter(n => !archivedSet.has(n)).forEach(boardName => {
@@ -2088,7 +2148,8 @@ async function loadUserProjects() {
                 const details = document.createElement('div');
                 details.className = 'board-details';
                 details.innerHTML = `<h4>${escapeHtml(boardName)}</h4><span class="board-project">${escapeHtml(project.name)}</span>`;
-                const ownerEl = owner ? (()=>{ const d=document.createElement('div'); d.className='card-owner'; d.textContent=`创建者：${owner}`; return d; })() : null;
+                const ownerLabel = owner ? getDisplayNameForUser(owner) : '';
+                const ownerEl = owner ? (()=>{ const d=document.createElement('div'); d.className='card-owner'; d.textContent=`创建者：${ownerLabel}`; d.title = owner; return d; })() : null;
                 const actions = document.createElement('div');
                 actions.className = 'board-card-actions';
                 const canManage = currentUser && (currentUser === (project.owner || '') || currentUser === owner);
@@ -2129,7 +2190,8 @@ async function loadUserProjects() {
             }
             const ownerEl = document.createElement('div');
             ownerEl.className = 'card-owner';
-            ownerEl.textContent = `所有者：${project.owner || ''}`;
+            ownerEl.textContent = `所有者：${getDisplayNameForUser(project.owner || '')}`;
+            if (project.owner) ownerEl.title = project.owner;
 
             projectCard.appendChild(h3);
             projectCard.appendChild(info);
@@ -2289,6 +2351,7 @@ async function createProject() {
             const projectCard = document.createElement('div');
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(newProject.id, newProject.name);
+            const ownerLabel = getDisplayNameForUser(newProject.owner || '');
             projectCard.innerHTML = `
                 <h3>${pinIconMarkup('project', false)}${escapeHtml(newProject.name)}</h3>
                 <div class="project-info">
@@ -2303,7 +2366,7 @@ async function createProject() {
                     <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
                     <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
                 </div>
-                <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
+                <div class="card-owner" title="${escapeHtml(newProject.owner || '')}">所有者：${escapeHtml(ownerLabel)}</div>
             `;
             // setup hover-to-pin icon
             setupProjectCardPinToggle(projectCard, newProject.id, false);
@@ -2368,6 +2431,7 @@ async function loadProjectMembers() {
         window.currentProjectMembers = data.members;
         window.currentProjectOwner = data.owner;
         window.currentBoardOwners = data.boardOwners || {};
+        mergeUserDisplayNames(data.userDisplayNames);
 
         // 更新分配用户选项
         updateAssigneeOptions();
@@ -2401,7 +2465,8 @@ async function loadProjectBoards() {
         if (token !== projectBoardsLoadToken) return;
 
         document.getElementById('projectInviteCode').textContent = data.inviteCode;
-        document.getElementById('projectMembers').textContent = data.members.join(', ');
+        mergeUserDisplayNames(data.userDisplayNames);
+        document.getElementById('projectMembers').textContent = formatUserList(data.members);
 
         // 保存项目成员列表用于分配用户选项
         window.currentProjectMembers = data.members;
@@ -2459,7 +2524,8 @@ async function loadProjectBoards() {
             details.className = 'board-details';
             details.innerHTML = `<h4>${pinIconMarkup('board', !!isPinned)}${escapeHtml(boardName)}</h4><span class="board-project">${escapeHtml(currentProjectName)}</span>`;
 
-            const ownerEl = owner ? (()=>{ const d=document.createElement('div'); d.className='card-owner'; d.textContent=`创建者：${owner}`; return d; })() : null;
+            const ownerLabel = owner ? getDisplayNameForUser(owner) : '';
+            const ownerEl = owner ? (()=>{ const d=document.createElement('div'); d.className='card-owner'; d.textContent=`创建者：${ownerLabel}`; d.title = owner; return d; })() : null;
 
             const actions = document.createElement('div');
             actions.className = 'board-card-actions';
@@ -2527,7 +2593,7 @@ async function loadProjectBoards() {
                             <h4>${escapeHtml(boardName)}</h4>
                             <span class=\"board-project\">${escapeHtml(currentProjectName)} · 已归档</span>
                         </div>
-                        ${owner ? `<div class=\\\"card-owner\\\">创建者：${escapeHtml(owner)}</div>` : ''}
+                        ${owner ? `<div class=\\\"card-owner\\\" title=\\\"${escapeHtml(owner)}\\\">创建者：${escapeHtml(getDisplayNameForUser(owner))}</div>` : ''}
                         <div class=\"board-card-actions\">
                             ${canManage ? `<button class=\"board-action-btn\" onclick=\"event.stopPropagation(); unarchiveBoard('${escapeJs(boardName)}')\" title=\"还原看板\">↩︎</button>
                             <button class=\"board-action-btn delete-btn\" onclick=\"event.stopPropagation(); deleteBoard('${escapeJs(boardName)}')\" title=\"删除看板\">✕</button>` : ''}
@@ -2663,6 +2729,7 @@ async function createBoard() {
             const owner = (result && result.owner) ? result.owner : currentUser;
             window.currentBoardOwners = window.currentBoardOwners || {};
             window.currentBoardOwners[boardName] = owner;
+            const ownerLabel = owner ? getDisplayNameForUser(owner) : '';
 
             if (Array.isArray(projectBoardsCache[currentProjectId])) {
                 projectBoardsCache[currentProjectId].unshift(boardName);
@@ -2680,7 +2747,7 @@ async function createBoard() {
                     <h4>${pinIconMarkup('board', false)}${escapeHtml(boardName)}</h4>
                     <span class="board-project">${escapeHtml(currentProjectName)}</span>
                 </div>
-                ${owner ? `<div class=\"card-owner\">创建者：${escapeHtml(owner)}</div>` : ''}
+                ${owner ? `<div class=\"card-owner\" title=\"${escapeHtml(owner)}\">创建者：${escapeHtml(ownerLabel)}</div>` : ''}
                 <div class="board-card-actions">
                     <button class="board-action-btn" onclick="event.stopPropagation(); reorderBoardToEdge('${currentProjectId}', '${escapeJs(boardName)}', 'first')" title="移到最前">⇧</button>
                     <button class="board-action-btn" onclick="event.stopPropagation(); reorderBoardToEdge('${currentProjectId}', '${escapeJs(boardName)}', 'last')" title="移到最后">⇩</button>
@@ -3174,7 +3241,8 @@ function handleWebSocketMessage(data) {
                     }
                 } catch (e) {}
                 const pname = currentProjectName || '项目';
-                uiToast(`${data.username} 申请加入「${pname}」`,'info');
+                const label = getDisplayNameForUser(data.username);
+                uiToast(`${label} 申请加入「${pname}」`,'info');
             }
             break;
         case 'member-added':
@@ -3823,7 +3891,7 @@ function createCardElement(card, status) {
     const commentsBadge = card.commentsCount > 0 ? `<span class="badge comments" title="${card.commentsCount} 条评论">💬 ${card.commentsCount}</span>` : '';
 
     const assigneeHtml = card.assignee
-        ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(card.assignee)}</span>`
+        ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(getDisplayNameForUser(card.assignee))}</span>`
         : '';
     const deadlineHtml = card.deadline
         ? `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">${card.deadline}</span>`
@@ -4461,7 +4529,7 @@ function openEditModal(cardId) {
         autoResizeTextarea(document.getElementById('editCardDescription'));
     } catch (e) {}
     document.getElementById('editCardCreated').textContent = `创建于: ${new Date(card.created).toLocaleString()}`;
-    document.getElementById('editCardAuthor').textContent = `创建者: ${card.author}`;
+    document.getElementById('editCardAuthor').textContent = `创建者: ${getDisplayNameForUser(card.author)}`;
 
     // 更新分配用户下拉列表
     updateAssigneeOptions();
@@ -4577,7 +4645,7 @@ function closeEditModal() {
 function updateOnlineUsers(users) {
     document.getElementById('onlineCount').textContent = `在线用户: ${users.length}`;
     document.getElementById('userList').innerHTML = users.map(user =>
-        `<span class="online-user">${escapeHtml(user)}</span>`
+        `<span class="online-user" title="${escapeHtml(user)}">${escapeHtml(getDisplayNameForUser(user))}</span>`
     ).join('');
 
     // 同时更新分配用户选项
@@ -4609,7 +4677,7 @@ function updateAssigneeOptions() {
         users.forEach(user => {
             const option = document.createElement('option');
             option.value = user;
-            option.textContent = user;
+            option.textContent = getDisplayNameForUser(user);
             assigneeSelect.appendChild(option);
         });
 
@@ -5125,12 +5193,15 @@ function logout() {
     }
 
     currentUser = null;
+    currentUserDisplayName = '';
+    userDisplayNameMap = Object.create(null);
     currentProjectId = null;
     currentProjectName = null;
     currentBoardName = null;
     boardData = { archived: [], lists: { listIds: [], lists: {} } };
 
     localStorage.removeItem('kanbanUser');
+    localStorage.removeItem('kanbanDisplayName');
     localStorage.removeItem('kanbanPageState');
     localStorage.removeItem('kanbanCurrentProjectId');
     localStorage.removeItem('kanbanCurrentProjectName');
@@ -5747,7 +5818,7 @@ function editCardAssignee(cardId) {
     userList.forEach(user => {
         const item = document.createElement('div');
         item.className = 'assignee-option' + (((user || null) === (card.assignee || null)) ? ' selected' : '');
-        item.textContent = user ? `@${user}` : '未分配';
+        item.textContent = user ? `@${getDisplayNameForUser(user)}` : '未分配';
         item.addEventListener('click', (e) => {
             e.stopPropagation();
             const newAssignee = user || null;
@@ -5756,7 +5827,7 @@ function editCardAssignee(cardId) {
 
             // 更新DOM而不重新渲染整个板
             if (newAssignee) {
-                assigneeElement.textContent = `@${escapeHtml(newAssignee)}`;
+                assigneeElement.textContent = `@${escapeHtml(getDisplayNameForUser(newAssignee))}`;
                 assigneeElement.classList.remove('unassigned');
             } else {
                 assigneeElement.textContent = '未分配';
@@ -7616,7 +7687,8 @@ function renderEditPostsList(card){
         actions.className = 'post-actions has-meta';
         const meta = document.createElement('div');
         meta.className = 'post-meta';
-        meta.textContent = `${p.author || ''} · ${new Date(p.created||Date.now()).toLocaleString()}`;
+        const authorName = p.author ? getDisplayNameForUser(p.author) : '';
+        meta.textContent = `${authorName} · ${new Date(p.created||Date.now()).toLocaleString()}`;
         actions.appendChild(meta);
         const btns = document.createElement('div');
         btns.className = 'post-actions-buttons';
@@ -7825,6 +7897,7 @@ function renderMembersList() {
     }
     wrap.innerHTML = members.map(u => {
         const isOwnerUser = owner && u === owner;
+        const displayName = getDisplayNameForUser(u);
         // 只有所有者能移除他人；非所有者只能移除自己
         let right = '';
         if (isOwnerUser) {
@@ -7834,13 +7907,14 @@ function renderMembersList() {
         } else {
             right = '';
         }
-        return `<div class=\"card-info\" style=\"margin-bottom:8px; display:flex; align-items:center; justify-content:space-between\"><span>${escapeHtml(u)}</span><span>${right}</span></div>`;
+        return `<div class=\"card-info\" style=\"margin-bottom:8px; display:flex; align-items:center; justify-content:space-between\"><span title="${escapeHtml(u)}">${escapeHtml(displayName)}</span><span>${right}</span></div>`;
     }).join('');
     wrap.querySelectorAll('button[data-remove]').forEach(btn => {
         btn.addEventListener('click', async (e) => {
             const username = e.currentTarget.getAttribute('data-remove');
             if (!username) return;
-            const ok = await uiConfirm(`确定移除成员 "${username}" 吗？`, '移除成员');
+            const label = getDisplayNameForUser(username);
+            const ok = await uiConfirm(`确定移除成员 "${label}" 吗？`, '移除成员');
             if (!ok) return;
             try {
                 const resp = await fetch('/api/remove-project-member', {
@@ -7868,7 +7942,7 @@ function renderMembersList() {
                     }
                     window.currentProjectMembers = result.members || [];
                     renderMembersList();
-                    document.getElementById('projectMembers').textContent = (window.currentProjectMembers || []).join(', ');
+                    document.getElementById('projectMembers').textContent = formatUserList(window.currentProjectMembers || []);
                     updateAssigneeOptions();
                     uiToast('已移除成员','success');
                 } else {
@@ -7977,7 +8051,8 @@ function renderPendingRequests(forceReload) {
             list.innerHTML = requests.map(r => {
                 const canAct = isOwner; // 仅所有者可审批
                 const actions = canAct ? `<button class=\"btn-primary\" data-approve=\"${escapeHtml(r.username)}\">同意</button> <button class=\"btn-secondary\" data-deny=\"${escapeHtml(r.username)}\">拒绝</button>` : '<span style=\"font-size:12px;color:#6b7280\">等待项目所有者审批</span>';
-                return `<div class=\"card-info\" style=\"margin:6px 0; display:flex; align-items:center; justify-content:space-between\"><span>${escapeHtml(r.username)} <small style=\"color:#6b7280\">申请加入</small></span><span>${actions}</span></div>`;
+                const label = getDisplayNameForUser(r.username);
+                return `<div class=\"card-info\" style=\"margin:6px 0; display:flex; align-items:center; justify-content:space-between\"><span title="${escapeHtml(r.username)}">${escapeHtml(label)} <small style=\"color:#6b7280\">申请加入</small></span><span>${actions}</span></div>`;
             }).join('');
             // bind actions
             list.querySelectorAll('button[data-approve]').forEach(btn => {
@@ -7999,7 +8074,7 @@ async function approveJoin(username) {
         const result = await resp.json();
         if (resp.ok) {
             window.currentProjectMembers = result.members || window.currentProjectMembers;
-            document.getElementById('projectMembers').textContent = (window.currentProjectMembers || []).join(', ');
+            document.getElementById('projectMembers').textContent = formatUserList(window.currentProjectMembers || []);
             updateAssigneeOptions();
             renderMembersList();
             renderPendingRequests(true);
@@ -8023,9 +8098,10 @@ async function denyJoin(username) {
 async function loadUserInvites() {
     try {
         const badge = document.getElementById('invitesBadge');
-        const resp = await fetch(`/api/user-invites/${currentUser}`);
-        const data = await resp.json();
-        const invites = (data && data.invites) || [];
+            const resp = await fetch(`/api/user-invites/${currentUser}`);
+            const data = await resp.json();
+            const invites = (data && data.invites) || [];
+            mergeUserDisplayNames(data.userDisplayNames);
         // 更新导航栏徽标（先用收到的邀请占位，稍后叠加审批数）
         if (badge) {
             if (invites.length > 0) { badge.style.display = ''; badge.textContent = String(invites.length); }
@@ -8041,7 +8117,8 @@ async function loadUserInvites() {
             html += `<h4 style=\"margin:8px 0\">我收到的邀请</h4>`;
             if (invites.length) {
                 html += invites.map(i => {
-                    const info = `加入「${escapeHtml(i.projectName)}」 · 邀请人：${escapeHtml(i.invitedBy)}`;
+                    const inviter = getDisplayNameForUser(i.invitedBy);
+                    const info = `加入「${escapeHtml(i.projectName)}」 · 邀请人：<span title="${escapeHtml(i.invitedBy || '')}">${escapeHtml(inviter)}</span>`;
                     return `<div class=\"project-card\" style=\"display:flex; align-items:center; justify-content:space-between; gap:8px\"><div>${info}</div><div style=\"display:inline-flex; gap:8px\"><button class=\"btn-primary\" data-accept-modal=\"${escapeHtml(i.projectId)}\" data-project-name=\"${escapeHtml(i.projectName)}\">接受</button><button class=\"btn-secondary\" data-decline-modal=\"${escapeHtml(i.projectId)}\" data-project-name=\"${escapeHtml(i.projectName)}\">拒绝</button></div></div>`;
                 }).join('');
             } else {
@@ -8052,6 +8129,7 @@ async function loadUserInvites() {
                 const approvalsResp = await fetch(`/api/user-approvals/${currentUser}`);
                 const approvalsData = await approvalsResp.json();
                 const approvals = (approvalsData && approvalsData.approvals) || [];
+                mergeUserDisplayNames(approvalsData.userDisplayNames);
                 // 叠加审批数到徽标
                 if (badge) {
                     const total = invites.length + approvals.length;
@@ -8061,7 +8139,8 @@ async function loadUserInvites() {
                 html += `<h4 style=\"margin:12px 0 8px\">待我处理的加入申请</h4>`;
                 if (approvals.length) {
                     html += approvals.map(a => {
-                        const text = `${escapeHtml(a.username)} 申请加入「${escapeHtml(a.projectName)}」`;
+                        const label = getDisplayNameForUser(a.username);
+                        const text = `<span title="${escapeHtml(a.username)}">${escapeHtml(label)}</span> 申请加入「${escapeHtml(a.projectName)}」`;
                         return `<div class=\"project-card\" style=\"display:flex; align-items:center; justify-content:space-between; gap:8px\"><div>${text}</div><div style=\"display:inline-flex; gap:8px\"><button class=\"btn-primary\" data-approve-join=\"${escapeHtml(a.projectId)}::${escapeHtml(a.username)}\" data-project-name=\"${escapeHtml(a.projectName)}\">同意</button><button class=\"btn-secondary\" data-deny-join=\"${escapeHtml(a.projectId)}::${escapeHtml(a.username)}\" data-project-name=\"${escapeHtml(a.projectName)}\">拒绝</button></div></div>`;
                     }).join('');
                 } else {
@@ -8083,7 +8162,7 @@ async function loadUserInvites() {
                         try {
                             const resp = await fetch('/api/approve-join', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ projectId: pid, username: uname, actor: currentUser }) });
                             const result = await resp.json();
-                            if (resp.ok) { uiToast(`已同意 ${uname} 加入「${pname}」`,'success'); loadUserInvites(); loadUserProjects(); }
+                            if (resp.ok) { uiToast(`已同意 ${getDisplayNameForUser(uname)} 加入「${pname}」`,'success'); loadUserInvites(); loadUserProjects(); }
                             else { uiToast(result.message || '操作失败','error'); }
                         } catch (e) { uiToast('操作失败','error'); }
                     });
@@ -8179,6 +8258,7 @@ async function acceptInvite(projectId, projectName) {
             try {
                 const resp3 = await fetch(`/api/project-boards/${projectId}`);
                 boardsData = await resp3.json();
+                mergeUserDisplayNames(boardsData.userDisplayNames);
             } catch (e) {}
 
             const newProject = {
@@ -8194,6 +8274,7 @@ async function acceptInvite(projectId, projectName) {
             const projectCard = document.createElement('div');
             projectCard.className = 'project-card project-card-with-actions';
             projectCard.onclick = () => selectProject(newProject.id, newProject.name);
+            const ownerLabel = getDisplayNameForUser(newProject.owner || '');
             projectCard.innerHTML = `
                 <h3>${pinIconMarkup('project', false)}${escapeHtml(newProject.name)}</h3>
                 <div class="project-info">
@@ -8208,7 +8289,7 @@ async function acceptInvite(projectId, projectName) {
                     <button class="project-action-btn rename-btn" onclick="event.stopPropagation(); renameProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="重命名项目">✎</button>
                     <button class="project-action-btn delete-btn" onclick="event.stopPropagation(); deleteProjectFromHome('${newProject.id}', '${escapeJs(newProject.name)}')" title="删除项目">✕</button>
                 </div>
-                <div class="card-owner">所有者：${escapeHtml(newProject.owner || '')}</div>
+                <div class="card-owner" title="${escapeHtml(newProject.owner || '')}">所有者：${escapeHtml(ownerLabel)}</div>
             `;
             // setup hover-to-pin icon
             setupProjectCardPinToggle(projectCard, newProject.id, false);
@@ -8271,52 +8352,36 @@ function stopMembershipGuard() {
     if (membershipGuardTimer) { clearInterval(membershipGuardTimer); membershipGuardTimer = null; }
 }
 
-// 修改用户名流程（需要密码）
-async function changeUsernameFlow() {
+// 修改显示名流程（需要密码）
+async function changeDisplayNameFlow() {
     if (!currentUser) return;
     try {
-        const data = await openRenameUserDialog(currentUser);
+        const data = await openDisplayNameDialog(currentUserDisplayName || currentUser);
         if (!data) return;
-        const trimmed = (data.newUsername || '').trim();
-        if (!trimmed) { uiToast('请输入新用户名','error'); return; }
-        if (trimmed === currentUser) { uiToast('新用户名与当前一致','error'); return; }
-        const rs = await fetch('/api/rename-user', {
+        const trimmed = (data.displayName || '').trim();
+        if (!trimmed) { uiToast('请输入显示名','error'); return; }
+        if (trimmed === currentUserDisplayName) { uiToast('显示名未变化','error'); return; }
+        const rs = await fetch('/api/change-display-name', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: currentUser, password: data.password, newUsername: trimmed })
+            body: JSON.stringify({ username: currentUser, password: data.password, displayName: trimmed })
         });
         const rj = await rs.json().catch(()=>({}));
         if (rs.ok) {
-            const oldName = currentUser;
-            const nextName = rj.username || trimmed;
-            currentUser = nextName;
-            try { localStorage.setItem('kanbanUser', nextName); } catch(_) {}
+            const nextName = rj.displayName || trimmed;
+            setCurrentUserDisplayName(nextName);
             const nameEl = document.getElementById('currentUserName');
-            if (nameEl) nameEl.textContent = nextName;
-
-            if (Array.isArray(window.currentProjectMembers)) {
-                window.currentProjectMembers = window.currentProjectMembers.map(u => (u === oldName ? nextName : u));
-                const membersEl = document.getElementById('projectMembers');
-                if (membersEl) membersEl.textContent = window.currentProjectMembers.join(', ');
-                updateAssigneeOptions();
+            if (nameEl) nameEl.textContent = getDisplayNameForUser(currentUser);
+            const membersEl = document.getElementById('projectMembers');
+            if (membersEl && window.currentProjectMembers) {
+                membersEl.textContent = formatUserList(window.currentProjectMembers);
             }
-            if (window.currentProjectOwner === oldName) window.currentProjectOwner = nextName;
-            if (window.currentBoardOwners && typeof window.currentBoardOwners === 'object') {
-                Object.keys(window.currentBoardOwners).forEach((bn) => {
-                    if (window.currentBoardOwners[bn] === oldName) {
-                        window.currentBoardOwners[bn] = nextName;
-                    }
-                });
-            }
-
+            updateAssigneeOptions();
+            try { renderMembersList(); } catch(_) {}
+            try { if (window.currentOnlineUsers) updateOnlineUsers(window.currentOnlineUsers); } catch(_) {}
             try { loadUserProjects(); } catch(e) {}
-            try { if (boardPage && !boardPage.classList.contains('hidden')) loadBoardData(); } catch(_) {}
-
-            if (rj && rj.boardFailures > 0) {
-                uiToast('用户名已更新，但部分看板未同步，请刷新重试','info');
-            } else {
-                uiToast('用户名已更新','success');
-            }
+            try { if (boardPage && !boardPage.classList.contains('hidden')) renderBoard(); } catch(_) {}
+            uiToast('显示名已更新','success');
         } else {
             uiToast(rj.message || '修改失败','error');
         }
@@ -8346,10 +8411,10 @@ async function changePasswordFlow() {
     }
 }
 
-// 单次对话框：修改用户名（新用户名 + 当前密码）
-function openRenameUserDialog(currentName) {
+// 单次对话框：修改显示名（显示名 + 当前密码）
+function openDisplayNameDialog(currentName) {
     return new Promise((resolve) => {
-        const { overlay, body, footer, close } = createBaseModal('修改用户名');
+        const { overlay, body, footer, close } = createBaseModal('修改显示名');
 
         function makeRow(labelText, type = 'text') {
             const wrap = document.createElement('div');
@@ -8388,7 +8453,7 @@ function openRenameUserDialog(currentName) {
         honeyWrap.appendChild(honeyPass);
         body.appendChild(honeyWrap);
 
-        const nameRow = makeRow('新用户名', 'text');
+        const nameRow = makeRow('显示名', 'text');
         nameRow.input.value = currentName || '';
         nameRow.input.autocomplete = 'off';
         body.appendChild(nameRow.wrap);
@@ -8410,13 +8475,13 @@ function openRenameUserDialog(currentName) {
         ok.className = 'btn-primary';
         ok.textContent = '确定';
         ok.onclick = () => {
-            const newUsername = (nameRow.input.value || '').trim();
+            const displayName = (nameRow.input.value || '').trim();
             const password = passRow.input.value || '';
-            if (!newUsername) { nameRow.input.focus(); return; }
+            if (!displayName) { nameRow.input.focus(); return; }
             if (!password) { passRow.input.focus(); return; }
             try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}
             document.body.removeChild(overlay);
-            resolve({ newUsername, password });
+            resolve({ displayName, password });
         };
 
         close.onclick = cancel.onclick;

@@ -397,132 +397,24 @@ function setAttachmentHeaders(res, filename, contentType) {
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`);
 }
 
-function updateProjectUserReferences(project, oldName, newName) {
-    let changed = false;
-    if (!project || typeof project !== 'object') return changed;
-
-    if (project.owner === oldName) {
-        project.owner = newName;
-        changed = true;
+function getDisplayName(users, username) {
+    if (!username) return '';
+    const user = users && users[username];
+    if (user && typeof user.displayName === 'string') {
+        const trimmed = user.displayName.trim();
+        if (trimmed) return trimmed;
     }
-
-    if (Array.isArray(project.members)) {
-        for (let i = 0; i < project.members.length; i++) {
-            if (project.members[i] === oldName) {
-                project.members[i] = newName;
-                changed = true;
-            }
-        }
-    }
-
-    if (project.boardOwners && typeof project.boardOwners === 'object') {
-        Object.keys(project.boardOwners).forEach((boardName) => {
-            if (project.boardOwners[boardName] === oldName) {
-                project.boardOwners[boardName] = newName;
-                changed = true;
-            }
-        });
-    }
-
-    if (Array.isArray(project.pendingRequests)) {
-        project.pendingRequests.forEach((req) => {
-            if (!req) return;
-            if (req.username === oldName) { req.username = newName; changed = true; }
-            if (req.requestedBy === oldName) { req.requestedBy = newName; changed = true; }
-        });
-    }
-
-    if (Array.isArray(project.pendingInvites)) {
-        project.pendingInvites.forEach((inv) => {
-            if (!inv) return;
-            if (inv.username === oldName) { inv.username = newName; changed = true; }
-            if (inv.invitedBy === oldName) { inv.invitedBy = newName; changed = true; }
-        });
-    }
-
-    if (Array.isArray(project.joinApprovals)) {
-        project.joinApprovals.forEach((item, idx) => {
-            if (item === oldName) {
-                project.joinApprovals[idx] = newName;
-                changed = true;
-                return;
-            }
-            if (item && typeof item === 'object') {
-                Object.keys(item).forEach((key) => {
-                    if (item[key] === oldName) {
-                        item[key] = newName;
-                        changed = true;
-                    }
-                });
-            }
-        });
-    }
-
-    return changed;
+    return username;
 }
 
-function updateBoardDataUserReferences(boardData, oldName, newName) {
-    if (!boardData || typeof boardData !== 'object') return false;
-    let changed = false;
-    const updateCard = (card) => {
-        if (!card || typeof card !== 'object') return;
-        if (card.author === oldName) { card.author = newName; changed = true; }
-        if (card.assignee === oldName) { card.assignee = newName; changed = true; }
-        if (Array.isArray(card.posts)) {
-            card.posts.forEach((post) => {
-                if (post && post.author === oldName) { post.author = newName; changed = true; }
-            });
-        }
-    };
-    Object.keys(boardData).forEach((key) => {
-        if (Array.isArray(boardData[key])) {
-            boardData[key].forEach(updateCard);
-        }
+function buildDisplayNameMap(users, usernames) {
+    const map = {};
+    if (!Array.isArray(usernames)) return map;
+    usernames.forEach((name) => {
+        if (!name) return;
+        map[name] = getDisplayName(users, name);
     });
-    return changed;
-}
-
-function renameUserWallpaper(oldName, newName, user) {
-    let changed = false;
-    if (!oldName || !newName || !user) return changed;
-
-    let urlExt = null;
-    if (user.backgroundUrl && typeof user.backgroundUrl === 'string') {
-        const prefix = `/uploads/wallpapers/${oldName}.`;
-        if (user.backgroundUrl.startsWith(prefix)) {
-            urlExt = user.backgroundUrl.slice(prefix.length);
-        }
-    }
-
-    if (urlExt) {
-        const oldPath = path.join(wallpapersDir, `${oldName}.${urlExt}`);
-        const newPath = path.join(wallpapersDir, `${newName}.${urlExt}`);
-        try {
-            if (fs.existsSync(oldPath)) {
-                if (fs.existsSync(newPath)) fs.unlinkSync(newPath);
-                fs.renameSync(oldPath, newPath);
-            }
-            user.backgroundUrl = `/uploads/wallpapers/${newName}.${urlExt}`;
-            changed = true;
-        } catch (e) {
-            console.warn('Rename wallpaper error:', e && e.message ? e.message : e);
-        }
-    }
-
-    ['png','jpg','jpeg','webp'].forEach((ext) => {
-        const oldPath = path.join(wallpapersDir, `${oldName}.${ext}`);
-        if (!fs.existsSync(oldPath)) return;
-        const newPath = path.join(wallpapersDir, `${newName}.${ext}`);
-        try {
-            if (fs.existsSync(newPath)) fs.unlinkSync(newPath);
-            fs.renameSync(oldPath, newPath);
-            changed = true;
-        } catch (e) {
-            console.warn('Rename wallpaper error:', e && e.message ? e.message : e);
-        }
-    });
-
-    return changed;
+    return map;
 }
 
 // 用户认证API
@@ -559,6 +451,7 @@ app.post('/api/register', async (req, res) => {
         verified: false,
         verifyToken,
         verifyTokenExpires,
+        displayName: username,
         projects: [],
         created: new Date().toISOString()
     };
@@ -617,7 +510,7 @@ app.post('/api/login', (req, res) => {
         return res.status(400).json({ message: '密码错误' });
     }
 
-    res.json({ message: '登录成功', username: canonicalUsername });
+    res.json({ message: '登录成功', username: canonicalUsername, displayName: getDisplayName(users, canonicalUsername) });
 });
 
 // 邮箱验证回调
@@ -824,118 +717,47 @@ app.post('/api/change-password', (req, res) => {
     res.json({ message: '密码已更新' });
 });
 
-// 修改用户名（需要提供密码）
-app.post('/api/rename-user', async (req, res) => {
-    const { username, password, newUsername } = req.body || {};
-    if (!username || !password || !newUsername) {
+// 修改显示名（需要提供密码）
+app.post('/api/change-display-name', (req, res) => {
+    const { username, password, displayName } = req.body || {};
+    if (!username || !password || !displayName) {
         return res.status(400).json({ message: '缺少必要参数' });
     }
 
-    const oldName = String(username).trim();
-    const nextName = String(newUsername).trim();
-    if (!oldName || !nextName) {
-        return res.status(400).json({ message: '用户名不能为空' });
+    const nextName = String(displayName).replace(/\s+/g, ' ').trim();
+    if (!nextName) {
+        return res.status(400).json({ message: '显示名不能为空' });
     }
-    if (oldName === nextName) {
-        return res.status(400).json({ message: '新用户名与当前一致' });
+    if (nextName.length > 32) {
+        return res.status(400).json({ message: '显示名过长（最多32字符）' });
     }
 
     const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
     const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-    const user = users[oldName];
+    const user = users[username];
     if (!user) return res.status(404).json({ message: '用户不存在' });
 
     const oldHash = crypto.createHash('sha256').update(String(password)).digest('hex');
     if (user.password !== oldHash) return res.status(400).json({ message: '密码不正确' });
 
-    const nextLower = nextName.toLowerCase();
-    const conflict = Object.keys(users).some(u => u.toLowerCase() === nextLower && u !== oldName);
-    if (conflict) return res.status(400).json({ message: '用户名已存在' });
+    user.displayName = nextName;
 
-    const originalUsers = JSON.parse(JSON.stringify(users));
-    const originalProjects = JSON.parse(JSON.stringify(projects));
-
-    let projectsChanged = false;
-    for (const project of Object.values(projects)) {
-        if (updateProjectUserReferences(project, oldName, nextName)) {
-            projectsChanged = true;
-        }
-    }
-
-    users[nextName] = user;
-    delete users[oldName];
-    renameUserWallpaper(oldName, nextName, user);
-
-    const wroteProjects = projectsChanged ? writeJsonFile(projectsFile, projects) : true;
-    const wroteUsers = writeJsonFile(usersFile, users);
-    if (!wroteProjects || !wroteUsers) {
-        writeJsonFile(projectsFile, originalProjects);
-        writeJsonFile(usersFile, originalUsers);
+    if (!writeJsonFile(usersFile, users)) {
         return res.status(500).json({ message: '修改失败，请稍后再试' });
     }
 
-    let boardFailures = 0;
-    for (const [projectId, project] of Object.entries(projects)) {
-        const boardNames = new Set();
-        (project.boards || []).forEach(name => boardNames.add(name));
-        (project.archivedBoards || []).forEach(name => boardNames.add(name));
-        for (const boardName of boardNames) {
-            try {
-                const lockKey = `board:${projectId}:${boardName}`;
-                const result = await fileLock.acquire(lockKey, async () => {
-                    const boardData = readBoardData(projectId, boardName);
-                    const changed = updateBoardDataUserReferences(boardData, oldName, nextName);
-                    if (!changed) return { success: true, changed: false };
-                    if (writeBoardData(projectId, boardName, boardData)) {
-                        createBackup(projectId, boardName, boardData);
-                        return { success: true, changed: true };
-                    }
-                    return { success: false, changed: true };
-                });
-                if (!result || result.success !== true) boardFailures += 1;
-            } catch (e) {
-                boardFailures += 1;
-            }
-        }
-    }
+    return res.json({ message: '显示名已更新', displayName: nextName });
+});
 
-    for (const session of adminSessions.values()) {
-        if (session && session.username === oldName) session.username = nextName;
-    }
-
-    const boardsToUpdate = new Set();
-    const connectionUpdates = [];
-    for (const [key, connData] of connections.entries()) {
-        if (connData && connData.user === oldName) {
-            connectionUpdates.push({ key, connData });
-        }
-    }
-    connectionUpdates.forEach(({ key, connData }) => {
-        connData.user = nextName;
-        if (connData.ws) connData.ws.user = nextName;
-        const newKey = `${nextName}-${connData.projectId}-${connData.boardName}`;
-        if (newKey !== key) {
-            connections.delete(key);
-            connections.set(newKey, connData);
-        }
-        boardsToUpdate.add(`${connData.projectId}::${connData.boardName}`);
-    });
-    boardsToUpdate.forEach((key) => {
-        const parts = key.split('::');
-        updateOnlineUsers(parts[0], parts[1]);
-    });
-
-    if (boardFailures > 0) {
-        console.warn(`Rename user: ${boardFailures} board updates failed for ${oldName} -> ${nextName}`);
-    }
-
-    return res.json({
-        message: boardFailures > 0 ? '用户名已更新（部分看板未同步）' : '用户名已更新',
-        username: nextName,
-        boardFailures
-    });
+// 获取用户显示名
+app.get('/api/user-profile/:username', (req, res) => {
+    const { username } = req.params;
+    if (!username) return res.status(400).json({ message: '用户名不能为空' });
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
+    const user = users[username];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+    return res.json({ username, displayName: getDisplayName(users, username) });
 });
 
 // 管理员登录（独立）
@@ -969,6 +791,7 @@ app.get('/api/admin/users', verifyAdminToken, (req, res) => {
     const users = readJsonFile(usersFile, {});
     const result = Object.entries(users).map(([uname, u]) => ({
         username: uname,
+        displayName: getDisplayName(users, uname),
         email: u.email || '',
         verified: u.verified !== false,
         admin: u.admin === true,
@@ -1495,11 +1318,26 @@ app.get('/api/project-boards/:projectId', (req, res) => {
 
     const projectsFile = path.join(dataDir, 'projects.json');
     const projects = readJsonFile(projectsFile, {});
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
 
     const project = projects[projectId];
     if (!project) {
         return res.status(404).json({ message: '项目不存在' });
     }
+
+    const nameSet = new Set();
+    (project.members || []).forEach(n => { if (n) nameSet.add(n); });
+    if (project.owner) nameSet.add(project.owner);
+    Object.values(project.boardOwners || {}).forEach(n => { if (n) nameSet.add(n); });
+    (project.pendingRequests || []).forEach(r => {
+        if (r && r.username) nameSet.add(r.username);
+        if (r && r.requestedBy) nameSet.add(r.requestedBy);
+    });
+    (project.pendingInvites || []).forEach(r => {
+        if (r && r.username) nameSet.add(r.username);
+        if (r && r.invitedBy) nameSet.add(r.invitedBy);
+    });
 
     res.json({
         inviteCode: project.inviteCode,
@@ -1509,7 +1347,8 @@ app.get('/api/project-boards/:projectId', (req, res) => {
         owner: project.owner,
         boardOwners: project.boardOwners || {},
         pendingRequests: project.pendingRequests || [],
-        pendingInvites: project.pendingInvites || []
+        pendingInvites: project.pendingInvites || [],
+        userDisplayNames: buildDisplayNameMap(users, Array.from(nameSet))
     });
 });
 
@@ -2755,6 +2594,7 @@ app.get('/api/user-backup/:username', (req, res) => {
         exportedBy: username,
         user: {
             // 不导出密码和敏感信息
+            displayName: getDisplayName(users, username),
             stars: users[username].stars || [],
             pinnedProjects: users[username].pinnedProjects || [],
             pinnedBoards: users[username].pinnedBoards || {},
@@ -2830,6 +2670,10 @@ app.post('/api/user-restore', (req, res) => {
     const idMapping = {}; // 旧ID -> 新ID 映射
 
     try {
+        if (backupData.user && backupData.user.displayName) {
+            const dn = String(backupData.user.displayName).trim();
+            if (dn) users[username].displayName = dn;
+        }
         // 为每个项目创建新的 projectId
         backupData.projects.forEach(projectExport => {
             const newProjectId = Date.now().toString() + Math.random().toString(36).slice(2, 12);
@@ -3861,36 +3705,44 @@ app.get('/api/project-invites/:projectId', (req, res) => {
 
 app.get('/api/user-invites/:username', (req, res) => {
     const { username } = req.params;
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
     const projectsFile = path.join(dataDir, 'projects.json');
     const projects = readJsonFile(projectsFile, {});
     const result = [];
+    const nameSet = new Set();
     for (const [pid, proj] of Object.entries(projects)) {
         const invites = (proj.pendingInvites || []).filter(i => i && i.username === username);
         if (invites.length) {
             invites.forEach(i => {
+                if (i.invitedBy) nameSet.add(i.invitedBy);
                 result.push({ projectId: pid, projectName: proj.name, invitedBy: i.invitedBy, invitedAt: i.invitedAt });
             });
         }
     }
-    res.json({ invites: result });
+    res.json({ invites: result, userDisplayNames: buildDisplayNameMap(users, Array.from(nameSet)) });
 });
 
 // 汇总需要该用户审批的通过邀请码加入项目的申请（该用户为项目所有者）
 app.get('/api/user-approvals/:username', (req, res) => {
     const { username } = req.params;
+    const usersFile = path.join(dataDir, 'users.json');
+    const users = readJsonFile(usersFile, {});
     const projectsFile = path.join(dataDir, 'projects.json');
     const projects = readJsonFile(projectsFile, {});
     const approvals = [];
+    const nameSet = new Set();
     for (const [pid, proj] of Object.entries(projects)) {
         if (!proj || proj.owner !== username) continue;
         const requests = Array.isArray(proj.pendingRequests) ? proj.pendingRequests : [];
         requests.forEach(r => {
             if (r && r.username) {
+                nameSet.add(r.username);
                 approvals.push({ projectId: pid, projectName: proj.name, username: r.username, requestedAt: r.requestedAt });
             }
         });
     }
-    res.json({ approvals });
+    res.json({ approvals, userDisplayNames: buildDisplayNameMap(users, Array.from(nameSet)) });
 });
 
 app.post('/api/accept-invite', (req, res) => {
