@@ -379,6 +379,24 @@ function writeJsonFile(filePath, data) {
     }
 }
 
+function sanitizeDownloadFilename(name, fallback) {
+    const raw = String(name || '').replace(/[\\/:*?"<>|]/g, '_');
+    const ascii = raw.replace(/[^\x20-\x7E]/g, '_').replace(/\s+/g, ' ').trim();
+    return ascii || (fallback || 'download');
+}
+
+function setAttachmentHeaders(res, filename, contentType) {
+    const rawName = filename ? String(filename) : 'download';
+    const safeName = sanitizeDownloadFilename(rawName, 'download');
+    const encodedName = encodeURIComponent(rawName)
+        .replace(/'/g, '%27')
+        .replace(/\(/g, '%28')
+        .replace(/\)/g, '%29')
+        .replace(/\*/g, '%2A');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`);
+}
+
 // 用户认证API
 app.post('/api/register', async (req, res) => {
     const { username, password, email } = req.body;
@@ -2362,8 +2380,7 @@ app.get('/api/export/:projectId/:boardName', (req, res) => {
         }
     });
 
-    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${decodedBoardName}.md"`);
+    setAttachmentHeaders(res, `${decodedBoardName}.md`, 'text/markdown; charset=utf-8');
     res.send(markdown);
 });
 
@@ -2448,8 +2465,7 @@ app.get('/api/export-taskpaper/:projectId/:boardName', (req, res) => {
         }
     });
 
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${decodedBoardName}.taskpaper"`);
+    setAttachmentHeaders(res, `${decodedBoardName}.taskpaper`, 'text/plain; charset=utf-8');
     res.send(content);
 });
 
@@ -2464,8 +2480,7 @@ app.get('/api/export-json/:projectId/:boardName', (req, res) => {
         lists: { listIds: [], lists: {} }
     });
 
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${decodedBoardName}.json"`);
+    setAttachmentHeaders(res, `${decodedBoardName}.json`, 'application/json; charset=utf-8');
     res.send(JSON.stringify(boardData));
 });
 
@@ -2540,8 +2555,7 @@ app.get('/api/user-backup/:username', (req, res) => {
     });
 
     const filename = `kanban_backup_${username}_${new Date().toISOString().slice(0,10)}.json`;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    setAttachmentHeaders(res, filename, 'application/json; charset=utf-8');
     res.send(JSON.stringify(exportData, null, 2));
 });
 
@@ -2692,8 +2706,7 @@ app.get('/api/project-backup/:projectId', (req, res) => {
 
     const safeName = project.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '_');
     const filename = `project_backup_${safeName}_${new Date().toISOString().slice(0,10)}.json`;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    setAttachmentHeaders(res, filename, 'application/json; charset=utf-8');
     res.send(JSON.stringify(exportData, null, 2));
 });
 
