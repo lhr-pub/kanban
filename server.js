@@ -397,6 +397,134 @@ function setAttachmentHeaders(res, filename, contentType) {
     res.setHeader('Content-Disposition', `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`);
 }
 
+function updateProjectUserReferences(project, oldName, newName) {
+    let changed = false;
+    if (!project || typeof project !== 'object') return changed;
+
+    if (project.owner === oldName) {
+        project.owner = newName;
+        changed = true;
+    }
+
+    if (Array.isArray(project.members)) {
+        for (let i = 0; i < project.members.length; i++) {
+            if (project.members[i] === oldName) {
+                project.members[i] = newName;
+                changed = true;
+            }
+        }
+    }
+
+    if (project.boardOwners && typeof project.boardOwners === 'object') {
+        Object.keys(project.boardOwners).forEach((boardName) => {
+            if (project.boardOwners[boardName] === oldName) {
+                project.boardOwners[boardName] = newName;
+                changed = true;
+            }
+        });
+    }
+
+    if (Array.isArray(project.pendingRequests)) {
+        project.pendingRequests.forEach((req) => {
+            if (!req) return;
+            if (req.username === oldName) { req.username = newName; changed = true; }
+            if (req.requestedBy === oldName) { req.requestedBy = newName; changed = true; }
+        });
+    }
+
+    if (Array.isArray(project.pendingInvites)) {
+        project.pendingInvites.forEach((inv) => {
+            if (!inv) return;
+            if (inv.username === oldName) { inv.username = newName; changed = true; }
+            if (inv.invitedBy === oldName) { inv.invitedBy = newName; changed = true; }
+        });
+    }
+
+    if (Array.isArray(project.joinApprovals)) {
+        project.joinApprovals.forEach((item, idx) => {
+            if (item === oldName) {
+                project.joinApprovals[idx] = newName;
+                changed = true;
+                return;
+            }
+            if (item && typeof item === 'object') {
+                Object.keys(item).forEach((key) => {
+                    if (item[key] === oldName) {
+                        item[key] = newName;
+                        changed = true;
+                    }
+                });
+            }
+        });
+    }
+
+    return changed;
+}
+
+function updateBoardDataUserReferences(boardData, oldName, newName) {
+    if (!boardData || typeof boardData !== 'object') return false;
+    let changed = false;
+    const updateCard = (card) => {
+        if (!card || typeof card !== 'object') return;
+        if (card.author === oldName) { card.author = newName; changed = true; }
+        if (card.assignee === oldName) { card.assignee = newName; changed = true; }
+        if (Array.isArray(card.posts)) {
+            card.posts.forEach((post) => {
+                if (post && post.author === oldName) { post.author = newName; changed = true; }
+            });
+        }
+    };
+    Object.keys(boardData).forEach((key) => {
+        if (Array.isArray(boardData[key])) {
+            boardData[key].forEach(updateCard);
+        }
+    });
+    return changed;
+}
+
+function renameUserWallpaper(oldName, newName, user) {
+    let changed = false;
+    if (!oldName || !newName || !user) return changed;
+
+    let urlExt = null;
+    if (user.backgroundUrl && typeof user.backgroundUrl === 'string') {
+        const prefix = `/uploads/wallpapers/${oldName}.`;
+        if (user.backgroundUrl.startsWith(prefix)) {
+            urlExt = user.backgroundUrl.slice(prefix.length);
+        }
+    }
+
+    if (urlExt) {
+        const oldPath = path.join(wallpapersDir, `${oldName}.${urlExt}`);
+        const newPath = path.join(wallpapersDir, `${newName}.${urlExt}`);
+        try {
+            if (fs.existsSync(oldPath)) {
+                if (fs.existsSync(newPath)) fs.unlinkSync(newPath);
+                fs.renameSync(oldPath, newPath);
+            }
+            user.backgroundUrl = `/uploads/wallpapers/${newName}.${urlExt}`;
+            changed = true;
+        } catch (e) {
+            console.warn('Rename wallpaper error:', e && e.message ? e.message : e);
+        }
+    }
+
+    ['png','jpg','jpeg','webp'].forEach((ext) => {
+        const oldPath = path.join(wallpapersDir, `${oldName}.${ext}`);
+        if (!fs.existsSync(oldPath)) return;
+        const newPath = path.join(wallpapersDir, `${newName}.${ext}`);
+        try {
+            if (fs.existsSync(newPath)) fs.unlinkSync(newPath);
+            fs.renameSync(oldPath, newPath);
+            changed = true;
+        } catch (e) {
+            console.warn('Rename wallpaper error:', e && e.message ? e.message : e);
+        }
+    });
+
+    return changed;
+}
+
 // 用户认证API
 app.post('/api/register', async (req, res) => {
     const { username, password, email } = req.body;
@@ -694,6 +822,120 @@ app.post('/api/change-password', (req, res) => {
     }
 
     res.json({ message: '密码已更新' });
+});
+
+// 修改用户名（需要提供密码）
+app.post('/api/rename-user', async (req, res) => {
+    const { username, password, newUsername } = req.body || {};
+    if (!username || !password || !newUsername) {
+        return res.status(400).json({ message: '缺少必要参数' });
+    }
+
+    const oldName = String(username).trim();
+    const nextName = String(newUsername).trim();
+    if (!oldName || !nextName) {
+        return res.status(400).json({ message: '用户名不能为空' });
+    }
+    if (oldName === nextName) {
+        return res.status(400).json({ message: '新用户名与当前一致' });
+    }
+
+    const usersFile = path.join(dataDir, 'users.json');
+    const projectsFile = path.join(dataDir, 'projects.json');
+    const users = readJsonFile(usersFile, {});
+    const projects = readJsonFile(projectsFile, {});
+    const user = users[oldName];
+    if (!user) return res.status(404).json({ message: '用户不存在' });
+
+    const oldHash = crypto.createHash('sha256').update(String(password)).digest('hex');
+    if (user.password !== oldHash) return res.status(400).json({ message: '密码不正确' });
+
+    const nextLower = nextName.toLowerCase();
+    const conflict = Object.keys(users).some(u => u.toLowerCase() === nextLower && u !== oldName);
+    if (conflict) return res.status(400).json({ message: '用户名已存在' });
+
+    const originalUsers = JSON.parse(JSON.stringify(users));
+    const originalProjects = JSON.parse(JSON.stringify(projects));
+
+    let projectsChanged = false;
+    for (const project of Object.values(projects)) {
+        if (updateProjectUserReferences(project, oldName, nextName)) {
+            projectsChanged = true;
+        }
+    }
+
+    users[nextName] = user;
+    delete users[oldName];
+    renameUserWallpaper(oldName, nextName, user);
+
+    const wroteProjects = projectsChanged ? writeJsonFile(projectsFile, projects) : true;
+    const wroteUsers = writeJsonFile(usersFile, users);
+    if (!wroteProjects || !wroteUsers) {
+        writeJsonFile(projectsFile, originalProjects);
+        writeJsonFile(usersFile, originalUsers);
+        return res.status(500).json({ message: '修改失败，请稍后再试' });
+    }
+
+    let boardFailures = 0;
+    for (const [projectId, project] of Object.entries(projects)) {
+        const boardNames = new Set();
+        (project.boards || []).forEach(name => boardNames.add(name));
+        (project.archivedBoards || []).forEach(name => boardNames.add(name));
+        for (const boardName of boardNames) {
+            try {
+                const lockKey = `board:${projectId}:${boardName}`;
+                const result = await fileLock.acquire(lockKey, async () => {
+                    const boardData = readBoardData(projectId, boardName);
+                    const changed = updateBoardDataUserReferences(boardData, oldName, nextName);
+                    if (!changed) return { success: true, changed: false };
+                    if (writeBoardData(projectId, boardName, boardData)) {
+                        createBackup(projectId, boardName, boardData);
+                        return { success: true, changed: true };
+                    }
+                    return { success: false, changed: true };
+                });
+                if (!result || result.success !== true) boardFailures += 1;
+            } catch (e) {
+                boardFailures += 1;
+            }
+        }
+    }
+
+    for (const session of adminSessions.values()) {
+        if (session && session.username === oldName) session.username = nextName;
+    }
+
+    const boardsToUpdate = new Set();
+    const connectionUpdates = [];
+    for (const [key, connData] of connections.entries()) {
+        if (connData && connData.user === oldName) {
+            connectionUpdates.push({ key, connData });
+        }
+    }
+    connectionUpdates.forEach(({ key, connData }) => {
+        connData.user = nextName;
+        if (connData.ws) connData.ws.user = nextName;
+        const newKey = `${nextName}-${connData.projectId}-${connData.boardName}`;
+        if (newKey !== key) {
+            connections.delete(key);
+            connections.set(newKey, connData);
+        }
+        boardsToUpdate.add(`${connData.projectId}::${connData.boardName}`);
+    });
+    boardsToUpdate.forEach((key) => {
+        const parts = key.split('::');
+        updateOnlineUsers(parts[0], parts[1]);
+    });
+
+    if (boardFailures > 0) {
+        console.warn(`Rename user: ${boardFailures} board updates failed for ${oldName} -> ${nextName}`);
+    }
+
+    return res.json({
+        message: boardFailures > 0 ? '用户名已更新（部分看板未同步）' : '用户名已更新',
+        username: nextName,
+        boardFailures
+    });
 });
 
 // 管理员登录（独立）

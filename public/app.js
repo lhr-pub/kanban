@@ -1203,6 +1203,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('logoutFromProject').addEventListener('click', logout);
     const invitesBtn = document.getElementById('invitesBtn');
     if (invitesBtn) invitesBtn.addEventListener('click', openInvitesModal);
+    const changeUserProj = document.getElementById('changeUsernameProject');
+    if (changeUserProj) changeUserProj.addEventListener('click', changeUsernameFlow);
     const changePwdProj = document.getElementById('changePasswordProject');
     if (changePwdProj) changePwdProj.addEventListener('click', changePasswordFlow);
     const userBackupBtn = document.getElementById('userBackupBtn');
@@ -8269,6 +8271,60 @@ function stopMembershipGuard() {
     if (membershipGuardTimer) { clearInterval(membershipGuardTimer); membershipGuardTimer = null; }
 }
 
+// 修改用户名流程（需要密码）
+async function changeUsernameFlow() {
+    if (!currentUser) return;
+    try {
+        const data = await openRenameUserDialog(currentUser);
+        if (!data) return;
+        const trimmed = (data.newUsername || '').trim();
+        if (!trimmed) { uiToast('请输入新用户名','error'); return; }
+        if (trimmed === currentUser) { uiToast('新用户名与当前一致','error'); return; }
+        const rs = await fetch('/api/rename-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: currentUser, password: data.password, newUsername: trimmed })
+        });
+        const rj = await rs.json().catch(()=>({}));
+        if (rs.ok) {
+            const oldName = currentUser;
+            const nextName = rj.username || trimmed;
+            currentUser = nextName;
+            try { localStorage.setItem('kanbanUser', nextName); } catch(_) {}
+            const nameEl = document.getElementById('currentUserName');
+            if (nameEl) nameEl.textContent = nextName;
+
+            if (Array.isArray(window.currentProjectMembers)) {
+                window.currentProjectMembers = window.currentProjectMembers.map(u => (u === oldName ? nextName : u));
+                const membersEl = document.getElementById('projectMembers');
+                if (membersEl) membersEl.textContent = window.currentProjectMembers.join(', ');
+                updateAssigneeOptions();
+            }
+            if (window.currentProjectOwner === oldName) window.currentProjectOwner = nextName;
+            if (window.currentBoardOwners && typeof window.currentBoardOwners === 'object') {
+                Object.keys(window.currentBoardOwners).forEach((bn) => {
+                    if (window.currentBoardOwners[bn] === oldName) {
+                        window.currentBoardOwners[bn] = nextName;
+                    }
+                });
+            }
+
+            try { loadUserProjects(); } catch(e) {}
+            try { if (boardPage && !boardPage.classList.contains('hidden')) loadBoardData(); } catch(_) {}
+
+            if (rj && rj.boardFailures > 0) {
+                uiToast('用户名已更新，但部分看板未同步，请刷新重试','info');
+            } else {
+                uiToast('用户名已更新','success');
+            }
+        } else {
+            uiToast(rj.message || '修改失败','error');
+        }
+    } catch(e) {
+        uiToast('网络错误，请稍后再试','error');
+    }
+}
+
 // 修改密码流程（需要旧密码）
 async function changePasswordFlow() {
     try {
@@ -8288,6 +8344,105 @@ async function changePasswordFlow() {
     } catch(e) {
         uiToast('网络错误，请稍后再试','error');
     }
+}
+
+// 单次对话框：修改用户名（新用户名 + 当前密码）
+function openRenameUserDialog(currentName) {
+    return new Promise((resolve) => {
+        const { overlay, body, footer, close } = createBaseModal('修改用户名');
+
+        function makeRow(labelText, type = 'text') {
+            const wrap = document.createElement('div');
+            const label = document.createElement('div');
+            label.textContent = labelText;
+            label.style.marginTop = '6px';
+            const input = document.createElement('input');
+            input.type = type;
+            input.setAttribute('autocapitalize','off');
+            input.setAttribute('autocorrect','off');
+            input.setAttribute('spellcheck','false');
+            input.style.width = '100%';
+            input.style.height = '36px';
+            input.style.border = '1px solid #e5e7eb';
+            input.style.borderRadius = '6px';
+            input.style.padding = '0 10px';
+            input.style.marginTop = '6px';
+            wrap.appendChild(label);
+            wrap.appendChild(input);
+            return { wrap, input };
+        }
+
+        const honeyWrap = document.createElement('div');
+        honeyWrap.style.position = 'absolute';
+        honeyWrap.style.width = '1px';
+        honeyWrap.style.height = '1px';
+        honeyWrap.style.overflow = 'hidden';
+        honeyWrap.style.opacity = '0';
+        const honeyUser = document.createElement('input');
+        honeyUser.type = 'text';
+        honeyUser.autocomplete = 'username';
+        const honeyPass = document.createElement('input');
+        honeyPass.type = 'password';
+        honeyPass.autocomplete = 'current-password';
+        honeyWrap.appendChild(honeyUser);
+        honeyWrap.appendChild(honeyPass);
+        body.appendChild(honeyWrap);
+
+        const nameRow = makeRow('新用户名', 'text');
+        nameRow.input.value = currentName || '';
+        nameRow.input.autocomplete = 'off';
+        body.appendChild(nameRow.wrap);
+
+        const passRow = makeRow('当前密码', 'password');
+        passRow.input.autocomplete = 'off';
+        passRow.input.readOnly = true;
+        const unlock = () => { passRow.input.readOnly = false; passRow.input.value = ''; };
+        passRow.input.addEventListener('focus', unlock, { once: true });
+        passRow.input.addEventListener('mousedown', unlock, { once: true });
+        body.appendChild(passRow.wrap);
+
+        const cancel = document.createElement('button');
+        cancel.className = 'btn-secondary';
+        cancel.textContent = '取消';
+        cancel.onclick = () => { document.body.removeChild(overlay); resolve(null); };
+
+        const ok = document.createElement('button');
+        ok.className = 'btn-primary';
+        ok.textContent = '确定';
+        ok.onclick = () => {
+            const newUsername = (nameRow.input.value || '').trim();
+            const password = passRow.input.value || '';
+            if (!newUsername) { nameRow.input.focus(); return; }
+            if (!password) { passRow.input.focus(); return; }
+            try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}
+            document.body.removeChild(overlay);
+            resolve({ newUsername, password });
+        };
+
+        close.onclick = cancel.onclick;
+        footer.appendChild(cancel);
+        footer.appendChild(ok);
+        document.body.appendChild(overlay);
+        setTimeout(() => { nameRow.input.focus(); nameRow.input.select(); }, 0);
+
+        const bindKeys = (el) => {
+            if (!el) return;
+            el.addEventListener('keydown', (e) => {
+                const composing = e.isComposing || e.keyCode === 229;
+                if (composing) return;
+                if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){}; cancel.click(); }
+                if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){}; ok.click(); }
+            }, true);
+        };
+        bindKeys(nameRow.input);
+        bindKeys(passRow.input);
+        overlay.addEventListener('keydown', (e) => {
+            const composing = e.isComposing || e.keyCode === 229;
+            if (!composing && (e.key === 'Escape' || e.key === 'Enter')) { e.preventDefault(); e.stopPropagation(); try{ e.stopImmediatePropagation(); }catch(_){} }
+            if (!composing && e.key === 'Escape') cancel.click();
+            if (!composing && e.key === 'Enter') ok.click();
+        }, true);
+    });
 }
 
 // 单次对话框：可选旧密码 + 新密码两次确认
