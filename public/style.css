@@ -676,20 +676,56 @@ h1 {
     flex-wrap: wrap;
 }
 
-.online-users {
-    display: flex;
+.online-users-wrap {
+    position: relative;
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
+}
+
+.online-users {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     padding: 0.5rem 1rem;
     background: #f0fdf4;
     border: 1px solid #bbf7d0;
     border-radius: 6px;
     font-size: 0.875rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.online-users-caret {
+    font-size: 0.75rem;
+    opacity: 0.7;
+}
+
+.online-users-menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 220px;
+    max-width: 320px;
+    padding: 8px;
+    background: var(--gray-50, #ffffff);
+    border: 1px solid var(--gray-200, #e5e7eb);
+    border-radius: 8px;
+    box-shadow: var(--shadow-md, 0 8px 18px rgba(15, 23, 42, 0.12));
+    z-index: 1200;
 }
 
 #userList {
     display: flex;
-    gap: 0.25rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.online-users-empty {
+    color: var(--gray-500, #6b7280);
+    font-size: 12px;
 }
 
 .user-badge {
@@ -3095,7 +3131,7 @@ button.board-switcher-item.active {
   overflow: hidden !important;
   text-overflow: ellipsis !important;
 }
-.online-users #userList { display: inline-flex !important; align-items: center !important; gap: 4px !important; }
+.online-users-menu #userList { display: flex !important; align-items: flex-start !important; gap: 6px !important; flex-wrap: wrap !important; }
 
 #projectPage .project-header .user-info span {
   height: 36px !important;
@@ -3728,8 +3764,8 @@ body.dragging-board {
 }
 
 /* 在线用户徽章间距与样式优化 */
-.online-users { border: 1px solid var(--gray-300); background: var(--gray-50); }
-#userList .online-user { margin-right: 0.25rem; }
+.header .online-users { border: 1px solid var(--gray-300); background: var(--gray-50); }
+#userList .online-user { margin-right: 0; }
 
 /* 动作区背景轻微毛玻璃（在支持的浏览器） */
 .card-center-actions {
@@ -3742,7 +3778,7 @@ body.dragging-board {
 /* 暗色模式微调 */
 @media (prefers-color-scheme: dark) {
     .count { background: #0b1220; border-color: var(--gray-300); color: var(--gray-700); }
-    .online-users { background: #0b1220; border-color: var(--gray-300); }
+    .header .online-users { background: #0b1220; border-color: var(--gray-300); }
     .card-center-actions { background: rgba(255,255,255,0.04); }
 }
 
@@ -5600,6 +5636,8 @@ button.board-switcher-item {
     margin-top: 0 !important;
     margin-bottom: 0 !important;
     padding: 0 !important; /* rely on inner container */
+    position: relative;
+    z-index: 120;
 }
 #boardPage .header > .container {
     max-width: 1200px !important;

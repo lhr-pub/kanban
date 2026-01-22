@@ -2,6 +2,8 @@
 let socket;
 let bgMenuOutsideClickHandler = null;
 let bgMenuKeyHandler = null;
+let onlineUsersMenuOutsideClickHandler = null;
+let onlineUsersMenuKeyHandler = null;
 let currentUser = null;
 let currentUserDisplayName = '';
 let userDisplayNameMap = Object.create(null);
@@ -1280,6 +1282,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // 移除旧的导入/导出按钮绑定，改为下拉菜单
     const ioMenuBtn = document.getElementById('ioMenuBtn');
     if (ioMenuBtn) ioMenuBtn.addEventListener('click', toggleIOMenu);
+    const onlineUsersToggle = document.getElementById('onlineUsersToggle');
+    if (onlineUsersToggle) onlineUsersToggle.addEventListener('click', toggleOnlineUsersMenu);
     const toggleCompletedBtn = document.getElementById('toggleCompletedBtn');
     if (toggleCompletedBtn) toggleCompletedBtn.addEventListener('click', toggleCompletedView);
     document.getElementById('archiveBtn').addEventListener('click', showArchive);
@@ -1665,6 +1669,51 @@ function hideBgMenu(){
     if (menu) menu.classList.add('hidden');
 }
 
+function toggleOnlineUsersMenu(e) {
+    if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    const btn = document.getElementById('onlineUsersToggle');
+    const menu = document.getElementById('onlineUsersMenu');
+    if (!btn || !menu) return;
+    const wasHidden = menu.classList.contains('hidden');
+    menu.classList.add('hidden');
+    btn.setAttribute('aria-expanded', 'false');
+    if (wasHidden) {
+        menu.classList.remove('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+        bindOnlineUsersMenuOnce();
+    }
+}
+
+function bindOnlineUsersMenuOnce() {
+    if (!onlineUsersMenuOutsideClickHandler) {
+        onlineUsersMenuOutsideClickHandler = (ev) => {
+            const menu = document.getElementById('onlineUsersMenu');
+            const btn = document.getElementById('onlineUsersToggle');
+            if (!menu || menu.classList.contains('hidden')) return;
+            if (!menu.contains(ev.target) && (!btn || !btn.contains(ev.target))) {
+                hideOnlineUsersMenu();
+            }
+        };
+        document.addEventListener('click', onlineUsersMenuOutsideClickHandler);
+    }
+    if (!onlineUsersMenuKeyHandler) {
+        onlineUsersMenuKeyHandler = (ev) => {
+            if (ev.key === 'Escape') hideOnlineUsersMenu();
+        };
+        document.addEventListener('keydown', onlineUsersMenuKeyHandler, true);
+    }
+}
+
+function hideOnlineUsersMenu() {
+    const menu = document.getElementById('onlineUsersMenu');
+    if (menu) menu.classList.add('hidden');
+    const btn = document.getElementById('onlineUsersToggle');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
 // manual text preference removed; header text mode is auto-detected
 
 // 页面显示函数前添加清理浮层的工具函数
@@ -1673,6 +1722,7 @@ function cleanupTransientOverlays() {
     try { hideProjectSwitcher(); } catch (_) {}
     try { hideIOMenu(); } catch (_) {}
     try { hideBgMenu(); } catch (_) {}
+    try { hideOnlineUsersMenu(); } catch (_) {}
     try {
         document.querySelectorAll('.assignee-dropdown, .board-switcher-menu, .project-switcher-menu').forEach(el => {
             if (!el) return;
@@ -4643,13 +4693,20 @@ function closeEditModal() {
 
 // 更新在线用户
 function updateOnlineUsers(users) {
-    document.getElementById('onlineCount').textContent = `在线用户: ${users.length}`;
-    document.getElementById('userList').innerHTML = users.map(user =>
-        `<span class="online-user" title="${escapeHtml(user)}">${escapeHtml(getDisplayNameForUser(user))}</span>`
-    ).join('');
+    const list = Array.isArray(users) ? users : [];
+    const countEl = document.getElementById('onlineCount');
+    if (countEl) countEl.textContent = String(list.length);
+    const listEl = document.getElementById('userList');
+    if (listEl) {
+        listEl.innerHTML = list.length
+            ? list.map(user =>
+                `<span class="online-user" title="${escapeHtml(user)}">${escapeHtml(getDisplayNameForUser(user))}</span>`
+            ).join('')
+            : '<span class="online-users-empty">暂无在线用户</span>';
+    }
 
     // 同时更新分配用户选项
-    window.currentOnlineUsers = users;
+    window.currentOnlineUsers = list;
     updateAssigneeOptions();
 }
 

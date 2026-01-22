@@ -209,9 +209,14 @@
                     </h1>
                 </div>
                 <div class="header-actions">
-                    <div class="online-users">
-                        <span id="onlineCount">在线用户: 0</span>
-                        <div id="userList"></div>
+                    <div class="online-users-wrap">
+                        <button id="onlineUsersToggle" class="online-users" type="button" aria-expanded="false" aria-haspopup="true">
+                            在线用户 <span id="onlineCount">0</span>
+                            <span class="online-users-caret">▾</span>
+                        </button>
+                        <div id="onlineUsersMenu" class="online-users-menu hidden">
+                            <div id="userList"></div>
+                        </div>
                     </div>
                     <input type="file" id="importFile" accept=".md,.json,.taskpaper" hidden>
                     <input type="file" id="bgUploadFile" accept="image/*" hidden>
