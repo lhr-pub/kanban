@@ -4973,7 +4973,8 @@ button.board-switcher-item {
 .card-quick-star {
     position: absolute;
     top: -8px;
-    right: 155px; /* left of copy */
+    left: 10px;
+    right: auto;
     width: 28px;
     height: 28px;
     border-radius: 6px;
