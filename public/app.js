@@ -1056,17 +1056,18 @@ function getAdjacentStatusKey(currentStatus, direction) {
     return null;
 }
 
-function moveCardToAdjacent(cardId, fromStatus, direction) {
-    if (!cardId || !fromStatus) return;
-    const toStatus = getAdjacentStatusKey(fromStatus, direction);
-    if (!toStatus || toStatus === fromStatus) return;
-    const fromList = Array.isArray(boardData[fromStatus]) ? boardData[fromStatus] : null;
-    if (!fromList) return;
-    const index = fromList.findIndex(card => card.id === cardId);
-    if (index === -1) return;
-    const [card] = fromList.splice(index, 1);
-    if (!Array.isArray(boardData[toStatus])) boardData[toStatus] = [];
-    boardData[toStatus].push(card);
+function moveCardToStatusAtIndex(cardId, toStatus, insertIndex, options) {
+    const opts = options || {};
+    if (!cardId || !toStatus) return;
+    const loc = getCardLocation(cardId);
+    if (!loc || !loc.card) return;
+    const fromStatus = loc.status;
+    if (!fromStatus || fromStatus === toStatus) return;
+
+    const removed = removeCardByIdFromBoardData(cardId);
+    if (!removed || !removed.card) return;
+    insertCardIntoStatus(removed.card, toStatus, insertIndex);
+
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'move-card',
@@ -1077,8 +1078,60 @@ function moveCardToAdjacent(cardId, fromStatus, direction) {
             fromStatus,
             toStatus
         }));
+        if (!opts.skipReorder) {
+            const orderedIds = (boardData[toStatus] || []).map(c => c && c.id).filter(Boolean);
+            socket.send(JSON.stringify({
+                type: 'reorder-cards',
+                projectId: currentProjectId,
+                boardName: currentBoardName,
+                actor: currentUser,
+                status: toStatus,
+                orderedIds
+            }));
+        }
+    }
+
+    if (!opts.skipRender) {
+        renderBoard();
+    }
+}
+
+function moveCardToAdjacent(cardId, fromStatus, direction) {
+    if (!cardId || !fromStatus) return;
+    const loc = getCardLocation(cardId);
+    const actualFromStatus = (loc && loc.status) ? loc.status : fromStatus;
+    const toStatus = getAdjacentStatusKey(actualFromStatus, direction);
+    if (!toStatus || toStatus === actualFromStatus) return;
+    const fromList = Array.isArray(boardData[actualFromStatus]) ? boardData[actualFromStatus] : null;
+    if (!fromList) return;
+    const index = fromList.findIndex(card => card.id === cardId);
+    if (index === -1) return;
+    const [card] = fromList.splice(index, 1);
+    if (!Array.isArray(boardData[toStatus])) boardData[toStatus] = [];
+    const toIndex = boardData[toStatus].length;
+    boardData[toStatus].push(card);
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+            type: 'move-card',
+            projectId: currentProjectId,
+            boardName: currentBoardName,
+            actor: currentUser,
+            cardId,
+            fromStatus: actualFromStatus,
+            toStatus
+        }));
     }
     renderBoard();
+
+    if (!undoRedoInProgress) {
+        pushUndoAction({
+            type: 'move-card',
+            label: '移动任务',
+            createdAt: Date.now(),
+            undo: () => moveCardToStatusAtIndex(cardId, actualFromStatus, index, { skipReorder: false }),
+            redo: () => moveCardToStatusAtIndex(cardId, toStatus, toIndex, { skipReorder: false })
+        });
+    }
 }
 
 // History navigation state
