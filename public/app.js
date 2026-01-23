@@ -3434,7 +3434,16 @@ function renderBoard() {
             section.appendChild(cardsEl);
 
             const cards = getCardsByStatus(list.status);
-            cards.forEach(c => cardsEl.appendChild(createCardElement(c, list.status)));
+            const activeCards = cards.filter(c => c && !c.deferred);
+            const deferredCards = cards.filter(c => c && c.deferred);
+            activeCards.forEach(c => cardsEl.appendChild(createCardElement(c, list.status)));
+            if (deferredCards.length) {
+                const divider = document.createElement('div');
+                divider.className = 'card-group-divider';
+                divider.textContent = '推迟';
+                cardsEl.appendChild(divider);
+                deferredCards.forEach(c => cardsEl.appendChild(createCardElement(c, list.status)));
+            }
             updateContainerEmptyState(cardsEl);
 
             // composer
@@ -3775,7 +3784,8 @@ function bindComposer(section, list){
             deadline: null,
             posts: [],
             commentsCount: 0,
-            starred: false
+            starred: false,
+            deferred: false
         };
         if (!Array.isArray(boardData[status])) boardData[status]=[];
         boardData[status] = [...boardData[status], card];
@@ -3944,6 +3954,7 @@ function createCardElement(card, status) {
     const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
     const commentsBadge = card.commentsCount > 0 ? `<span class="badge comments" title="${card.commentsCount} 条评论">💬 ${card.commentsCount}</span>` : '';
     const isStarred = !!card.starred;
+    const isDeferred = !!card.deferred;
 
     const assigneeHtml = card.assignee
         ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(getDisplayNameForUser(card.assignee))}</span>`
@@ -3955,11 +3966,16 @@ function createCardElement(card, status) {
     if (isStarred) {
         cardElement.classList.add('card-starred');
     }
+    if (isDeferred) {
+        cardElement.classList.add('card-deferred');
+    }
 
     const isInlineEditing = inlineEditingCardIds.has(card.id);
+    const showQuickActions = !isArchivedView && !isInlineEditing;
     const moreBtn = isInlineEditing ? '' : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
     const copyBtn = isInlineEditing ? '' : `<button class="card-quick-copy" onclick="event.stopPropagation(); copyCardText('${card.id}')" aria-label="复制" title="复制卡片内容"></button>`;
-    const starBtn = isInlineEditing ? '' : `<button class="card-quick-star${isStarred ? ' active' : ''}" onclick="event.stopPropagation(); toggleCardStar('${card.id}', this)" aria-pressed="${isStarred ? 'true' : 'false'}" aria-label="${isStarred ? '取消星标' : '星标'}" title="${isStarred ? '取消星标' : '星标'}">★</button>`;
+    const starBtn = showQuickActions ? `<button class="card-quick-star${isStarred ? ' active' : ''}" onclick="event.stopPropagation(); toggleCardStar('${card.id}', this)" aria-pressed="${isStarred ? 'true' : 'false'}" aria-label="${isStarred ? '取消星标' : '星标'}" title="${isStarred ? '取消星标' : '星标'}">★</button>` : '';
+    const deferBtn = showQuickActions ? `<button class="card-quick-defer${isDeferred ? ' active' : ''}" onclick="event.stopPropagation(); toggleCardDeferred('${card.id}', this)" aria-pressed="${isDeferred ? 'true' : 'false'}" aria-label="${isDeferred ? '取消推迟' : '推迟'}" title="${isDeferred ? '取消推迟' : '推迟'}">↧</button>` : '';
     const archiveBtnHtml = (!isArchivedView && !isInlineEditing)
         ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}', '${escapeJs(status)}')" aria-label="归档" title="完成归档"></button>`
         : '';
@@ -3989,6 +4005,7 @@ function createCardElement(card, status) {
         ${deleteBtn}
         ${deleteBtnHtml}
         ${archiveBtnHtml}
+        ${deferBtn}
         ${starBtn}
         ${moreBtn}
         ${copyBtn}
@@ -4024,7 +4041,7 @@ function createCardElement(card, status) {
     }
 
     cardElement.addEventListener('click', (e) => {
-        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.card-quick-copy') || e.target.closest('.card-quick-trash') || e.target.closest('.card-quick-star') || e.target.closest('.restore-chip')) return;
+        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.card-quick-copy') || e.target.closest('.card-quick-trash') || e.target.closest('.card-quick-star') || e.target.closest('.card-quick-defer') || e.target.closest('.restore-chip')) return;
         if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
         // If inline editors are open within this card, keep editing instead of opening details
         const inlineEditor = cardElement.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
@@ -4084,6 +4101,23 @@ function toggleCardStar(cardId, btn) {
         btn.setAttribute('aria-label', label);
         btn.setAttribute('title', label);
     }
+}
+
+function toggleCardDeferred(cardId, btn) {
+    const card = getCardById(cardId);
+    if (!card) return;
+    const next = !card.deferred;
+    updateCardImmediately(cardId, { deferred: next });
+    if (btn) {
+        btn.classList.toggle('active', next);
+        btn.setAttribute('aria-pressed', next ? 'true' : 'false');
+        const label = next ? '取消推迟' : '推迟';
+        btn.setAttribute('aria-label', label);
+        btn.setAttribute('title', label);
+    }
+    const cardEl = btn && btn.closest ? btn.closest('.card') : document.querySelector(`.card[data-card-id="${cardId}"]`);
+    if (cardEl) cardEl.classList.toggle('card-deferred', next);
+    renderBoard();
 }
 
 // 通过 ID 删除卡片
@@ -4391,7 +4425,8 @@ function addCard(status, position = 'bottom') {
         deadline: deadlineInput.value || null,
         posts: [],
         commentsCount: 0,
-        starred: false
+        starred: false,
+        deferred: false
     };
 
     queuePendingCardAdd(status, card, isTop ? 'top' : 'bottom');
@@ -10373,7 +10408,8 @@ function parsePasteContent(text, existingLists) {
                         deadline: card.deadline || null,
                         posts: card.posts || [],
                         commentsCount: card.commentsCount || 0,
-                        starred: !!card.starred
+                        starred: !!card.starred,
+                        deferred: !!card.deferred
                     };
                     if (newCard.title && targetStatus !== 'archived') {
                         result.cards.push({ card: newCard, status: targetStatus });
@@ -10418,7 +10454,8 @@ function parsePasteContent(text, existingLists) {
                     deadline: card.deadline || null,
                     posts: card.posts || [],
                     commentsCount: card.commentsCount || 0,
-                    starred: !!card.starred
+                    starred: !!card.starred,
+                    deferred: !!card.deferred
                 };
                 if (newCard.title) {
                     result.cards.push({ card: newCard, status: targetStatus });
@@ -10481,7 +10518,8 @@ function parsePasteContent(text, existingLists) {
                             deadline: deadline,
                             posts: [],
                             commentsCount: 0,
-                            starred: false
+                            starred: false,
+                            deferred: false
                         },
                         status: firstStatus
                     });
