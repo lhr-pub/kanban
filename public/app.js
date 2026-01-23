@@ -3440,7 +3440,7 @@ function renderBoard() {
             if (deferredCards.length) {
                 const divider = document.createElement('div');
                 divider.className = 'card-group-divider';
-                divider.textContent = '推迟';
+                divider.textContent = '稍后';
                 cardsEl.appendChild(divider);
                 deferredCards.forEach(c => cardsEl.appendChild(createCardElement(c, list.status)));
             }
@@ -3975,7 +3975,7 @@ function createCardElement(card, status) {
     const moreBtn = isInlineEditing ? '' : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
     const copyBtn = isInlineEditing ? '' : `<button class="card-quick-copy" onclick="event.stopPropagation(); copyCardText('${card.id}')" aria-label="复制" title="复制卡片内容"></button>`;
     const starBtn = showQuickActions ? `<button class="card-quick-star${isStarred ? ' active' : ''}" onclick="event.stopPropagation(); toggleCardStar('${card.id}', this)" aria-pressed="${isStarred ? 'true' : 'false'}" aria-label="${isStarred ? '取消星标' : '星标'}" title="${isStarred ? '取消星标' : '星标'}">★</button>` : '';
-    const deferBtn = showQuickActions ? `<button class="card-quick-defer${isDeferred ? ' active' : ''}" onclick="event.stopPropagation(); toggleCardDeferred('${card.id}', this)" aria-pressed="${isDeferred ? 'true' : 'false'}" aria-label="${isDeferred ? '取消推迟' : '推迟'}" title="${isDeferred ? '取消推迟' : '推迟'}">↧</button>` : '';
+    const deferBtn = showQuickActions ? `<button class="card-quick-defer${isDeferred ? ' active' : ''}" onclick="event.stopPropagation(); toggleCardDeferred('${card.id}', this)" aria-pressed="${isDeferred ? 'true' : 'false'}" aria-label="${isDeferred ? '取消稍后' : '稍后'}" title="${isDeferred ? '取消稍后' : '稍后'}">${isDeferred ? '↥' : '↧'}</button>` : '';
     const archiveBtnHtml = (!isArchivedView && !isInlineEditing)
         ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}', '${escapeJs(status)}')" aria-label="归档" title="完成归档"></button>`
         : '';
@@ -4111,7 +4111,7 @@ function toggleCardDeferred(cardId, btn) {
     if (btn) {
         btn.classList.toggle('active', next);
         btn.setAttribute('aria-pressed', next ? 'true' : 'false');
-        const label = next ? '取消推迟' : '推迟';
+        const label = next ? '取消稍后' : '稍后';
         btn.setAttribute('aria-label', label);
         btn.setAttribute('title', label);
     }

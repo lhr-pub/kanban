@@ -5010,7 +5010,6 @@ button.board-switcher-item {
     line-height: 1;
 }
 .card:hover .card-quick-defer { opacity: 1; }
-.card-deferred .card-quick-defer { opacity: 1; }
 .card-quick-defer.active { color: #0ea5e9; }
 .card-quick-defer:hover { background-color: #e0f2fe; border-color: #bae6fd; box-shadow: 0 2px 6px rgba(0,0,0,0.15); color: #0284c7; }
 .card-quick-defer.active:hover { color: #0369a1; }
@@ -5035,7 +5034,6 @@ button.board-switcher-item {
     .card-quick-star.active { color: #fbbf24; }
     .card-quick-star:hover { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #fde68a; }
     .card-quick-defer { color: #cbd5e1; }
-    .card-deferred .card-quick-defer,
     .card-quick-defer.active { color: #7dd3fc; }
     .card-quick-defer:hover { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #bae6fd; }
 }
