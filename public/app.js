@@ -2517,6 +2517,9 @@ async function loadProjectBoards() {
         document.getElementById('projectInviteCode').textContent = data.inviteCode;
         mergeUserDisplayNames(data.userDisplayNames);
         document.getElementById('projectMembers').textContent = formatUserList(data.members);
+        try {
+            projectBoardsCache[currentProjectId] = getActiveBoardsFromProjectData(data);
+        } catch (_) {}
 
         // 保存项目成员列表用于分配用户选项
         window.currentProjectMembers = data.members;
@@ -7319,28 +7322,44 @@ async function openBoardSwitcher(e) {
     const anchor = e.currentTarget;
     const rect = anchor.getBoundingClientRect();
 
-    let boards = projectBoardsCache[currentProjectId];
-    if (!boards) {
-        try {
-            const resp = await fetch(`/api/project-boards/${currentProjectId}`);
-            const data = await resp.json();
-            boards = Array.isArray(data.boards) ? data.boards : [];
-            // exclude archived boards from switcher
-            const archived = Array.isArray(data.archivedBoards) ? data.archivedBoards : [];
-            if (archived && archived.length) {
-                const set = new Set(archived);
-                boards = boards.filter(n => !set.has(n));
-            }
-            projectBoardsCache[currentProjectId] = boards;
-        } catch (err) {
-            boards = [];
+    let boards = Array.isArray(projectBoardsCache[currentProjectId])
+        ? projectBoardsCache[currentProjectId].slice()
+        : null;
+    let menuShown = false;
+    if (boards && boards.length) {
+        showBoardSwitcherAt(rect, boards);
+        menuShown = true;
+    }
+    try {
+        const resp = await fetch(`/api/project-boards/${currentProjectId}`);
+        const data = await resp.json();
+        const freshBoards = getActiveBoardsFromProjectData(data);
+        projectBoardsCache[currentProjectId] = freshBoards;
+        if (boardSwitcherOpen && boardSwitcherMenu && boardSwitcherMenu._updateBoards) {
+            boardSwitcherMenu._updateBoards(freshBoards);
+        } else if (!menuShown) {
+            showBoardSwitcherAt(rect, freshBoards);
+            menuShown = true;
+        }
+    } catch (err) {
+        if (!menuShown) {
+            showBoardSwitcherAt(rect, boards || []);
         }
     }
-    showBoardSwitcherAt(rect, boards);
     const titleEl = document.getElementById('currentBoardName');
     if (titleEl) titleEl.classList.add('open');
     const caretEl = document.getElementById('boardCaret');
     if (caretEl) caretEl.classList.add('open');
+}
+
+function getActiveBoardsFromProjectData(data) {
+    let boards = Array.isArray(data && data.boards) ? data.boards.slice() : [];
+    const archived = Array.isArray(data && data.archivedBoards) ? data.archivedBoards : [];
+    if (archived && archived.length) {
+        const set = new Set(archived);
+        boards = boards.filter(n => !set.has(n));
+    }
+    return boards;
 }
 
 function showBoardSwitcherAt(rect, boards) {
@@ -7457,6 +7476,10 @@ function showBoardSwitcherAt(rect, boards) {
 
     menu.appendChild(list);
     document.body.appendChild(menu);
+    menu._updateBoards = (nextBoards) => {
+        boards = Array.isArray(nextBoards) ? nextBoards : [];
+        renderList(search.value);
+    };
     boardSwitcherMenu = menu;
     boardSwitcherOpen = true;
 
