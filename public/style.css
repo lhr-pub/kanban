@@ -4934,7 +4934,7 @@ button.board-switcher-item {
 .card-quick,
 .card-quick-archive {
     position: absolute;
-    top: -8px; /* align to original edit button baseline */
+    top: -10px; /* align to original edit button baseline */
     width: 28px;
     height: 28px;
     border-radius: 6px;
@@ -4972,7 +4972,7 @@ button.board-switcher-item {
 /* Star (favorite) */
 .card-quick-star {
     position: absolute;
-    top: -8px;
+    top: -10px;
     left: 10px;
     right: auto;
     width: 28px;
@@ -5012,7 +5012,7 @@ button.board-switcher-item {
 /* Defer (postpone) */
 .card-quick-defer {
     position: absolute;
-    top: -8px;
+    top: -10px;
     right: 190px; /* left of star */
     width: 28px;
     height: 28px;
@@ -5087,7 +5087,7 @@ button.board-switcher-item {
 /* Copy button for card */
 .card-quick-copy {
     position: absolute;
-    top: -8px;
+    top: -10px;
     right: 120px; /* left of edit */
     width: 28px;
     height: 28px;
@@ -5118,7 +5118,7 @@ button.board-switcher-item {
 /* Delete (trash) button for card */
 .card-quick-trash {
     position: absolute;
-    top: -8px;
+    top: -10px;
     right: 15px; /* right-most */
     width: 28px;
     height: 28px;
