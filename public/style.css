@@ -3336,10 +3336,10 @@ body {
 #boardPage .card .card-description { padding-left: 0 !important; }
 /* Normalize list header left margin and pad list title to match card text */
 #boardPage .list-header { margin-left: 0 !important; }
-#boardPage .card-title { margin-left: 6px !important;margin-top: 8px;margin-bottom: -2px; }
+#boardPage .card-title { margin-left: 6px !important;margin-top: 16px;margin-bottom: -2px; }
 /* Inline editors align with originals */
 #boardPage .list-title-input { padding-left: 12px !important; margin-bottom: 14px !important; margin-left: 2px !important;}
-#boardPage .card-title-input { margin-top: 6px !important; font-size: 14px !important; padding-left: 6px !important; }
+#boardPage .card-title-input { margin-top: 16px !important; font-size: 14px !important; padding-left: 6px !important; }
 
 /* List header and counters */
 #boardPage .list-header { margin: 2px 4px -8px 0 !important; }
@@ -3347,7 +3347,7 @@ body {
 #boardPage .count { background: var(--gray-100); color: var(--gray-600); }
 #boardPage .column h3 { color: #334155; border-bottom: 1px solid #e2e8f0; margin-bottom: 8px; padding-bottom: 6px; }
 
-#boardPage .cards { position: relative; }
+#boardPage .cards { padding-top: 8px; }
 
 /* Cards: light, crisp, with accent hairline */
 #boardPage .card {
@@ -3358,7 +3358,6 @@ body {
   transition: border-color .14s ease, background .14s ease, box-shadow .14s ease;
   position: relative;
   overflow: visible;
-  z-index: 0;
 }
 
 /* Remove left accent bar to align with original theme */
@@ -3368,7 +3367,6 @@ body {
   background: #F0F1F2 !important;   /* ds-surface-raised-hovered */
   box-shadow: var(--card-shadow) !important; /* keep same shadow (no extra hover) */
   transform: none !important;
-  z-index: 10;
 }
 
 #boardPage .card.dragging {
@@ -4934,7 +4932,7 @@ button.board-switcher-item {
 .card-quick,
 .card-quick-archive {
     position: absolute;
-    top: -16px; /* align to original edit button baseline */
+    top: -6px; /* align to original edit button baseline */
     width: 28px;
     height: 28px;
     border-radius: 6px;
@@ -4946,6 +4944,7 @@ button.board-switcher-item {
     justify-content: center;
     background: transparent;
     color: #64748b; /* neutral icon */
+    z-index: 6;
 }
 .card:hover .card-quick,
 .card:hover .card-quick-archive { opacity: 1; }
@@ -4971,7 +4970,7 @@ button.board-switcher-item {
 /* Star (favorite) */
 .card-quick-star {
     position: absolute;
-    top: -16px;
+    top: -6px;
     right: 155px; /* left of copy */
     width: 28px;
     height: 28px;
@@ -4987,6 +4986,7 @@ button.board-switcher-item {
     color: #334155;
     font-size: 16px;
     line-height: 1;
+    z-index: 6;
 }
 .card:hover .card-quick-star { opacity: 1; }
 .card-starred .card-quick-star { opacity: 1; }
@@ -5009,7 +5009,7 @@ button.board-switcher-item {
 /* Defer (postpone) */
 .card-quick-defer {
     position: absolute;
-    top: -16px;
+    top: -6px;
     right: 190px; /* left of star */
     width: 28px;
     height: 28px;
@@ -5025,6 +5025,7 @@ button.board-switcher-item {
     color: #334155;
     font-size: 16px;
     line-height: 1;
+    z-index: 6;
 }
 .card:hover .card-quick-defer { opacity: 1; }
 .card-quick-defer.active { color: #0ea5e9; }
@@ -5083,7 +5084,7 @@ button.board-switcher-item {
 /* Copy button for card */
 .card-quick-copy {
     position: absolute;
-    top: -16px;
+    top: -6px;
     right: 120px; /* left of edit */
     width: 28px;
     height: 28px;
@@ -5097,6 +5098,7 @@ button.board-switcher-item {
     background-repeat: no-repeat;
     background-position: center;
     background-size: 15px 15px;
+    z-index: 6;
 }
 .card.inline-editing .card-quick-copy,
 .card.inline-editing:hover .card-quick-copy { display: none !important; }
@@ -5113,7 +5115,7 @@ button.board-switcher-item {
 /* Delete (trash) button for card */
 .card-quick-trash {
     position: absolute;
-    top: -16px;
+    top: -6px;
     right: 15px; /* right-most */
     width: 28px;
     height: 28px;
@@ -5127,6 +5129,7 @@ button.board-switcher-item {
     background-repeat: no-repeat;
     background-position: center;
     background-size: 15px 15px;
+    z-index: 6;
 }
 .card:hover .card-quick-trash { opacity: 1; }
 .card:hover .card-quick-trash { background-color: #fef2f2; border-color: #fecaca; }
@@ -5249,6 +5252,7 @@ button.board-switcher-item {
     background-position: center;
     background-size: 16px 16px;
     color: #ef4444;
+    z-index: 6;
 }
 .card:hover .card-quick-delete { opacity: 1; background-color: #fee2e2; border-color: #fecaca; color: #b91c1c; }
 .card-quick-delete:hover { background-color: #fee2e2; border-color: #fecaca; box-shadow: 0 2px 6px rgba(0,0,0,0.12); color: #b91c1c; }

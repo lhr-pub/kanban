@@ -3846,7 +3846,6 @@ function inlineEditCardTitle(cardEl){
         const next = (canceled ? old : (val || old));
         const t = document.createElement('div'); t.className='card-title'; t.textContent = next; t.tabIndex = 0;
         input.replaceWith(t);
-        cardEl.dataset.hoverTitle = next;
         if (!canceled && val && val !== old) { saveCardTitle(cardEl.dataset.cardId, val); }
         setCardInlineEditingState(cardEl.dataset.cardId, false);
     });
@@ -3938,8 +3937,6 @@ function createCardElement(card, status) {
     const cardElement = document.createElement('div');
     cardElement.className = 'card';
     cardElement.dataset.cardId = card.id;
-    const hoverTitle = ((card.title || '未命名') + '').trim() || '未命名';
-    cardElement.dataset.hoverTitle = hoverTitle;
     const isArchivedInList = !!card.__archivedInList;
     const isArchivedView = status === 'archived' || isArchivedInList;
     if (isArchivedInList) {
