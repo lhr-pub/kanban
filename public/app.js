@@ -3774,7 +3774,8 @@ function bindComposer(section, list){
             created: new Date().toISOString(),
             deadline: null,
             posts: [],
-            commentsCount: 0
+            commentsCount: 0,
+            starred: false
         };
         if (!Array.isArray(boardData[status])) boardData[status]=[];
         boardData[status] = [...boardData[status], card];
@@ -3942,6 +3943,7 @@ function createCardElement(card, status) {
     const dueClass = card.deadline ? (new Date(card.deadline) < new Date() ? 'overdue' : (daysUntil(card.deadline) <= 1 ? 'soon' : '')) : '';
     const descIcon = card.description ? `<span class="badge-icon desc" title="有描述">≡</span>` : '';
     const commentsBadge = card.commentsCount > 0 ? `<span class="badge comments" title="${card.commentsCount} 条评论">💬 ${card.commentsCount}</span>` : '';
+    const isStarred = !!card.starred;
 
     const assigneeHtml = card.assignee
         ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(getDisplayNameForUser(card.assignee))}</span>`
@@ -3950,9 +3952,14 @@ function createCardElement(card, status) {
         ? `<span class="card-deadline clickable" onclick="event.stopPropagation(); editCardDeadline('${card.id}')" title="点击修改截止日期">${card.deadline}</span>`
         : '';
 
+    if (isStarred) {
+        cardElement.classList.add('card-starred');
+    }
+
     const isInlineEditing = inlineEditingCardIds.has(card.id);
     const moreBtn = isInlineEditing ? '' : `<button class="card-quick" onclick="event.stopPropagation(); openEditModal('${card.id}')" aria-label="编辑"></button>`;
     const copyBtn = isInlineEditing ? '' : `<button class="card-quick-copy" onclick="event.stopPropagation(); copyCardText('${card.id}')" aria-label="复制" title="复制卡片内容"></button>`;
+    const starBtn = isInlineEditing ? '' : `<button class="card-quick-star${isStarred ? ' active' : ''}" onclick="event.stopPropagation(); toggleCardStar('${card.id}', this)" aria-pressed="${isStarred ? 'true' : 'false'}" aria-label="${isStarred ? '取消星标' : '星标'}" title="${isStarred ? '取消星标' : '星标'}">★</button>`;
     const archiveBtnHtml = (!isArchivedView && !isInlineEditing)
         ? `<button class="card-quick-archive" onclick="event.stopPropagation(); archiveCard('${card.id}', '${escapeJs(status)}')" aria-label="归档" title="完成归档"></button>`
         : '';
@@ -3982,6 +3989,7 @@ function createCardElement(card, status) {
         ${deleteBtn}
         ${deleteBtnHtml}
         ${archiveBtnHtml}
+        ${starBtn}
         ${moreBtn}
         ${copyBtn}
     `;
@@ -4016,7 +4024,7 @@ function createCardElement(card, status) {
     }
 
     cardElement.addEventListener('click', (e) => {
-        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.card-quick-copy') || e.target.closest('.card-quick-trash') || e.target.closest('.restore-chip')) return;
+        if (e.target.closest('.card-quick') || e.target.closest('.card-quick-archive') || e.target.closest('.card-quick-delete') || e.target.closest('.card-quick-copy') || e.target.closest('.card-quick-trash') || e.target.closest('.card-quick-star') || e.target.closest('.restore-chip')) return;
         if (e.target.closest('.card-assignee') || e.target.closest('.card-deadline')) return;
         // If inline editors are open within this card, keep editing instead of opening details
         const inlineEditor = cardElement.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
@@ -4060,6 +4068,22 @@ function copyCardText(cardId) {
         console.error('复制失败:', err);
         uiToast('复制失败', 'error');
     });
+}
+
+function toggleCardStar(cardId, btn) {
+    const card = getCardById(cardId);
+    if (!card) return;
+    const next = !card.starred;
+    updateCardImmediately(cardId, { starred: next });
+    const cardEl = btn && btn.closest ? btn.closest('.card') : document.querySelector(`.card[data-card-id="${cardId}"]`);
+    if (cardEl) cardEl.classList.toggle('card-starred', next);
+    if (btn) {
+        btn.classList.toggle('active', next);
+        btn.setAttribute('aria-pressed', next ? 'true' : 'false');
+        const label = next ? '取消星标' : '星标';
+        btn.setAttribute('aria-label', label);
+        btn.setAttribute('title', label);
+    }
 }
 
 // 通过 ID 删除卡片
@@ -4366,7 +4390,8 @@ function addCard(status, position = 'bottom') {
         created: new Date().toISOString(),
         deadline: deadlineInput.value || null,
         posts: [],
-        commentsCount: 0
+        commentsCount: 0,
+        starred: false
     };
 
     queuePendingCardAdd(status, card, isTop ? 'top' : 'bottom');
@@ -10347,7 +10372,8 @@ function parsePasteContent(text, existingLists) {
                         created: card.created || new Date().toISOString(),
                         deadline: card.deadline || null,
                         posts: card.posts || [],
-                        commentsCount: card.commentsCount || 0
+                        commentsCount: card.commentsCount || 0,
+                        starred: !!card.starred
                     };
                     if (newCard.title && targetStatus !== 'archived') {
                         result.cards.push({ card: newCard, status: targetStatus });
@@ -10391,7 +10417,8 @@ function parsePasteContent(text, existingLists) {
                     created: card.created || new Date().toISOString(),
                     deadline: card.deadline || null,
                     posts: card.posts || [],
-                    commentsCount: card.commentsCount || 0
+                    commentsCount: card.commentsCount || 0,
+                    starred: !!card.starred
                 };
                 if (newCard.title) {
                     result.cards.push({ card: newCard, status: targetStatus });
@@ -10453,7 +10480,8 @@ function parsePasteContent(text, existingLists) {
                             created: new Date().toISOString(),
                             deadline: deadline,
                             posts: [],
-                            commentsCount: 0
+                            commentsCount: 0,
+                            starred: false
                         },
                         status: firstStatus
                     });
