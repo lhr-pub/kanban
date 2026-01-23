@@ -4973,7 +4973,7 @@ button.board-switcher-item {
 .card-quick-star {
     position: absolute;
     top: -8px;
-    right: 190px; /* left of defer */
+    right: 182px; /* left of defer */
     width: 28px;
     height: 28px;
     border-radius: 6px;
@@ -5012,7 +5012,7 @@ button.board-switcher-item {
 .card-quick-defer {
     position: absolute;
     top: -8px;
-    left: 10px;
+    left: 18px;
     right: auto;
     width: 28px;
     height: 28px;
