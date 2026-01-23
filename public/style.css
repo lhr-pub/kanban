@@ -3347,6 +3347,8 @@ body {
 #boardPage .count { background: var(--gray-100); color: var(--gray-600); }
 #boardPage .column h3 { color: #334155; border-bottom: 1px solid #e2e8f0; margin-bottom: 8px; padding-bottom: 6px; }
 
+#boardPage .cards { position: relative; }
+
 /* Cards: light, crisp, with accent hairline */
 #boardPage .card {
   background: var(--card-bg) !important;
@@ -3355,6 +3357,8 @@ body {
   box-shadow: var(--card-shadow) !important; /* per reference */
   transition: border-color .14s ease, background .14s ease, box-shadow .14s ease;
   position: relative;
+  overflow: visible;
+  z-index: 0;
 }
 
 /* Remove left accent bar to align with original theme */
@@ -3364,6 +3368,7 @@ body {
   background: #F0F1F2 !important;   /* ds-surface-raised-hovered */
   box-shadow: var(--card-shadow) !important; /* keep same shadow (no extra hover) */
   transform: none !important;
+  z-index: 10;
 }
 
 #boardPage .card.dragging {
@@ -4318,7 +4323,7 @@ body {
     gap: 8px;
     margin: 8px 2px 6px;
     font-size: 11px;
-    color: #94a3b8;
+    color: #64748b;
     letter-spacing: 0.02em;
     user-select: none;
     pointer-events: none;
@@ -4380,7 +4385,7 @@ body {
 @media (prefers-color-scheme: dark) {
     .card-move-button {
         background: rgba(30,41,59,0.9);
-    color: #94a3b8;
+    color: #64748b;
         box-shadow: 0 2px 8px rgba(0,0,0,0.35);
 }
     .card-move-button:hover {
@@ -4929,7 +4934,7 @@ button.board-switcher-item {
 .card-quick,
 .card-quick-archive {
     position: absolute;
-    top: 5px; /* align to original edit button baseline */
+    top: -16px; /* align to original edit button baseline */
     width: 28px;
     height: 28px;
     border-radius: 6px;
@@ -4966,7 +4971,7 @@ button.board-switcher-item {
 /* Star (favorite) */
 .card-quick-star {
     position: absolute;
-    top: 5px;
+    top: -16px;
     right: 155px; /* left of copy */
     width: 28px;
     height: 28px;
@@ -4979,7 +4984,7 @@ button.board-switcher-item {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #94a3b8;
+    color: #334155;
     font-size: 16px;
     line-height: 1;
 }
@@ -4988,11 +4993,23 @@ button.board-switcher-item {
 .card-quick-star.active { color: #f59e0b; }
 .card-quick-star:hover { background-color: #ffedd5; border-color: #fdba74; box-shadow: 0 2px 6px rgba(0,0,0,0.15); color: #d97706; }
 .card-quick-star.active:hover { color: #b45309; }
+#boardPage .card:hover .card-quick-star,
+#boardPage .card:hover .card-quick-defer,
+#boardPage .card-starred .card-quick-star { opacity: 1; }
+#boardPage .card:hover .card-quick-star,
+#boardPage .card:hover .card-quick-defer { opacity: 1 !important; }
+#boardPage .card:hover .card-quick-star,
+#boardPage .card:hover .card-quick-defer,
+#boardPage .card-starred .card-quick-star {
+    background-color: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 2px 6px rgba(15,23,42,0.08);
+}
 
 /* Defer (postpone) */
 .card-quick-defer {
     position: absolute;
-    top: 5px;
+    top: -16px;
     right: 190px; /* left of star */
     width: 28px;
     height: 28px;
@@ -5005,7 +5022,7 @@ button.board-switcher-item {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #94a3b8;
+    color: #334155;
     font-size: 16px;
     line-height: 1;
 }
@@ -5036,6 +5053,13 @@ button.board-switcher-item {
     .card-quick-defer { color: #cbd5e1; }
     .card-quick-defer.active { color: #7dd3fc; }
     .card-quick-defer:hover { background-color: rgba(255,255,255,0.08); border-color: var(--gray-300); box-shadow: 0 2px 6px rgba(0,0,0,0.45); color: #bae6fd; }
+    #boardPage .card:hover .card-quick-star,
+    #boardPage .card:hover .card-quick-defer,
+    #boardPage .card-starred .card-quick-star {
+        background-color: rgba(15,23,42,0.9);
+        border-color: var(--gray-300);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
 }
 
 /* Fix legacy mask and enforce hover/focus for quick actions */
@@ -5059,7 +5083,7 @@ button.board-switcher-item {
 /* Copy button for card */
 .card-quick-copy {
     position: absolute;
-    top: 5px;
+    top: -16px;
     right: 120px; /* left of edit */
     width: 28px;
     height: 28px;
@@ -5089,7 +5113,7 @@ button.board-switcher-item {
 /* Delete (trash) button for card */
 .card-quick-trash {
     position: absolute;
-    top: 5px;
+    top: -16px;
     right: 15px; /* right-most */
     width: 28px;
     height: 28px;
