@@ -9,6 +9,15 @@ LOG_FILE="${LOG_FILE:-$DIR/logs/kanban.log}"
 ENV_FILE="${ENV_FILE:-$DIR/.env}"
 NODE_BIN="${NODE_BIN:-node}"
 NPM_BIN="${NPM_BIN:-npm}"
+DOCKER_BIN="${DOCKER_BIN:-docker}"
+DOCKER_VOLUME="${DOCKER_VOLUME:-kanban_data}"
+DOCKER_CONTAINER="${DOCKER_CONTAINER:-kanban}"
+SUDO="${SUDO:-}"
+SUDO_CMD=()
+if [[ -n "$SUDO" ]]; then
+    # shellcheck disable=SC2206
+    SUDO_CMD=($SUDO)
+fi
 
 usage() {
     cat <<'EOF'
@@ -18,6 +27,8 @@ Commands:
   install           Install dependencies (npm install)
   install-prod      Install production deps only (npm ci --omit=dev)
   build-css         Build merged CSS (requires dev deps)
+  import-docker-data  Copy Docker volume data into ./data
+  link-docker-data    Symlink Docker volume to ./data (stops container)
   start             Start server in background
   stop              Stop server
   restart           Restart server
@@ -31,11 +42,17 @@ Environment:
   ENV_FILE          Override env file path (default: ./.env)
   NODE_BIN          Override node binary (default: node)
   NPM_BIN           Override npm binary (default: npm)
+  DOCKER_BIN        Override docker binary (default: docker)
+  DOCKER_VOLUME     Docker volume name (default: kanban_data)
+  DOCKER_CONTAINER  Docker container name (default: kanban)
+  SUDO              Prefix for privileged commands (e.g. "sudo -n")
 
 Examples:
   ./start.nodocker.sh install
   ./start.nodocker.sh build-css
   ./start.nodocker.sh start
+  ./start.nodocker.sh import-docker-data
+  ./start.nodocker.sh link-docker-data
   ./start.nodocker.sh logs
 EOF
 }
@@ -69,6 +86,73 @@ cmd_install_prod() {
 
 cmd_build_css() {
     "$NPM_BIN" run build:css:min
+}
+
+docker_mountpoint() {
+    if ! command -v "$DOCKER_BIN" >/dev/null 2>&1; then
+        echo "Error: docker not found (DOCKER_BIN=$DOCKER_BIN)." >&2
+        exit 1
+    fi
+    local mount
+    mount="$("${SUDO_CMD[@]}" "$DOCKER_BIN" volume inspect "$DOCKER_VOLUME" --format '{{.Mountpoint}}' 2>/dev/null || true)"
+    if [[ -z "$mount" ]]; then
+        echo "Error: docker volume '$DOCKER_VOLUME' not found." >&2
+        exit 1
+    fi
+    echo "$mount"
+}
+
+cmd_import_docker_data() {
+    local mount
+    mount="$(docker_mountpoint)"
+
+    if "${SUDO_CMD[@]}" "$DOCKER_BIN" ps -q --filter "name=^/${DOCKER_CONTAINER}$" | grep -q .; then
+        echo "Stopping container ${DOCKER_CONTAINER}..."
+        "${SUDO_CMD[@]}" "$DOCKER_BIN" stop "$DOCKER_CONTAINER"
+    fi
+
+    local ts backup
+    ts="$(date +%Y%m%d%H%M%S)"
+    if [[ -d "$DIR/data" && -n "$(ls -A "$DIR/data" 2>/dev/null)" ]]; then
+        backup="$DIR/data.backup.$ts"
+        mv "$DIR/data" "$backup"
+        echo "Existing data moved to $backup"
+    fi
+    mkdir -p "$DIR/data"
+
+    if command -v rsync >/dev/null 2>&1; then
+        "${SUDO_CMD[@]}" rsync -a "$mount"/ "$DIR/data/"
+    else
+        "${SUDO_CMD[@]}" cp -a "$mount"/. "$DIR/data/"
+    fi
+
+    if [[ ${#SUDO_CMD[@]} -gt 0 ]]; then
+        "${SUDO_CMD[@]}" chown -R "$(id -u)":"$(id -g)" "$DIR/data"
+    fi
+    echo "Imported docker volume '$DOCKER_VOLUME' to $DIR/data"
+}
+
+cmd_link_docker_data() {
+    local mount
+    mount="$(docker_mountpoint)"
+
+    if "${SUDO_CMD[@]}" "$DOCKER_BIN" ps -q --filter "name=^/${DOCKER_CONTAINER}$" | grep -q .; then
+        echo "Stopping container ${DOCKER_CONTAINER}..."
+        "${SUDO_CMD[@]}" "$DOCKER_BIN" stop "$DOCKER_CONTAINER"
+    fi
+
+    local ts backup
+    if [[ -e "$DIR/data" && ! -L "$DIR/data" ]]; then
+        ts="$(date +%Y%m%d%H%M%S)"
+        backup="$DIR/data.backup.$ts"
+        mv "$DIR/data" "$backup"
+        echo "Existing data moved to $backup"
+    elif [[ -L "$DIR/data" ]]; then
+        rm -f "$DIR/data"
+    fi
+
+    ln -s "$mount" "$DIR/data"
+    echo "Linked docker volume '$DOCKER_VOLUME' to $DIR/data -> $mount"
 }
 
 cmd_start() {
@@ -135,6 +219,12 @@ case "$CMD" in
         ;;
     build-css)
         cmd_build_css
+        ;;
+    import-docker-data)
+        cmd_import_docker_data
+        ;;
+    link-docker-data)
+        cmd_link_docker_data
         ;;
     start)
         cmd_start
