@@ -4581,8 +4581,14 @@ function suppressCardHover(options) {
         board._hoverSuppressTimer = null;
     }
     board._hoverSuppressLockCard = opts.lockToCard ? getCardUnderPointer() : null;
+    if (board._hoverSuppressLockCard && board._hoverSuppressLockCard.classList) {
+        board._hoverSuppressLockCard.classList.add('hover-lock');
+    }
     const release = () => {
         board.classList.remove('suppress-card-hover');
+        if (board._hoverSuppressLockCard && board._hoverSuppressLockCard.classList) {
+            board._hoverSuppressLockCard.classList.remove('hover-lock');
+        }
         if (board._hoverSuppressHandler) {
             document.removeEventListener('mousemove', board._hoverSuppressHandler);
             document.removeEventListener('touchstart', board._hoverSuppressHandler);

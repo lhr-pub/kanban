@@ -4317,12 +4317,24 @@ body {
     opacity: 0 !important;
     transition: none !important;
 }
+#boardPage.suppress-card-hover .card.hover-lock .card-quick,
+#boardPage.suppress-card-hover .card.hover-lock .card-quick-copy,
+#boardPage.suppress-card-hover .card.hover-lock .card-quick-trash,
+#boardPage.suppress-card-hover .card.hover-lock .card-quick-archive,
+#boardPage.suppress-card-hover .card.hover-lock .card-quick-delete,
+#boardPage.suppress-card-hover .card.hover-lock .card-quick-star,
+#boardPage.suppress-card-hover .card.hover-lock .card-quick-defer {
+    opacity: 1 !important;
+}
 #boardPage.suppress-card-hover .card-starred .card-quick-star {
     opacity: 1 !important;
 }
 #boardPage.suppress-card-hover .card-move-button {
     opacity: 0.15 !important;
     transition: none !important;
+}
+#boardPage.suppress-card-hover .card.hover-lock .card-move-button {
+    opacity: 0.7 !important;
 }
 
 
