@@ -683,8 +683,9 @@ function shouldSkipBoardRenderForLocalUpdate(actor, prevBoard, nextBoard){
     if (pendingLocalCardUpdates.size > LOCAL_BOARD_RENDER_MAX_PENDING) return false;
     if (prevBoard.lists && nextBoard.lists && !listsMatch(prevBoard.lists, nextBoard.lists)) return false;
 
+    const allowedFields = new Set(['deferred', 'move']);
     for (const [cardId, entry] of pendingLocalCardUpdates.entries()) {
-        if (!entry || !Array.isArray(entry.fields) || entry.fields.length !== 1 || entry.fields[0] !== 'deferred') {
+        if (!entry || !Array.isArray(entry.fields) || entry.fields.length !== 1 || !allowedFields.has(entry.fields[0])) {
             return false;
         }
     }
@@ -1265,6 +1266,8 @@ function moveCardToStatusAtIndex(cardId, toStatus, insertIndex, options) {
     if (!removed || !removed.card) return;
     insertCardIntoStatus(removed.card, toStatus, insertIndex);
 
+    registerLocalCardUpdate(cardId, ['move']);
+
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'move-card',
@@ -1289,7 +1292,10 @@ function moveCardToStatusAtIndex(cardId, toStatus, insertIndex, options) {
     }
 
     if (!opts.skipRender) {
-        renderBoard();
+        if (!moveCardBetweenStatusesInDom(cardId, fromStatus, toStatus)) {
+            suppressCardHover();
+            renderBoard();
+        }
     }
 }
 
@@ -1307,6 +1313,7 @@ function moveCardToAdjacent(cardId, fromStatus, direction) {
     if (!Array.isArray(boardData[toStatus])) boardData[toStatus] = [];
     const toIndex = boardData[toStatus].length;
     boardData[toStatus].push(card);
+    registerLocalCardUpdate(cardId, ['move']);
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({
             type: 'move-card',
@@ -1318,7 +1325,10 @@ function moveCardToAdjacent(cardId, fromStatus, direction) {
             toStatus
         }));
     }
-    renderBoard();
+    if (!moveCardBetweenStatusesInDom(cardId, actualFromStatus, toStatus)) {
+        suppressCardHover();
+        renderBoard();
+    }
 
     if (!undoRedoInProgress) {
         pushUndoAction({
@@ -3379,7 +3389,10 @@ function handleWebSocketMessage(data) {
                 applyPendingCardAddsToBoardData();
                 flushPendingCardAdds();
                 const skipRender = shouldSkipBoardRenderForLocalUpdate(data.actor, prevBoardData, boardData);
-                if (!skipRender) pendingBoardUpdate = true;
+                if (!skipRender) {
+                    if (data.actor && data.actor === currentUser) suppressCardHover();
+                    pendingBoardUpdate = true;
+                }
                 initialBoardRendered = true;
                 if (initialBoardTimeout) { try{ clearTimeout(initialBoardTimeout); }catch(_){} initialBoardTimeout = null; }
                 if (!skipRender) scheduleDeferredRender();
@@ -4211,6 +4224,43 @@ function renderArchive() {
     });
 }
 
+function appendCardMoveButtons(cardElement, status, cardId) {
+    if (!cardElement || !status || !cardId) return;
+    const prevStatus = getAdjacentStatusKey(status, 'prev');
+    const nextStatus = getAdjacentStatusKey(status, 'next');
+    if (prevStatus) {
+        const leftBtn = document.createElement('button');
+        leftBtn.type = 'button';
+        leftBtn.className = 'card-move-button card-move-left';
+        leftBtn.setAttribute('aria-label', '移动到左侧卡组');
+        leftBtn.textContent = '‹';
+        leftBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveCardToAdjacent(cardId, status, 'prev');
+        });
+        cardElement.appendChild(leftBtn);
+    }
+    if (nextStatus) {
+        const rightBtn = document.createElement('button');
+        rightBtn.type = 'button';
+        rightBtn.className = 'card-move-button card-move-right';
+        rightBtn.setAttribute('aria-label', '移动到右侧卡组');
+        rightBtn.textContent = '›';
+        rightBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            moveCardToAdjacent(cardId, status, 'next');
+        });
+        cardElement.appendChild(rightBtn);
+    }
+}
+
+function refreshCardMoveButtons(cardElement, status, cardId) {
+    if (!cardElement) return;
+    cardElement.querySelectorAll('.card-move-button').forEach(btn => btn.remove());
+    if (!status || status === 'archived') return;
+    appendCardMoveButtons(cardElement, status, cardId || cardElement.dataset.cardId);
+}
+
 // 创建卡片元素
 function createCardElement(card, status) {
     const cardElement = document.createElement('div');
@@ -4296,32 +4346,7 @@ function createCardElement(card, status) {
     `;
 
     if (!isArchivedView) {
-        const prevStatus = getAdjacentStatusKey(status, 'prev');
-        const nextStatus = getAdjacentStatusKey(status, 'next');
-        if (prevStatus) {
-            const leftBtn = document.createElement('button');
-            leftBtn.type = 'button';
-            leftBtn.className = 'card-move-button card-move-left';
-            leftBtn.setAttribute('aria-label', '移动到左侧卡组');
-            leftBtn.textContent = '‹';
-            leftBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                moveCardToAdjacent(card.id, status, 'prev');
-            });
-            cardElement.appendChild(leftBtn);
-        }
-        if (nextStatus) {
-            const rightBtn = document.createElement('button');
-            rightBtn.type = 'button';
-            rightBtn.className = 'card-move-button card-move-right';
-            rightBtn.setAttribute('aria-label', '移动到右侧卡组');
-            rightBtn.textContent = '›';
-            rightBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                moveCardToAdjacent(card.id, status, 'next');
-            });
-            cardElement.appendChild(rightBtn);
-        }
+        appendCardMoveButtons(cardElement, status, card.id);
     }
 
     cardElement.addEventListener('click', (e) => {
@@ -4409,6 +4434,41 @@ function toggleCardDeferred(cardId, btn) {
     }
 }
 
+function moveCardBetweenStatusesInDom(cardId, fromStatus, toStatus) {
+    const cardEl = document.querySelector(`.card[data-card-id="${cardId}"]`);
+    if (!cardEl || !toStatus) return false;
+    const toCardsEl = document.querySelector(`.column[data-status="${toStatus}"] .cards`);
+    if (!toCardsEl) return false;
+
+    let fromCardsEl = null;
+    if (fromStatus) {
+        fromCardsEl = document.querySelector(`.column[data-status="${fromStatus}"] .cards`);
+    }
+    if (!fromCardsEl) {
+        fromCardsEl = cardEl.closest('.cards');
+    }
+    if (fromCardsEl && fromCardsEl !== toCardsEl) {
+        cardEl.remove();
+        const divider = fromCardsEl.querySelector('.card-group-divider');
+        if (divider && !fromCardsEl.querySelector('.card.card-deferred')) {
+            divider.remove();
+        }
+        updateContainerEmptyState(fromCardsEl);
+    } else if (cardEl.parentNode && cardEl.parentNode !== toCardsEl) {
+        cardEl.parentNode.removeChild(cardEl);
+    }
+
+    toCardsEl.appendChild(cardEl);
+    try { makeDraggable(cardEl); } catch(_) {}
+    const card = getCardById(cardId);
+    const deferred = card ? !!card.deferred : cardEl.classList.contains('card-deferred');
+    cardEl.classList.toggle('card-deferred', deferred);
+    const moved = moveDeferredCardInDom(cardId, deferred, cardEl);
+    if (!moved) return false;
+    refreshCardMoveButtons(cardEl, toStatus, cardId);
+    return true;
+}
+
 function moveDeferredCardInDom(cardId, deferred, cardEl) {
     const el = cardEl || document.querySelector(`.card[data-card-id="${cardId}"]`);
     if (!el) return false;
@@ -4454,6 +4514,12 @@ function moveDeferredCardInDom(cardId, deferred, cardEl) {
             if (ref) { refBefore = ref; break; }
         }
     }
+    if (!refAfter && !refBefore && !deferred) {
+        const archivedFirst = cardsEl.querySelector('.card[data-archived="true"]');
+        if (archivedFirst) {
+            refBefore = archivedFirst;
+        }
+    }
 
     if (refAfter) {
         refAfter.after(el);
@@ -4471,17 +4537,22 @@ function moveDeferredCardInDom(cardId, deferred, cardEl) {
         divider.remove();
     }
     updateContainerEmptyState(cardsEl);
-    suppressCardHover();
+    suppressCardHover({ releaseAfterMs: 160 });
     return true;
 }
 
-function suppressCardHover() {
+function suppressCardHover(options) {
+    const opts = options || {};
     const board = document.getElementById('boardPage');
     if (!board) return;
     if (board._hoverSuppressHandler) {
         document.removeEventListener('mousemove', board._hoverSuppressHandler);
         document.removeEventListener('touchstart', board._hoverSuppressHandler);
         board._hoverSuppressHandler = null;
+    }
+    if (board._hoverSuppressTimer) {
+        clearTimeout(board._hoverSuppressTimer);
+        board._hoverSuppressTimer = null;
     }
     const release = () => {
         board.classList.remove('suppress-card-hover');
@@ -4490,12 +4561,19 @@ function suppressCardHover() {
             document.removeEventListener('touchstart', board._hoverSuppressHandler);
             board._hoverSuppressHandler = null;
         }
+        if (board._hoverSuppressTimer) {
+            clearTimeout(board._hoverSuppressTimer);
+            board._hoverSuppressTimer = null;
+        }
     };
     const handler = () => release();
     board._hoverSuppressHandler = handler;
     board.classList.add('suppress-card-hover');
     document.addEventListener('mousemove', handler, { once: true, passive: true });
     document.addEventListener('touchstart', handler, { once: true, passive: true });
+    if (typeof opts.releaseAfterMs === 'number' && opts.releaseAfterMs > 0) {
+        board._hoverSuppressTimer = setTimeout(release, opts.releaseAfterMs);
+    }
 }
 
 // 通过 ID 删除卡片

@@ -4317,6 +4317,13 @@ body {
     opacity: 0 !important;
     transition: none !important;
 }
+#boardPage.suppress-card-hover .card-starred .card-quick-star {
+    opacity: 1 !important;
+}
+#boardPage.suppress-card-hover .card-move-button {
+    opacity: 0.15 !important;
+    transition: none !important;
+}
 
 
 #boardPage .board-breadcrumb #breadcrumbHome,
