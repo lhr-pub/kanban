@@ -654,26 +654,7 @@ function getBoardArrayKeys(board){
     return Object.keys(board).filter(k => Array.isArray(board[k]));
 }
 
-function stripCardFields(card, ignoreFields){
-    if (!card || typeof card !== 'object') return card;
-    if (!ignoreFields || ignoreFields.size === 0) return card;
-    const next = {};
-    Object.keys(card).forEach((key) => {
-        if (ignoreFields.has(key)) return;
-        next[key] = card[key];
-    });
-    return next;
-}
-
-function cardsEqualExcept(a, b, ignoreFields){
-    if (a === b) return true;
-    if (!a || !b) return false;
-    const left = stripCardFields(a, ignoreFields);
-    const right = stripCardFields(b, ignoreFields);
-    try { return JSON.stringify(left) === JSON.stringify(right); } catch(_) { return false; }
-}
-
-function boardsEqualExceptFields(prevBoard, nextBoard, ignoreMap){
+function boardsHaveSameCardOrder(prevBoard, nextBoard){
     if (!prevBoard || !nextBoard) return false;
     const prevKeys = getBoardArrayKeys(prevBoard).sort();
     const nextKeys = getBoardArrayKeys(nextBoard).sort();
@@ -689,8 +670,6 @@ function boardsEqualExceptFields(prevBoard, nextBoard, ignoreMap){
             const prevCard = prevArr[i];
             const nextCard = nextArr[i];
             if (!prevCard || !nextCard || prevCard.id !== nextCard.id) return false;
-            const ignoreFields = ignoreMap && ignoreMap.get(prevCard.id);
-            if (!cardsEqualExcept(prevCard, nextCard, ignoreFields)) return false;
         }
     }
     return true;
@@ -704,15 +683,13 @@ function shouldSkipBoardRenderForLocalUpdate(actor, prevBoard, nextBoard){
     if (pendingLocalCardUpdates.size > LOCAL_BOARD_RENDER_MAX_PENDING) return false;
     if (prevBoard.lists && nextBoard.lists && !listsMatch(prevBoard.lists, nextBoard.lists)) return false;
 
-    const ignoreMap = new Map();
     for (const [cardId, entry] of pendingLocalCardUpdates.entries()) {
         if (!entry || !Array.isArray(entry.fields) || entry.fields.length !== 1 || entry.fields[0] !== 'deferred') {
             return false;
         }
-        ignoreMap.set(cardId, new Set(entry.fields));
     }
 
-    if (!boardsEqualExceptFields(prevBoard, nextBoard, ignoreMap)) return false;
+    if (!boardsHaveSameCardOrder(prevBoard, nextBoard)) return false;
     pendingLocalCardUpdates.clear();
     return true;
 }
@@ -4495,8 +4472,21 @@ function moveDeferredCardInDom(cardId, deferred, cardEl) {
         divider.remove();
     }
     updateContainerEmptyState(cardsEl);
+    suppressCardHover(cardsEl);
     if (replacement && replacement.isConnected) boostCardQuickActions(replacement);
     return true;
+}
+
+function suppressCardHover(container, duration = 160) {
+    if (!container) return;
+    if (container._hoverSuppressTimer) {
+        clearTimeout(container._hoverSuppressTimer);
+    }
+    container.classList.add('suppress-card-hover');
+    container._hoverSuppressTimer = setTimeout(() => {
+        container.classList.remove('suppress-card-hover');
+        container._hoverSuppressTimer = null;
+    }, duration);
 }
 
 function findReplacementCardForMove(cardEl) {

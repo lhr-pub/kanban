@@ -4311,6 +4311,15 @@ body {
     transition: none !important;
 }
 
+/* Suppress hover flash when cards move between groups */
+.cards.suppress-card-hover .card:hover {
+    background: inherit !important;
+    box-shadow: inherit !important;
+}
+.cards.suppress-card-hover .card {
+    transition: none !important;
+}
+
 
 #boardPage .board-breadcrumb #breadcrumbHome,
 #boardPage .board-breadcrumb .project-link {
