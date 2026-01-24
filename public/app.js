@@ -186,6 +186,31 @@ const CARD_EDIT_FIELDS = new Set(['title', 'description', 'assignee', 'deadline'
 const LOCAL_BOARD_RENDER_SKIP_MS = 800;
 const LOCAL_BOARD_RENDER_MAX_PENDING = 3;
 const pendingLocalCardUpdates = new Map();
+let lastPointerPosition = null;
+
+function trackPointerFromMouse(ev) {
+    if (!ev) return;
+    lastPointerPosition = { x: ev.clientX, y: ev.clientY };
+}
+
+function trackPointerFromTouch(ev) {
+    const t = ev && ev.touches && ev.touches[0];
+    if (!t) return;
+    lastPointerPosition = { x: t.clientX, y: t.clientY };
+}
+
+if (typeof document !== 'undefined') {
+    document.addEventListener('mousemove', trackPointerFromMouse, { passive: true });
+    document.addEventListener('mousedown', trackPointerFromMouse, { passive: true });
+    document.addEventListener('touchstart', trackPointerFromTouch, { passive: true });
+    document.addEventListener('touchmove', trackPointerFromTouch, { passive: true });
+}
+
+function getCardUnderPointer() {
+    if (!lastPointerPosition) return null;
+    const el = document.elementFromPoint(lastPointerPosition.x, lastPointerPosition.y);
+    return el ? el.closest('.card') : null;
+}
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -1293,7 +1318,7 @@ function moveCardToStatusAtIndex(cardId, toStatus, insertIndex, options) {
 
     if (!opts.skipRender) {
         if (!moveCardBetweenStatusesInDom(cardId, fromStatus, toStatus)) {
-            suppressCardHover();
+            suppressCardHover({ lockToCard: true });
             renderBoard();
         }
     }
@@ -1326,7 +1351,7 @@ function moveCardToAdjacent(cardId, fromStatus, direction) {
         }));
     }
     if (!moveCardBetweenStatusesInDom(cardId, actualFromStatus, toStatus)) {
-        suppressCardHover();
+        suppressCardHover({ lockToCard: true });
         renderBoard();
     }
 
@@ -3390,7 +3415,7 @@ function handleWebSocketMessage(data) {
                 flushPendingCardAdds();
                 const skipRender = shouldSkipBoardRenderForLocalUpdate(data.actor, prevBoardData, boardData);
                 if (!skipRender) {
-                    if (data.actor && data.actor === currentUser) suppressCardHover();
+                    if (data.actor && data.actor === currentUser) suppressCardHover({ lockToCard: true });
                     pendingBoardUpdate = true;
                 }
                 initialBoardRendered = true;
@@ -4537,7 +4562,7 @@ function moveDeferredCardInDom(cardId, deferred, cardEl) {
         divider.remove();
     }
     updateContainerEmptyState(cardsEl);
-    suppressCardHover({ releaseAfterMs: 160 });
+    suppressCardHover({ lockToCard: true });
     return true;
 }
 
@@ -4548,29 +4573,49 @@ function suppressCardHover(options) {
     if (board._hoverSuppressHandler) {
         document.removeEventListener('mousemove', board._hoverSuppressHandler);
         document.removeEventListener('touchstart', board._hoverSuppressHandler);
+        document.removeEventListener('touchmove', board._hoverSuppressHandler);
         board._hoverSuppressHandler = null;
     }
     if (board._hoverSuppressTimer) {
         clearTimeout(board._hoverSuppressTimer);
         board._hoverSuppressTimer = null;
     }
+    board._hoverSuppressLockCard = opts.lockToCard ? getCardUnderPointer() : null;
     const release = () => {
         board.classList.remove('suppress-card-hover');
         if (board._hoverSuppressHandler) {
             document.removeEventListener('mousemove', board._hoverSuppressHandler);
             document.removeEventListener('touchstart', board._hoverSuppressHandler);
+            document.removeEventListener('touchmove', board._hoverSuppressHandler);
             board._hoverSuppressHandler = null;
         }
         if (board._hoverSuppressTimer) {
             clearTimeout(board._hoverSuppressTimer);
             board._hoverSuppressTimer = null;
         }
+        board._hoverSuppressLockCard = null;
     };
-    const handler = () => release();
+    const handler = (ev) => {
+        const lockCard = board._hoverSuppressLockCard;
+        if (lockCard) {
+            let card = null;
+            if (ev && ev.target && ev.target.closest) {
+                card = ev.target.closest('.card');
+            }
+            if (!card) {
+                card = getCardUnderPointer();
+            }
+            if (card && lockCard.contains(card)) {
+                return;
+            }
+        }
+        release();
+    };
     board._hoverSuppressHandler = handler;
     board.classList.add('suppress-card-hover');
-    document.addEventListener('mousemove', handler, { once: true, passive: true });
-    document.addEventListener('touchstart', handler, { once: true, passive: true });
+    document.addEventListener('mousemove', handler, { passive: true });
+    document.addEventListener('touchstart', handler, { passive: true });
+    document.addEventListener('touchmove', handler, { passive: true });
     if (typeof opts.releaseAfterMs === 'number' && opts.releaseAfterMs > 0) {
         board._hoverSuppressTimer = setTimeout(release, opts.releaseAfterMs);
     }
