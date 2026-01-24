@@ -181,6 +181,8 @@ const CARD_ADD_RETRY_MS = 8000;
 const CARD_ADD_MAX_RETRIES = 4;
 const UNDO_LIMIT = 20;
 const UNDO_TTL_MS = 10 * 60 * 1000;
+const EDIT_UNDO_MERGE_MS = 1500;
+const CARD_EDIT_FIELDS = new Set(['title', 'description', 'assignee', 'deadline', 'priority', 'labels', 'checklist']);
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -874,6 +876,139 @@ function performRedo(){
 function cloneDeep(value){
     if (!value) return value;
     try { return JSON.parse(JSON.stringify(value)); } catch(_) { return value; }
+}
+
+function normalizeCardEditState(state){
+    const s = state || {};
+    return {
+        title: typeof s.title === 'string' ? s.title : '',
+        description: typeof s.description === 'string' ? s.description : '',
+        assignee: s.assignee || null,
+        deadline: s.deadline || null,
+        priority: s.priority || null,
+        labels: Array.isArray(s.labels) ? s.labels.slice() : [],
+        checklist: s.checklist ? cloneDeep(s.checklist) : null
+    };
+}
+
+function extractCardEditState(card){
+    return normalizeCardEditState(card || {});
+}
+
+function filterCardEditUpdates(updates){
+    const result = {};
+    if (!updates || typeof updates !== 'object') return result;
+    CARD_EDIT_FIELDS.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(updates, field)) {
+            result[field] = updates[field];
+        }
+    });
+    return result;
+}
+
+function areEditValuesEqual(a, b){
+    if (a === b) return true;
+    try { return JSON.stringify(a) === JSON.stringify(b); } catch(_) { return false; }
+}
+
+function diffCardEditState(beforeState, afterState){
+    const before = normalizeCardEditState(beforeState);
+    const after = normalizeCardEditState(afterState);
+    const diffBefore = {};
+    const diffAfter = {};
+    CARD_EDIT_FIELDS.forEach((field) => {
+        if (!areEditValuesEqual(before[field], after[field])) {
+            diffBefore[field] = cloneDeep(before[field]);
+            diffAfter[field] = cloneDeep(after[field]);
+        }
+    });
+    return { before: diffBefore, after: diffAfter };
+}
+
+function mergeCardEditState(baseState, updates){
+    const next = normalizeCardEditState(baseState);
+    const patch = filterCardEditUpdates(updates);
+    Object.keys(patch).forEach((field) => {
+        if (field === 'labels') {
+            next.labels = Array.isArray(patch.labels) ? patch.labels.slice() : [];
+        } else if (field === 'checklist') {
+            next.checklist = patch.checklist ? cloneDeep(patch.checklist) : null;
+        } else if (field === 'title' || field === 'description') {
+            next[field] = typeof patch[field] === 'string' ? patch[field] : '';
+        } else {
+            next[field] = patch[field] || null;
+        }
+    });
+    return normalizeCardEditState(next);
+}
+
+function applyCardEdits(cardId, updates){
+    if (!updates || typeof updates !== 'object') return;
+    updateCardImmediately(cardId, updates);
+    renderBoard();
+    if (!archivePage.classList.contains('hidden')) {
+        renderArchive();
+    }
+}
+
+function registerCardEditUndo(cardId, beforeState, afterState, label){
+    if (undoRedoInProgress) return;
+    const diff = diffCardEditState(beforeState, afterState);
+    const hasChanges = Object.keys(diff.before).length > 0;
+    if (!hasChanges) return;
+
+    const now = Date.now();
+    if (undoBoardKey !== getCurrentBoardKey()) {
+        resetUndoRedo();
+    }
+    pruneUndoRedo();
+
+    const last = undoStack[undoStack.length - 1];
+    if (last && last.type === 'edit-card' && last.cardId === cardId && (now - last.createdAt) <= EDIT_UNDO_MERGE_MS) {
+        const mergedBefore = Object.assign({}, last.before);
+        const mergedAfter = Object.assign({}, last.after);
+        Object.keys(diff.before).forEach((field) => {
+            if (!Object.prototype.hasOwnProperty.call(mergedBefore, field)) {
+                mergedBefore[field] = diff.before[field];
+            }
+            mergedAfter[field] = diff.after[field];
+        });
+        last.before = mergedBefore;
+        last.after = mergedAfter;
+        last.createdAt = now;
+        if (label) last.label = label;
+        last.undo = () => applyCardEdits(cardId, mergedBefore);
+        last.redo = () => applyCardEdits(cardId, mergedAfter);
+        redoStack = [];
+        return;
+    }
+
+    pushUndoAction({
+        type: 'edit-card',
+        label: label || '编辑任务',
+        createdAt: now,
+        cardId,
+        before: diff.before,
+        after: diff.after,
+        undo: () => applyCardEdits(cardId, diff.before),
+        redo: () => applyCardEdits(cardId, diff.after)
+    });
+}
+
+function applyCardEditsWithUndo(cardId, updates, options){
+    if (!updates || typeof updates !== 'object') return;
+    const opts = options || {};
+    const editUpdates = filterCardEditUpdates(updates);
+    const shouldTrack = !opts.skipUndo && Object.keys(editUpdates).length > 0;
+    const card = shouldTrack ? getCardById(cardId) : null;
+    const beforeState = (shouldTrack && card) ? extractCardEditState(card) : null;
+
+    updateCardImmediately(cardId, updates);
+
+    if (shouldTrack && beforeState) {
+        const afterState = mergeCardEditState(beforeState, updates);
+        registerCardEditUndo(cardId, beforeState, afterState, opts.label);
+    }
 }
 
 function getCardLocation(cardId){
@@ -4320,22 +4455,7 @@ function saveCardFromDrawer(){
     const updates = gatherDrawerUpdates();
     if (!updates.title) { uiToast('任务标题不能为空','error'); return; }
 
-    // local update to avoid flicker
-    for (const s of getAllStatusKeys()){
-        const i = (boardData[s]||[]).findIndex(c=>c.id===drawerCardId);
-        if(i!==-1){ boardData[s][i] = Object.assign({}, boardData[s][i], updates); break; }
-    }
-
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'update-card',
-            projectId: currentProjectId,
-            boardName: currentBoardName,
-            actor: currentUser,
-            cardId: drawerCardId,
-            updates
-        }));
-    }
+    applyCardEditsWithUndo(drawerCardId, updates, { label: '编辑任务' });
 
     closeCardModal();
     renderBoard();
@@ -4371,7 +4491,7 @@ function renderDrawerChecklist(card){
             items.push({ text, done:false });
             const total = items.length; const done = items.filter(i=>i.done).length;
             const updates = { checklist: { items, total, done } };
-            updateCardImmediately(drawerCardId, updates);
+            applyCardEditsWithUndo(drawerCardId, updates, { label: '编辑任务' });
             input.value='';
             renderDrawerChecklist(getCardById(drawerCardId));
         }
@@ -4385,7 +4505,7 @@ function renderDrawerChecklist(card){
             const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items.slice() : [];
             if(items[idx]) items[idx] = Object.assign({}, items[idx], { done: chk.checked });
             const total = items.length; const done = items.filter(i=>i.done).length;
-            updateCardImmediately(drawerCardId, { checklist: { items, total, done } });
+            applyCardEditsWithUndo(drawerCardId, { checklist: { items, total, done } }, { label: '编辑任务' });
             renderDrawerChecklist(getCardById(drawerCardId));
         };
     });
@@ -4396,7 +4516,7 @@ function renderDrawerChecklist(card){
             const items = (card.checklist && Array.isArray(card.checklist.items)) ? card.checklist.items.slice() : [];
             if(items[idx]) items[idx] = Object.assign({}, items[idx], { text: inp.value });
             const total = items.length; const done = items.filter(i=>i.done).length;
-            updateCardImmediately(drawerCardId, { checklist: { items, total, done } });
+            applyCardEditsWithUndo(drawerCardId, { checklist: { items, total, done } }, { label: '编辑任务' });
         };
     });
 }
@@ -4788,18 +4908,10 @@ function saveCard() {
 
     const updates = { title, description, assignee, deadline };
 
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'update-card',
-            projectId: currentProjectId,
-            boardName: currentBoardName,
-            actor: currentUser,
-            cardId: editingCardId,
-            updates: updates
-        }));
-    }
+    applyCardEditsWithUndo(editingCardId, updates, { label: '编辑任务' });
 
     closeEditModal();
+    renderBoard();
 }
 
 // 删除卡片
@@ -5901,22 +6013,8 @@ function editCardDescription(cardId, clickEvent) {
         settled = true;
         const newDescription = textarea.value.trim();
         if (newDescription !== card.description) {
-            // 更新本地数据
-            card.description = newDescription;
-
-            // 发送更新请求
             const updates = { description: newDescription };
-
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'update-card',
-                    projectId: currentProjectId,
-                    boardName: currentBoardName,
-                    actor: currentUser,
-                    cardId: cardId,
-                    updates: updates
-                }));
-            }
+            applyCardEditsWithUndo(cardId, updates, { label: '编辑任务' });
 
             // 显示新描述
             const displayText = newDescription || '点击添加描述...';
@@ -6288,27 +6386,7 @@ function setCardInlineEditingState(cardId, isEditing) {
 function updateCardField(cardId, field, value) {
     const updates = {};
     updates[field] = value;
-
-    // 先更新本地数据，避免界面闪烁或数据短暂丢失
-    for (const status of getAllStatusKeys()) {
-        const idx = (boardData[status] || []).findIndex(c => c.id === cardId);
-        if (idx !== -1) {
-            const current = boardData[status][idx];
-            boardData[status][idx] = Object.assign({}, current, { [field]: value });
-            break;
-        }
-    }
-
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'update-card',
-            projectId: currentProjectId,
-            boardName: currentBoardName,
-            actor: currentUser,
-            cardId: cardId,
-            updates: updates
-        }));
-    }
+    applyCardEditsWithUndo(cardId, updates, { label: '编辑任务' });
 }
 
 // HTML转义
