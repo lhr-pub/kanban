@@ -4570,6 +4570,10 @@ function suppressCardHover(options) {
     const opts = options || {};
     const board = document.getElementById('boardPage');
     if (!board) return;
+    if (board._hoverSuppressLockCard && board._hoverSuppressLockCard.classList) {
+        board._hoverSuppressLockCard.classList.remove('hover-lock');
+    }
+    board._hoverSuppressLockCard = null;
     if (board._hoverSuppressHandler) {
         document.removeEventListener('mousemove', board._hoverSuppressHandler);
         document.removeEventListener('touchstart', board._hoverSuppressHandler);
