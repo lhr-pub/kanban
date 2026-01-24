@@ -6722,6 +6722,7 @@ function bindBoardDragScroll() {
         if (e.button !== 0) return;
         if (e.defaultPrevented) return;
         if (draggingListEl || draggingCardEl || document.body.classList.contains('dragging-cards')) return;
+        if (isAnyInlineEditorOpen()) return;
         if (isBlockedTarget(e.target)) return;
 
         boardDragActive = true;
