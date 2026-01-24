@@ -4121,8 +4121,9 @@ function inlineEditCardTitle(cardEl){
         if (settled) return;
         settled = true;
         const val = input.value.trim();
-        const display = val || '未命名';
-        const t = document.createElement('div'); t.className='card-title'; t.textContent = display; t.tabIndex = 0;
+        const isEmpty = !val;
+        const display = isEmpty ? '未命名' : val;
+        const t = document.createElement('div'); t.className = `card-title${isEmpty ? ' is-empty' : ''}`; t.textContent = display; t.tabIndex = 0;
         input.replaceWith(t);
         if (val !== old) { saveCardTitle(cardId, val); }
         setCardInlineEditingState(cardId, false);
@@ -4130,8 +4131,9 @@ function inlineEditCardTitle(cardEl){
     const cancel = () => {
         if (settled) return;
         settled = true;
-        const display = old || '未命名';
-        const t = document.createElement('div'); t.className='card-title'; t.textContent = display; t.tabIndex = 0;
+        const isEmpty = !String(old || '').trim();
+        const display = isEmpty ? '未命名' : old;
+        const t = document.createElement('div'); t.className = `card-title${isEmpty ? ' is-empty' : ''}`; t.textContent = display; t.tabIndex = 0;
         input.replaceWith(t);
         setCardInlineEditingState(cardId, false);
     };
@@ -4256,6 +4258,11 @@ function createCardElement(card, status) {
     const isStarred = !!card.starred;
     const isDeferred = !!card.deferred;
 
+    const titleRaw = (typeof card.title === 'string') ? card.title : '';
+    const titleEmpty = !titleRaw.trim();
+    const titleText = titleEmpty ? '未命名' : escapeHtml(titleRaw);
+    const titleClass = titleEmpty ? 'card-title is-empty' : 'card-title';
+
     const assigneeHtml = card.assignee
         ? `<span class="card-assignee clickable" onclick="event.stopPropagation(); editCardAssignee('${card.id}')" title="点击修改分配用户">@${escapeHtml(getDisplayNameForUser(card.assignee))}</span>`
         : '';
@@ -4292,8 +4299,8 @@ function createCardElement(card, status) {
         : '';
 
     const headerRow = (isArchivedView)
-        ? `<div class="card-header"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button><div class="card-title">${escapeHtml(card.title || '未命名')}</div></div>`
-        : `<div class="card-title">${escapeHtml(card.title || '未命名')}</div>`;
+        ? `<div class="card-header"><button class="restore-chip" onclick="event.stopPropagation(); restoreCard('${card.id}')">还原</button><div class="${titleClass}">${titleText}</div></div>`
+        : `<div class="${titleClass}">${titleText}</div>`;
 
     const badges = `${descIcon}${commentsBadge}${deadlineHtml}${assigneeHtml}`;
 
@@ -4409,14 +4416,16 @@ function toggleCardDeferred(cardId, btn) {
     const next = !card.deferred;
     registerLocalCardUpdate(cardId, ['deferred']);
     updateCardImmediately(cardId, { deferred: next });
-    if (btn) {
-        btn.classList.toggle('active', next);
-        btn.setAttribute('aria-pressed', next ? 'true' : 'false');
-        const label = next ? '取消稍后' : '稍后';
-        btn.setAttribute('aria-label', label);
-        btn.setAttribute('title', label);
-    }
     const cardEl = btn && btn.closest ? btn.closest('.card') : document.querySelector(`.card[data-card-id="${cardId}"]`);
+    const deferBtn = btn || (cardEl ? cardEl.querySelector('.card-quick-defer') : null);
+    if (deferBtn) {
+        deferBtn.classList.toggle('active', next);
+        deferBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
+        deferBtn.textContent = next ? '↥' : '↧';
+        const label = next ? '取消稍后' : '稍后';
+        deferBtn.setAttribute('aria-label', label);
+        deferBtn.setAttribute('title', label);
+    }
     if (cardEl) cardEl.classList.toggle('card-deferred', next);
     if (!moveDeferredCardInDom(cardId, next, cardEl)) {
         renderBoard();
