@@ -9,8 +9,12 @@ REMOTE_DIR="${REMOTE_DIR:-kanban}"
 SSH_OPTS="${SSH_OPTS:-}"
 ENV_FILE="${ENV_FILE:-.env}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com/}"
+MISE_BIN="${MISE_BIN:-mise}"
+MISE_MODE="${MISE_MODE:-on}"
+MISE_INSTALL="${MISE_INSTALL:-on}"
+MISE_TRUST="${MISE_TRUST:-on}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
-DOCKER_VOLUME="${DOCKER_VOLUME:-kanban_data}"
+DOCKER_VOLUME="${DOCKER_VOLUME:-kanban_kanban_data}"
 DOCKER_CONTAINER="${DOCKER_CONTAINER:-kanban}"
 SUDO="${SUDO:-}"
 
@@ -38,6 +42,12 @@ Options:
   -D <dir>          Remote project directory (default: ${REMOTE_DIR})
   -S <ssh_opts>     Extra SSH options, e.g. "-p 2222 -o StrictHostKeyChecking=accept-new"
   -R <registry>     npm registry (default: ${NPM_REGISTRY})
+  -M               Force use mise exec (default)
+  -m               Disable mise exec
+  -I               Enable mise install (default)
+  -i               Disable mise install
+  -T               Enable mise trust (default)
+  -t               Disable mise trust
   -B <docker_bin>   Docker binary (default: ${DOCKER_BIN})
   -V <volume>       Docker volume name (default: ${DOCKER_VOLUME})
   -C <container>    Docker container name (default: ${DOCKER_CONTAINER})
@@ -53,12 +63,18 @@ Examples:
 EOF
 }
 
-while getopts ":H:D:S:R:B:V:C:U:h" opt; do
+while getopts ":H:D:S:R:B:V:C:U:MmiItTh" opt; do
     case "$opt" in
         H) REMOTE_HOST="$OPTARG" ;;
         D) REMOTE_DIR="$OPTARG" ;;
         S) SSH_OPTS="$OPTARG" ;;
         R) NPM_REGISTRY="$OPTARG" ;;
+        M) MISE_MODE="on" ;;
+        m) MISE_MODE="off" ;;
+        I) MISE_INSTALL="on" ;;
+        i) MISE_INSTALL="off" ;;
+        T) MISE_TRUST="on" ;;
+        t) MISE_TRUST="off" ;;
         B) DOCKER_BIN="$OPTARG" ;;
         V) DOCKER_VOLUME="$OPTARG" ;;
         C) DOCKER_CONTAINER="$OPTARG" ;;
@@ -87,8 +103,56 @@ remote() {
     env_prefix+=" DOCKER_VOLUME=$(shell_quote "$DOCKER_VOLUME")"
     env_prefix+=" DOCKER_CONTAINER=$(shell_quote "$DOCKER_CONTAINER")"
     env_prefix+=" SUDO=$(shell_quote "$SUDO")"
+    local mise_bin_quoted
+    mise_bin_quoted="$(shell_quote "$MISE_BIN")"
+    local run_cmd
+    run_cmd="./start.nodocker.sh ${subcmd} $*"
+    local remote_cmd
+    local install_step=""
+    local trust_step=""
+    case "$MISE_TRUST" in
+        on)
+            trust_step="if [ -f .mise.toml ]; then ${mise_bin_quoted} trust -y .mise.toml || exit 1; fi; "
+            trust_step+="if [ -f mise.toml ]; then ${mise_bin_quoted} trust -y mise.toml || exit 1; fi; "
+            trust_step+="if [ -f .tool-versions ]; then ${mise_bin_quoted} trust -y .tool-versions || exit 1; fi; "
+            ;;
+        off)
+            trust_step=""
+            ;;
+        *)
+            echo "Unknown MISE_TRUST: ${MISE_TRUST} (use on|off)" >&2
+            exit 1
+            ;;
+    esac
+    case "$MISE_INSTALL" in
+        on)
+            install_step="if [ -f .mise.toml ] || [ -f mise.toml ] || [ -f .tool-versions ] || [ -f \"\\$HOME/.config/mise/config.toml\" ]; then ${mise_bin_quoted} install || exit 1; fi; "
+            ;;
+        off)
+            install_step=""
+            ;;
+        *)
+            echo "Unknown MISE_INSTALL: ${MISE_INSTALL} (use on|off)" >&2
+            exit 1
+            ;;
+    esac
+    case "$MISE_MODE" in
+        on)
+            remote_cmd="cd '${REMOTE_DIR}' && if command -v ${mise_bin_quoted} >/dev/null 2>&1; then ${trust_step}${install_step}${env_prefix} ${mise_bin_quoted} exec -- ${run_cmd}; else echo 'Error: mise not found (${MISE_BIN}).' >&2; exit 1; fi"
+            ;;
+        off)
+            remote_cmd="cd '${REMOTE_DIR}' && ${env_prefix} ${run_cmd}"
+            ;;
+        auto)
+            remote_cmd="cd '${REMOTE_DIR}' && if command -v ${mise_bin_quoted} >/dev/null 2>&1; then ${trust_step}${install_step}${env_prefix} ${mise_bin_quoted} exec -- ${run_cmd}; else ${env_prefix} ${run_cmd}; fi"
+            ;;
+        *)
+            echo "Unknown MISE_MODE: ${MISE_MODE} (use on|off|auto)" >&2
+            exit 1
+            ;;
+    esac
     # shellcheck disable=SC2029
-    ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd '${REMOTE_DIR}' && ${env_prefix} ./start.nodocker.sh ${subcmd} $*"
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "${remote_cmd}"
 }
 
 sync() {

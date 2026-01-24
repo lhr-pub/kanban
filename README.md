@@ -810,6 +810,28 @@ DEFAULT_BG_URL_3=
 - 同源上传后即时生效（自动追加时间戳防缓存），支持 PNG/JPEG/WEBP，最大 10MB。
 - 服务器保存路径：`data/uploads/wallpapers/<username>.<ext>`；上传/清除时会清理该用户名下其它扩展，避免“同名不同扩展”冲突。
 
+## 🧰 无 Docker 部署（mise + 脚本）
+
+适用于服务器不装 Docker，或希望直接跑 Node 的场景。
+
+- 版本要求：Express 5 需要 Node >= 18，本项目默认锁定到 Node 20（见 `.mise.toml`）。
+- 旧系统提示：若服务器是 glibc 2.17（如 CentOS 7），官方 Node 20 会报错；已在 `.mise.toml` 中使用 `glibc-217` 的非官方构建并关闭 gpg 校验。
+  - 若系统已升级到 glibc 2.28+，可移除 `.mise.toml` 中的 `node.flavor/node.mirror_url/node.gpg_verify` 设置以恢复官方构建。
+- 本机/服务器直跑（同目录执行）：
+```bash
+./start.nodocker.sh install-prod
+./start.nodocker.sh start
+```
+- 远端部署（SSH + rsync）：
+```bash
+./remote.nodocker.sh deploy
+./remote.nodocker.sh logs
+```
+- npm 源：默认使用 `https://registry.npmmirror.com/`，可通过 `NPM_REGISTRY` 或 `-R` 覆盖。
+- 从 Docker 迁移数据：
+  - `./remote.nodocker.sh import-docker-data` 会优先使用 `DOCKER_VOLUME`，找不到时自动从容器的 `/app/data` 挂载推断。
+  - Docker Compose 常见卷名为 `kanban_kanban_data`（与项目名相关）；可用 `-V` 或 `-C` 显式指定。
+
 ## 🐳 使用 Docker（可选）
 - 开发（本机调试、挂载代码卷）
 ```bash

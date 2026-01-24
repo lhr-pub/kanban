@@ -11,14 +11,39 @@ NODE_BIN="${NODE_BIN:-node}"
 NPM_BIN="${NPM_BIN:-npm}"
 NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com/}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
-DOCKER_VOLUME="${DOCKER_VOLUME:-kanban_data}"
+DOCKER_VOLUME="${DOCKER_VOLUME:-kanban_kanban_data}"
 DOCKER_CONTAINER="${DOCKER_CONTAINER:-kanban}"
 SUDO="${SUDO:-}"
 SUDO_CMD=()
 if [[ -n "$SUDO" ]]; then
-    # shellcheck disable=SC2206
-    SUDO_CMD=($SUDO)
+    read -r -a SUDO_CMD <<< "$SUDO"
 fi
+
+sudo_run() {
+    if [[ ${#SUDO_CMD[@]} -gt 0 ]]; then
+        "${SUDO_CMD[@]}" "$@"
+    else
+        "$@"
+    fi
+}
+
+docker_data_mount_for_container() {
+    local container="$1"
+    sudo_run "$DOCKER_BIN" inspect -f '{{range .Mounts}}{{if eq .Destination "/app/data"}}{{.Source}}{{end}}{{end}}' "$container" 2>/dev/null || true
+}
+
+detect_data_container() {
+    local name mount
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        mount="$(docker_data_mount_for_container "$name")"
+        if [[ -n "$mount" ]]; then
+            echo "$name"
+            return 0
+        fi
+    done < <(sudo_run "$DOCKER_BIN" ps -a --format '{{.Names}}')
+    return 1
+}
 
 usage() {
     cat <<'EOF'
@@ -152,10 +177,24 @@ docker_mountpoint() {
         echo "Error: docker not found (DOCKER_BIN=$DOCKER_BIN)." >&2
         exit 1
     fi
-    local mount
-    mount="$("${SUDO_CMD[@]}" "$DOCKER_BIN" volume inspect "$DOCKER_VOLUME" --format '{{.Mountpoint}}' 2>/dev/null || true)"
+    local mount container
+    if [[ -n "$DOCKER_VOLUME" ]]; then
+        mount="$(sudo_run "$DOCKER_BIN" volume inspect "$DOCKER_VOLUME" --format '{{.Mountpoint}}' 2>/dev/null || true)"
+    else
+        mount=""
+    fi
     if [[ -z "$mount" ]]; then
-        echo "Error: docker volume '$DOCKER_VOLUME' not found." >&2
+        if [[ -n "$DOCKER_CONTAINER" ]] && sudo_run "$DOCKER_BIN" inspect "$DOCKER_CONTAINER" >/dev/null 2>&1; then
+            container="$DOCKER_CONTAINER"
+        else
+            container="$(detect_data_container || true)"
+        fi
+        if [[ -n "$container" ]]; then
+            mount="$(docker_data_mount_for_container "$container")"
+        fi
+    fi
+    if [[ -z "$mount" ]]; then
+        echo "Error: docker data mount not found. Set DOCKER_VOLUME or DOCKER_CONTAINER." >&2
         exit 1
     fi
     echo "$mount"
@@ -165,9 +204,9 @@ cmd_import_docker_data() {
     local mount
     mount="$(docker_mountpoint)"
 
-    if "${SUDO_CMD[@]}" "$DOCKER_BIN" ps -q --filter "name=^/${DOCKER_CONTAINER}$" | grep -q .; then
+    if sudo_run "$DOCKER_BIN" ps -q --filter "name=^/${DOCKER_CONTAINER}$" | grep -q .; then
         echo "Stopping container ${DOCKER_CONTAINER}..."
-        "${SUDO_CMD[@]}" "$DOCKER_BIN" stop "$DOCKER_CONTAINER"
+        sudo_run "$DOCKER_BIN" stop "$DOCKER_CONTAINER"
     fi
 
     local ts backup
@@ -180,13 +219,13 @@ cmd_import_docker_data() {
     mkdir -p "$DIR/data"
 
     if command -v rsync >/dev/null 2>&1; then
-        "${SUDO_CMD[@]}" rsync -a "$mount"/ "$DIR/data/"
+        sudo_run rsync -a "$mount"/ "$DIR/data/"
     else
-        "${SUDO_CMD[@]}" cp -a "$mount"/. "$DIR/data/"
+        sudo_run cp -a "$mount"/. "$DIR/data/"
     fi
 
     if [[ ${#SUDO_CMD[@]} -gt 0 ]]; then
-        "${SUDO_CMD[@]}" chown -R "$(id -u)":"$(id -g)" "$DIR/data"
+        sudo_run chown -R "$(id -u)":"$(id -g)" "$DIR/data"
     fi
     echo "Imported docker volume '$DOCKER_VOLUME' to $DIR/data"
 }
@@ -195,9 +234,9 @@ cmd_link_docker_data() {
     local mount
     mount="$(docker_mountpoint)"
 
-    if "${SUDO_CMD[@]}" "$DOCKER_BIN" ps -q --filter "name=^/${DOCKER_CONTAINER}$" | grep -q .; then
+    if sudo_run "$DOCKER_BIN" ps -q --filter "name=^/${DOCKER_CONTAINER}$" | grep -q .; then
         echo "Stopping container ${DOCKER_CONTAINER}..."
-        "${SUDO_CMD[@]}" "$DOCKER_BIN" stop "$DOCKER_CONTAINER"
+        sudo_run "$DOCKER_BIN" stop "$DOCKER_CONTAINER"
     fi
 
     local ts backup
