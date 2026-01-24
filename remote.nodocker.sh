@@ -159,6 +159,7 @@ sync() {
     local exclude_args=(
         --exclude "node_modules/"
         --exclude "data/"
+        --exclude "data"
         --exclude ".git/"
         --exclude "logs/"
         --exclude "run/"
