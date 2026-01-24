@@ -4304,6 +4304,10 @@ body {
     background: var(--card-bg) !important;
     box-shadow: var(--card-shadow) !important;
 }
+#boardPage.suppress-card-hover .card.hover-lock {
+    background: #F0F1F2 !important;
+    box-shadow: var(--card-shadow) !important;
+}
 #boardPage.suppress-card-hover .card {
     transition: none !important;
 }
