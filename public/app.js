@@ -3878,7 +3878,10 @@ function bindComposer(section, list){
 })();
 
 function inlineEditCardTitle(cardEl){
+    if (!cardEl) return;
+    if (cardEl.querySelector('.card-title-input')) return;
     const view = cardEl.querySelector('.card-title');
+    if (!view) return;
     const old = view ? (view.textContent || '') : '';
     const input = document.createElement('textarea');
     input.className = 'card-title-input';
@@ -4118,7 +4121,7 @@ function createCardElement(card, status) {
         // If inline editors are open within this card, keep editing instead of opening details
         const inlineEditor = cardElement.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown');
         if (inlineEditor) { try { inlineEditor.focus(); } catch(e) {} return; }
-        if (e.target.closest('.card-title')) { inlineEditCardTitle(cardElement); return; }
+        if (e.target.closest('.card-title')) { e.stopPropagation(); inlineEditCardTitle(cardElement); return; }
         openEditModal(card.id);
     });
 
