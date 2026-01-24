@@ -8,6 +8,7 @@ REMOTE_HOST="${REMOTE_HOST:-root@s1}"
 REMOTE_DIR="${REMOTE_DIR:-kanban}"
 SSH_OPTS="${SSH_OPTS:-}"
 ENV_FILE="${ENV_FILE:-.env}"
+NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com/}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 DOCKER_VOLUME="${DOCKER_VOLUME:-kanban_data}"
 DOCKER_CONTAINER="${DOCKER_CONTAINER:-kanban}"
@@ -36,6 +37,7 @@ Options:
   -H <host>         SSH host (default: ${REMOTE_HOST})
   -D <dir>          Remote project directory (default: ${REMOTE_DIR})
   -S <ssh_opts>     Extra SSH options, e.g. "-p 2222 -o StrictHostKeyChecking=accept-new"
+  -R <registry>     npm registry (default: ${NPM_REGISTRY})
   -B <docker_bin>   Docker binary (default: ${DOCKER_BIN})
   -V <volume>       Docker volume name (default: ${DOCKER_VOLUME})
   -C <container>    Docker container name (default: ${DOCKER_CONTAINER})
@@ -51,11 +53,12 @@ Examples:
 EOF
 }
 
-while getopts ":H:D:S:B:V:C:U:h" opt; do
+while getopts ":H:D:S:R:B:V:C:U:h" opt; do
     case "$opt" in
         H) REMOTE_HOST="$OPTARG" ;;
         D) REMOTE_DIR="$OPTARG" ;;
         S) SSH_OPTS="$OPTARG" ;;
+        R) NPM_REGISTRY="$OPTARG" ;;
         B) DOCKER_BIN="$OPTARG" ;;
         V) DOCKER_VOLUME="$OPTARG" ;;
         C) DOCKER_CONTAINER="$OPTARG" ;;
@@ -79,7 +82,8 @@ shell_quote() {
 remote() {
     local subcmd="$1"; shift || true
     local env_prefix
-    env_prefix="DOCKER_BIN=$(shell_quote "$DOCKER_BIN")"
+    env_prefix="NPM_REGISTRY=$(shell_quote "$NPM_REGISTRY")"
+    env_prefix+=" DOCKER_BIN=$(shell_quote "$DOCKER_BIN")"
     env_prefix+=" DOCKER_VOLUME=$(shell_quote "$DOCKER_VOLUME")"
     env_prefix+=" DOCKER_CONTAINER=$(shell_quote "$DOCKER_CONTAINER")"
     env_prefix+=" SUDO=$(shell_quote "$SUDO")"

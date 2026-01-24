@@ -9,6 +9,7 @@ LOG_FILE="${LOG_FILE:-$DIR/logs/kanban.log}"
 ENV_FILE="${ENV_FILE:-$DIR/.env}"
 NODE_BIN="${NODE_BIN:-node}"
 NPM_BIN="${NPM_BIN:-npm}"
+NPM_REGISTRY="${NPM_REGISTRY:-https://registry.npmmirror.com/}"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 DOCKER_VOLUME="${DOCKER_VOLUME:-kanban_data}"
 DOCKER_CONTAINER="${DOCKER_CONTAINER:-kanban}"
@@ -42,6 +43,7 @@ Environment:
   ENV_FILE          Override env file path (default: ./.env)
   NODE_BIN          Override node binary (default: node)
   NPM_BIN           Override npm binary (default: npm)
+  NPM_REGISTRY      npm registry (default: https://registry.npmmirror.com/)
   DOCKER_BIN        Override docker binary (default: docker)
   DOCKER_VOLUME     Docker volume name (default: kanban_data)
   DOCKER_CONTAINER  Docker container name (default: kanban)
@@ -72,20 +74,77 @@ is_running() {
     return 1
 }
 
+npm_major_version() {
+    local version major
+    version="$("$NPM_BIN" -v 2>/dev/null || true)"
+    major="${version%%.*}"
+    if [[ -z "$major" || ! "$major" =~ ^[0-9]+$ ]]; then
+        major=0
+    fi
+    echo "$major"
+}
+
+read_lockfile_version() {
+    if [[ ! -f "$DIR/package-lock.json" ]]; then
+        return 0
+    fi
+    "$NODE_BIN" -e "try{const fs=require('fs');const pkg=JSON.parse(fs.readFileSync('package-lock.json','utf8'));if(pkg.lockfileVersion)console.log(pkg.lockfileVersion);}catch(e){}" 2>/dev/null || true
+}
+
+npm_cmd() {
+    if [[ -n "$NPM_REGISTRY" ]]; then
+        npm_config_registry="$NPM_REGISTRY" "$NPM_BIN" "$@"
+        return
+    fi
+    "$NPM_BIN" "$@"
+}
+
 cmd_install() {
-    "$NPM_BIN" install
+    local npm_major lockfile_version
+    npm_major="$(npm_major_version)"
+    lockfile_version="$(read_lockfile_version)"
+
+    if [[ "$npm_major" -ge 9 ]] || [[ "${lockfile_version:-0}" -lt 3 ]]; then
+        npm_cmd install
+        return
+    fi
+
+    echo "Notice: npm ${npm_major} with lockfile v${lockfile_version} detected; installing without package-lock."
+    npm_cmd install --no-package-lock
 }
 
 cmd_install_prod() {
-    if [[ -f "$DIR/package-lock.json" ]]; then
-        "$NPM_BIN" ci --omit=dev
-    else
-        "$NPM_BIN" install --omit=dev
+    local npm_major lockfile_version
+    npm_major="$(npm_major_version)"
+    lockfile_version="$(read_lockfile_version)"
+
+    if [[ "$npm_major" -ge 9 ]]; then
+        if [[ -f "$DIR/package-lock.json" ]]; then
+            npm_cmd ci --omit=dev
+        else
+            npm_cmd install --omit=dev
+        fi
+        return
     fi
+
+    if [[ "$npm_major" -ge 7 ]]; then
+        if [[ "${lockfile_version:-0}" -ge 3 ]]; then
+            echo "Notice: npm ${npm_major} can't read lockfile v${lockfile_version}; using install without package-lock."
+            npm_cmd install --omit=dev --no-package-lock
+        elif [[ -f "$DIR/package-lock.json" ]]; then
+            npm_cmd ci --omit=dev
+        else
+            npm_cmd install --omit=dev
+        fi
+        return
+    fi
+
+    echo "Notice: npm ${npm_major} detected; using legacy production install."
+    npm_cmd install --only=prod --no-package-lock
 }
 
 cmd_build_css() {
-    "$NPM_BIN" run build:css:min
+    npm_cmd run build:css:min
 }
 
 docker_mountpoint() {

@@ -5653,8 +5653,12 @@ function editCardTitle(cardId, clickEvent) {
         setTimeout(() => { inlineEditorOpening = false; }, 0);
     });
 
+    let settled = false;
+
     // 保存函数
     const save = async () => {
+        if (settled) return;
+        settled = true;
         const newTitle = input.value.trim();
         if (newTitle && newTitle !== card.title) {
             // 更新本地数据
@@ -5715,6 +5719,8 @@ function editCardTitle(cardId, clickEvent) {
 
     // 取消函数
     const cancel = () => {
+        if (settled) return;
+        settled = true;
         setCardInlineEditingState(cardId, false);
         input.remove();
         titleSpan.style.visibility = 'visible';
@@ -5735,6 +5741,11 @@ function editCardTitle(cardId, clickEvent) {
             e.preventDefault();
             cancel();
         }
+    });
+
+    input.addEventListener('blur', () => {
+        if (settled) return;
+        save();
     });
 
     // 阻止事件冒泡
@@ -5869,8 +5880,12 @@ function editCardDescription(cardId, clickEvent) {
         setTimeout(() => { inlineEditorOpening = false; }, 0);
     });
 
+    let settled = false;
+
     // 保存函数
     const save = async () => {
+        if (settled) return;
+        settled = true;
         const newDescription = textarea.value.trim();
         if (newDescription !== card.description) {
             // 更新本地数据
@@ -5932,6 +5947,8 @@ function editCardDescription(cardId, clickEvent) {
 
     // 取消函数
     const cancel = () => {
+        if (settled) return;
+        settled = true;
         setCardInlineEditingState(cardId, false);
         textarea.remove();
         descriptionSpan.style.visibility = 'visible';
@@ -5951,6 +5968,11 @@ function editCardDescription(cardId, clickEvent) {
             e.preventDefault();
             cancel();
         }
+    });
+
+    textarea.addEventListener('blur', () => {
+        if (settled) return;
+        save();
     });
 
     // 阻止事件冒泡
