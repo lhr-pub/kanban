@@ -4421,7 +4421,6 @@ function moveDeferredCardInDom(cardId, deferred, cardEl) {
     const listCards = boardData[status];
     const index = listCards.findIndex(c => c && c.id === cardId);
     if (index === -1) return false;
-    const replacement = findReplacementCardForMove(el);
 
     let divider = cardsEl.querySelector('.card-group-divider');
     if (deferred && !divider) {
@@ -4472,54 +4471,31 @@ function moveDeferredCardInDom(cardId, deferred, cardEl) {
         divider.remove();
     }
     updateContainerEmptyState(cardsEl);
-    suppressCardHover(cardsEl);
-    const insertionNeighbor = getNextCardSibling(el);
-    if (replacement && replacement.isConnected) suppressCardQuickActions(replacement);
-    if (insertionNeighbor && insertionNeighbor.isConnected && insertionNeighbor !== replacement) {
-        suppressCardQuickActions(insertionNeighbor);
-    }
+    suppressCardHover();
     return true;
 }
 
-function suppressCardHover(container, duration = 160) {
-    if (!container) return;
-    if (container._hoverSuppressTimer) {
-        clearTimeout(container._hoverSuppressTimer);
+function suppressCardHover() {
+    const board = document.getElementById('boardPage');
+    if (!board) return;
+    if (board._hoverSuppressHandler) {
+        document.removeEventListener('mousemove', board._hoverSuppressHandler);
+        document.removeEventListener('touchstart', board._hoverSuppressHandler);
+        board._hoverSuppressHandler = null;
     }
-    container.classList.add('suppress-card-hover');
-    container._hoverSuppressTimer = setTimeout(() => {
-        container.classList.remove('suppress-card-hover');
-        container._hoverSuppressTimer = null;
-    }, duration);
-}
-
-function getNextCardSibling(cardEl) {
-    if (!cardEl) return null;
-    let sibling = cardEl.nextElementSibling;
-    while (sibling && !sibling.classList.contains('card')) {
-        if (sibling.classList.contains('card-group-divider') || sibling.classList.contains('card-composer') || sibling.classList.contains('add-card')) return null;
-        sibling = sibling.nextElementSibling;
-    }
-    return sibling && sibling.classList.contains('card') ? sibling : null;
-}
-
-function findReplacementCardForMove(cardEl) {
-    if (!cardEl) return null;
-    const sibling = cardEl.nextElementSibling;
-    if (sibling && sibling.classList.contains('card')) return sibling;
-    return null;
-}
-
-function suppressCardQuickActions(cardEl, duration = 160) {
-    if (!cardEl) return;
-    if (cardEl._quickSuppressTimer) {
-        clearTimeout(cardEl._quickSuppressTimer);
-    }
-    cardEl.classList.add('quick-actions-suppress');
-    cardEl._quickSuppressTimer = setTimeout(() => {
-        cardEl.classList.remove('quick-actions-suppress');
-        cardEl._quickSuppressTimer = null;
-    }, duration);
+    const release = () => {
+        board.classList.remove('suppress-card-hover');
+        if (board._hoverSuppressHandler) {
+            document.removeEventListener('mousemove', board._hoverSuppressHandler);
+            document.removeEventListener('touchstart', board._hoverSuppressHandler);
+            board._hoverSuppressHandler = null;
+        }
+    };
+    const handler = () => release();
+    board._hoverSuppressHandler = handler;
+    board.classList.add('suppress-card-hover');
+    document.addEventListener('mousemove', handler, { once: true, passive: true });
+    document.addEventListener('touchstart', handler, { once: true, passive: true });
 }
 
 // 通过 ID 删除卡片

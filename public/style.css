@@ -4299,34 +4299,22 @@ body {
     }
 }
 
-/* Suppress quick actions on the replacement card to avoid flicker */
-.card.quick-actions-suppress:not(.inline-editing) .card-quick,
-.card.quick-actions-suppress:not(.inline-editing) .card-quick-copy,
-.card.quick-actions-suppress:not(.inline-editing) .card-quick-trash,
-.card.quick-actions-suppress:not(.inline-editing) .card-quick-archive,
-.card.quick-actions-suppress:not(.inline-editing) .card-quick-delete,
-.card.quick-actions-suppress:not(.inline-editing) .card-quick-star,
-.card.quick-actions-suppress:not(.inline-editing) .card-quick-defer {
-    opacity: 0 !important;
-    transition: none !important;
-}
-#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick,
-#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-copy,
-#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-trash,
-#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-archive,
-#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-delete,
-#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-star,
-#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-defer {
-    opacity: 0 !important;
-    transition: none !important;
-}
-
 /* Suppress hover flash when cards move between groups */
-.cards.suppress-card-hover .card:hover {
+#boardPage.suppress-card-hover .card:hover {
     background: inherit !important;
     box-shadow: inherit !important;
 }
-.cards.suppress-card-hover .card {
+#boardPage.suppress-card-hover .card {
+    transition: none !important;
+}
+#boardPage.suppress-card-hover .card-quick,
+#boardPage.suppress-card-hover .card-quick-copy,
+#boardPage.suppress-card-hover .card-quick-trash,
+#boardPage.suppress-card-hover .card-quick-archive,
+#boardPage.suppress-card-hover .card-quick-delete,
+#boardPage.suppress-card-hover .card-quick-star,
+#boardPage.suppress-card-hover .card-quick-defer {
+    opacity: 0 !important;
     transition: none !important;
 }
 
