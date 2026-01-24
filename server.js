@@ -88,6 +88,8 @@ app.use(express.static('public'));
 // 数据目录
 const dataDir = path.join(__dirname, 'data');
 const backupsDir = path.join(dataDir, 'backups');
+const usersFile = path.join(dataDir, 'users.json');
+const projectsFile = path.join(dataDir, 'projects.json');
 
 // 确保数据目录存在
 if (!fs.existsSync(dataDir)) {
@@ -160,30 +162,40 @@ function verifyAdminToken(req, res, next) {
     next();
 }
 
-function ensureAdminUser() {
+async function ensureAdminUser() {
     try {
-        const usersFile = path.join(dataDir, 'users.json');
-        const users = readJsonFile(usersFile, {});
         const adminUsername = process.env.ADMIN_USERNAME || 'admin';
         const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
         const adminEmail = process.env.ADMIN_EMAIL || '';
+        const hashedPassword = crypto.createHash('sha256').update(adminPassword).digest('hex');
 
-        const existing = users[adminUsername];
-        if (!existing) {
-            const hashedPassword = crypto.createHash('sha256').update(adminPassword).digest('hex');
-            users[adminUsername] = {
-                password: hashedPassword,
-                email: adminEmail,
-                verified: true,
-                admin: true,
-                projects: [],
-                created: new Date().toISOString()
-            };
-            writeJsonFile(usersFile, users);
+        const { result, error } = await withUsersLock((users) => {
+            const existing = users[adminUsername];
+            if (!existing) {
+                users[adminUsername] = {
+                    password: hashedPassword,
+                    email: adminEmail,
+                    verified: true,
+                    admin: true,
+                    projects: [],
+                    created: new Date().toISOString()
+                };
+                return { data: users, result: { action: 'created' } };
+            }
+            if (!existing.admin) {
+                existing.admin = true;
+                return { data: users, result: { action: 'promoted' } };
+            }
+            return { data: users, result: { action: 'noop' } };
+        });
+
+        if (error) {
+            console.error('Admin bootstrap error:', error);
+            return;
+        }
+        if (result && result.action === 'created') {
             console.log(`[BOOTSTRAP] 已创建管理员账户: ${adminUsername}`);
-        } else if (!existing.admin) {
-            existing.admin = true;
-            writeJsonFile(usersFile, users);
+        } else if (result && result.action === 'promoted') {
             console.log(`[BOOTSTRAP] 已提升为管理员: ${adminUsername}`);
         }
     } catch (e) {
@@ -191,7 +203,9 @@ function ensureAdminUser() {
     }
 }
 
-ensureAdminUser();
+ensureAdminUser().catch((e) => {
+    console.error('Admin bootstrap error:', e);
+});
 
 // 邮件发送配置（通过环境变量）
 const emailConfig = {
@@ -379,6 +393,84 @@ function writeJsonFile(filePath, data) {
     }
 }
 
+async function withUsersLock(modifier) {
+    const lockKey = 'users';
+    try {
+        return await fileLock.acquire(lockKey, async () => {
+            const users = readJsonFile(usersFile, {});
+            const modResult = await modifier(users);
+            const newData = modResult && modResult.data !== undefined ? modResult.data : modResult;
+            const extraResult = modResult && modResult.result !== undefined ? modResult.result : null;
+
+            if (newData === null || newData === false) {
+                return { success: false, data: users, result: extraResult };
+            }
+            if (writeJsonFile(usersFile, newData)) {
+                return { success: true, data: newData, result: extraResult };
+            }
+            return { success: false, data: users, result: extraResult };
+        });
+    } catch (error) {
+        console.error(`Lock error for ${lockKey}:`, error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function withProjectsLock(modifier) {
+    const lockKey = 'projects';
+    try {
+        return await fileLock.acquire(lockKey, async () => {
+            const projects = readJsonFile(projectsFile, {});
+            const modResult = await modifier(projects);
+            const newData = modResult && modResult.data !== undefined ? modResult.data : modResult;
+            const extraResult = modResult && modResult.result !== undefined ? modResult.result : null;
+
+            if (newData === null || newData === false) {
+                return { success: false, data: projects, result: extraResult };
+            }
+            if (writeJsonFile(projectsFile, newData)) {
+                return { success: true, data: newData, result: extraResult };
+            }
+            return { success: false, data: projects, result: extraResult };
+        });
+    } catch (error) {
+        console.error(`Lock error for ${lockKey}:`, error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function withUsersProjectsLock(modifier) {
+    try {
+        return await fileLock.acquire('users', async () => {
+            return await fileLock.acquire('projects', async () => {
+                const users = readJsonFile(usersFile, {});
+                const projects = readJsonFile(projectsFile, {});
+                const modResult = await modifier(users, projects);
+                const extraResult = modResult && modResult.result !== undefined ? modResult.result : null;
+
+                if (modResult === null || modResult === false) {
+                    return { success: false, users, projects, result: extraResult };
+                }
+
+                const nextUsers = modResult && Object.prototype.hasOwnProperty.call(modResult, 'users')
+                    ? modResult.users
+                    : users;
+                const nextProjects = modResult && Object.prototype.hasOwnProperty.call(modResult, 'projects')
+                    ? modResult.projects
+                    : projects;
+
+                if (writeJsonFile(projectsFile, nextProjects) && writeJsonFile(usersFile, nextUsers)) {
+                    return { success: true, users: nextUsers, projects: nextProjects, result: extraResult };
+                }
+                return { success: false, users, projects, result: extraResult };
+            });
+        });
+    } catch (error) {
+        console.error('Lock error for users/projects:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 function sanitizeDownloadFilename(name, fallback) {
     const raw = String(name || '').replace(/[\\/:*?"<>|]/g, '_');
     const ascii = raw.replace(/[^\x20-\x7E]/g, '_').replace(/\s+/g, ' ').trim();
@@ -425,19 +517,6 @@ app.post('/api/register', async (req, res) => {
         return res.status(400).json({ message: '用户名、密码和邮箱不能为空' });
     }
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const users = readJsonFile(usersFile, {});
-
-    if (users[username]) {
-        return res.status(400).json({ message: '用户名已存在' });
-    }
-
-    // 邮箱是否已被使用
-    const emailTaken = Object.values(users).some(u => (u && u.email && u.email.toLowerCase && u.email.toLowerCase() === String(email).toLowerCase()));
-    if (emailTaken) {
-        return res.status(400).json({ message: '邮箱已被使用' });
-    }
-
     // 密码哈希
     const hashedPassword = crypto.createHash('sha256').update(password).digest('hex');
 
@@ -445,18 +524,35 @@ app.post('/api/register', async (req, res) => {
     const verifyToken = crypto.randomBytes(32).toString('hex');
     const verifyTokenExpires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24小时
 
-    users[username] = {
-        password: hashedPassword,
-        email,
-        verified: false,
-        verifyToken,
-        verifyTokenExpires,
-        displayName: username,
-        projects: [],
-        created: new Date().toISOString()
-    };
+    const { success, result } = await withUsersLock((users) => {
+        if (users[username]) {
+            return { data: null, result: { code: 'username-exists' } };
+        }
+        const emailTaken = Object.values(users).some(u => (u && u.email && u.email.toLowerCase && u.email.toLowerCase() === String(email).toLowerCase()));
+        if (emailTaken) {
+            return { data: null, result: { code: 'email-exists' } };
+        }
 
-    if (!writeJsonFile(usersFile, users)) {
+        users[username] = {
+            password: hashedPassword,
+            email,
+            verified: false,
+            verifyToken,
+            verifyTokenExpires,
+            displayName: username,
+            projects: [],
+            created: new Date().toISOString()
+        };
+        return { data: users, result: { code: 'created' } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'username-exists') {
+            return res.status(400).json({ message: '用户名已存在' });
+        }
+        if (result && result.code === 'email-exists') {
+            return res.status(400).json({ message: '邮箱已被使用' });
+        }
         return res.status(500).json({ message: '注册失败，请稍后重试' });
     }
 
@@ -514,36 +610,41 @@ app.post('/api/login', (req, res) => {
 });
 
 // 邮箱验证回调
-app.get('/api/verify', (req, res) => {
+app.get('/api/verify', async (req, res) => {
     const { token } = req.query;
     if (!token || typeof token !== 'string') {
         return res.status(400).send('无效的验证链接');
     }
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const users = readJsonFile(usersFile, {});
-
-    let matchedUser = null;
-    for (const [uname, u] of Object.entries(users)) {
-        if (u && u.verifyToken === token) {
-            // 检查是否过期
-            if (u.verifyTokenExpires && new Date(u.verifyTokenExpires) < new Date()) {
-                return res.status(400).send('验证链接已过期');
+    const { success, result } = await withUsersLock((users) => {
+        let matchedUser = null;
+        for (const [uname, u] of Object.entries(users)) {
+            if (u && u.verifyToken === token) {
+                if (u.verifyTokenExpires && new Date(u.verifyTokenExpires) < new Date()) {
+                    return { data: null, result: { code: 'expired' } };
+                }
+                matchedUser = uname;
+                break;
             }
-            matchedUser = uname;
-            break;
         }
-    }
 
-    if (!matchedUser) {
-        return res.status(400).send('验证链接无效');
-    }
+        if (!matchedUser) {
+            return { data: null, result: { code: 'invalid' } };
+        }
 
-    users[matchedUser].verified = true;
-    delete users[matchedUser].verifyToken;
-    delete users[matchedUser].verifyTokenExpires;
+        users[matchedUser].verified = true;
+        delete users[matchedUser].verifyToken;
+        delete users[matchedUser].verifyTokenExpires;
+        return { data: users, result: { code: 'ok' } };
+    });
 
-    if (!writeJsonFile(usersFile, users)) {
+    if (!success) {
+        if (result && result.code === 'expired') {
+            return res.status(400).send('验证链接已过期');
+        }
+        if (result && result.code === 'invalid') {
+            return res.status(400).send('验证链接无效');
+        }
         return res.status(500).send('服务器错误，请稍后重试');
     }
 
@@ -556,38 +657,46 @@ app.post('/api/resend-verification', async (req, res) => {
     const { username } = req.body || {};
     if (!username) return res.status(400).json({ message: '缺少用户名' });
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const users = readJsonFile(usersFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
-    if (user.verified === true) return res.status(400).json({ message: '用户已验证' });
-    if (!user.email) return res.status(400).json({ message: '缺少用户邮箱' });
+    let emailToSend = '';
+    let tokenToSend = '';
+    const { success, result } = await withUsersLock((users) => {
+        const user = users[username];
+        if (!user) return { data: null, result: { code: 'not-found' } };
+        if (user.verified === true) return { data: null, result: { code: 'already-verified' } };
+        if (!user.email) return { data: null, result: { code: 'no-email' } };
 
-    // 频率限制：60秒一次
-    const now = Date.now();
-    const lastSent = user.lastVerificationSentAt ? new Date(user.lastVerificationSentAt).getTime() : 0;
-    if (now - lastSent < 60 * 1000) {
-        const wait = Math.ceil((60 * 1000 - (now - lastSent)) / 1000);
-        return res.status(429).json({ message: `请稍后再试（${wait}s）` });
-    }
+        const now = Date.now();
+        const lastSent = user.lastVerificationSentAt ? new Date(user.lastVerificationSentAt).getTime() : 0;
+        if (now - lastSent < 60 * 1000) {
+            const wait = Math.ceil((60 * 1000 - (now - lastSent)) / 1000);
+            return { data: null, result: { code: 'rate-limit', wait } };
+        }
 
-    // 若令牌不存在或已过期，则生成新令牌并延长过期时间
-    let token = user.verifyToken;
-    const isExpired = !user.verifyTokenExpires || new Date(user.verifyTokenExpires).getTime() < now;
-    if (!token || isExpired) {
-        token = crypto.randomBytes(32).toString('hex');
-        user.verifyToken = token;
-        user.verifyTokenExpires = new Date(now + 24 * 60 * 60 * 1000).toISOString();
-    }
-    user.lastVerificationSentAt = new Date(now).toISOString();
+        let token = user.verifyToken;
+        const isExpired = !user.verifyTokenExpires || new Date(user.verifyTokenExpires).getTime() < now;
+        if (!token || isExpired) {
+            token = crypto.randomBytes(32).toString('hex');
+            user.verifyToken = token;
+            user.verifyTokenExpires = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+        }
+        user.lastVerificationSentAt = new Date(now).toISOString();
 
-    if (!writeJsonFile(usersFile, users)) {
+        emailToSend = user.email;
+        tokenToSend = token;
+        return { data: users, result: { code: 'ok' } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'not-found') return res.status(404).json({ message: '用户不存在' });
+        if (result && result.code === 'already-verified') return res.status(400).json({ message: '用户已验证' });
+        if (result && result.code === 'no-email') return res.status(400).json({ message: '缺少用户邮箱' });
+        if (result && result.code === 'rate-limit') return res.status(429).json({ message: `请稍后再试（${result.wait}s）` });
         return res.status(500).json({ message: '保存失败，请稍后重试' });
     }
 
     try {
         const baseUrl = process.env.BASE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
-        await sendVerificationEmail(user.email, username, token, baseUrl);
+        await sendVerificationEmail(emailToSend, username, tokenToSend, baseUrl);
         return res.json({ message: '验证邮件已发送，请查收' });
     } catch (e) {
         console.error('Resend verification error:', e);
@@ -602,48 +711,56 @@ app.post('/api/forgot-password', async (req, res) => {
         if ((!email || !String(email).trim()) && (!username || !String(username).trim())) {
             return res.status(400).json({ message: '请提供邮箱或用户名' });
         }
-        const usersFile = path.join(dataDir, 'users.json');
-        const users = readJsonFile(usersFile, {});
+        let mailUsername = '';
+        let mailEmail = '';
+        let resetToken = '';
 
-        // 定位用户（优先 email）
-        let targetUsername = null;
-        let targetUser = null;
-        if (email) {
-            const lower = String(email).toLowerCase();
-            for (const [uname, u] of Object.entries(users)) {
-                if (u && u.email && String(u.email).toLowerCase() === lower) { targetUsername = uname; targetUser = u; break; }
+        const { success, result } = await withUsersLock((users) => {
+            let targetUsername = null;
+            let targetUser = null;
+            if (email) {
+                const lower = String(email).toLowerCase();
+                for (const [uname, u] of Object.entries(users)) {
+                    if (u && u.email && String(u.email).toLowerCase() === lower) { targetUsername = uname; targetUser = u; break; }
+                }
             }
-        }
-        if (!targetUser && username) {
-            const u = users[username];
-            if (u && u.email) { targetUsername = username; targetUser = u; }
-        }
+            if (!targetUser && username) {
+                const u = users[username];
+                if (u && u.email) { targetUsername = username; targetUser = u; }
+            }
 
-        // 总是返回成功提示，避免枚举
-        if (!targetUser) {
+            if (!targetUser) {
+                return { data: null, result: { code: 'not-found' } };
+            }
+
+            const now = Date.now();
+            const last = targetUser.lastResetSentAt ? new Date(targetUser.lastResetSentAt).getTime() : 0;
+            if (now - last < 60 * 1000) {
+                const wait = Math.ceil((60 * 1000 - (now - last)) / 1000);
+                return { data: null, result: { code: 'rate-limit', wait } };
+            }
+
+            targetUser.resetToken = crypto.randomBytes(32).toString('hex');
+            targetUser.resetTokenExpires = new Date(now + 60 * 60 * 1000).toISOString();
+            targetUser.lastResetSentAt = new Date(now).toISOString();
+
+            mailUsername = targetUsername;
+            mailEmail = targetUser.email;
+            resetToken = targetUser.resetToken;
+            return { data: users, result: { code: 'ok' } };
+        });
+
+        if (!success) {
+            if (result && result.code === 'rate-limit') {
+                return res.status(429).json({ message: `请稍后再试（${result.wait}s）` });
+            }
+            // 总是返回成功提示，避免枚举
             return res.json({ message: '如果该邮箱存在，我们已发送重置邮件' });
-        }
-
-        // 频率限制（60s）
-        const now = Date.now();
-        const last = targetUser.lastResetSentAt ? new Date(targetUser.lastResetSentAt).getTime() : 0;
-        if (now - last < 60 * 1000) {
-            const wait = Math.ceil((60 * 1000 - (now - last)) / 1000);
-            return res.status(429).json({ message: `请稍后再试（${wait}s）` });
-        }
-
-        // 生成或刷新重置令牌
-        targetUser.resetToken = crypto.randomBytes(32).toString('hex');
-        targetUser.resetTokenExpires = new Date(now + 60 * 60 * 1000).toISOString(); // 1小时
-        targetUser.lastResetSentAt = new Date(now).toISOString();
-
-        if (!writeJsonFile(usersFile, users)) {
-            return res.status(500).json({ message: '发送失败，请稍后再试' });
         }
 
         try {
             const baseUrl = process.env.BASE_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
-            await sendPasswordResetEmail(targetUser.email, targetUsername, targetUser.resetToken, baseUrl);
+            await sendPasswordResetEmail(mailEmail, mailUsername, resetToken, baseUrl);
         } catch (e) {
             console.error('Forgot password send mail error:', e);
         }
@@ -655,43 +772,46 @@ app.post('/api/forgot-password', async (req, res) => {
 });
 
 // 使用令牌重置密码
-app.post('/api/reset-password', (req, res) => {
+app.post('/api/reset-password', async (req, res) => {
     const { token, newPassword } = req.body || {};
     if (!token || typeof token !== 'string' || !newPassword || String(newPassword).trim().length < 6) {
         return res.status(400).json({ message: '参数无效，密码至少6位' });
     }
-    const usersFile = path.join(dataDir, 'users.json');
-    const users = readJsonFile(usersFile, {});
+    const { success, result } = await withUsersLock((users) => {
+        let matchedUser = null;
+        for (const u of Object.values(users)) {
+            if (u && u.resetToken === token) { matchedUser = u; break; }
+        }
+        if (!matchedUser) {
+            return { data: null, result: { code: 'invalid' } };
+        }
+        if (matchedUser.resetTokenExpires && new Date(matchedUser.resetTokenExpires) < new Date()) {
+            return { data: null, result: { code: 'expired' } };
+        }
 
-    let matchedUsername = null;
-    let matchedUser = null;
-    for (const [uname, u] of Object.entries(users)) {
-        if (u && u.resetToken === token) { matchedUsername = uname; matchedUser = u; break; }
-    }
-    if (!matchedUser) {
-        return res.status(400).json({ message: '重置链接无效，请重新申请' });
-    }
-    if (matchedUser.resetTokenExpires && new Date(matchedUser.resetTokenExpires) < new Date()) {
-        return res.status(400).json({ message: '重置链接已过期，请重新申请' });
-    }
+        matchedUser.password = crypto.createHash('sha256').update(String(newPassword).trim()).digest('hex');
+        delete matchedUser.resetToken;
+        delete matchedUser.resetTokenExpires;
+        if (matchedUser.verified === false) {
+            matchedUser.verified = true;
+        }
+        return { data: users, result: { code: 'ok' } };
+    });
 
-    matchedUser.password = crypto.createHash('sha256').update(String(newPassword).trim()).digest('hex');
-    delete matchedUser.resetToken;
-    delete matchedUser.resetTokenExpires;
-
-    // 已验证邮箱不做更改；若历史数据未验证，这次通过邮箱也可视为已验证
-    if (matchedUser.verified === false) {
-        matchedUser.verified = true;
-    }
-
-    if (!writeJsonFile(usersFile, users)) {
+    if (!success) {
+        if (result && result.code === 'expired') {
+            return res.status(400).json({ message: '重置链接已过期，请重新申请' });
+        }
+        if (result && result.code === 'invalid') {
+            return res.status(400).json({ message: '重置链接无效，请重新申请' });
+        }
         return res.status(500).json({ message: '保存失败，请稍后再试' });
     }
     return res.json({ message: '密码已重置，请使用新密码登录' });
 });
 
 // 修改密码（需要提供旧密码）
-app.post('/api/change-password', (req, res) => {
+app.post('/api/change-password', async (req, res) => {
     const { username, oldPassword, newPassword } = req.body || {};
     if (!username || !oldPassword || !newPassword) {
         return res.status(400).json({ message: '缺少必要参数' });
@@ -700,17 +820,19 @@ app.post('/api/change-password', (req, res) => {
         return res.status(400).json({ message: '新密码至少6位' });
     }
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const users = readJsonFile(usersFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const { success, result } = await withUsersLock((users) => {
+        const user = users[username];
+        if (!user) return { data: null, result: { code: 'not-found' } };
+        const oldHash = crypto.createHash('sha256').update(String(oldPassword)).digest('hex');
+        if (user.password !== oldHash) return { data: null, result: { code: 'bad-password' } };
 
-    const oldHash = crypto.createHash('sha256').update(String(oldPassword)).digest('hex');
-    if (user.password !== oldHash) return res.status(400).json({ message: '旧密码不正确' });
+        user.password = crypto.createHash('sha256').update(String(newPassword).trim()).digest('hex');
+        return { data: users, result: { code: 'ok' } };
+    });
 
-    user.password = crypto.createHash('sha256').update(String(newPassword).trim()).digest('hex');
-
-    if (!writeJsonFile(usersFile, users)) {
+    if (!success) {
+        if (result && result.code === 'not-found') return res.status(404).json({ message: '用户不存在' });
+        if (result && result.code === 'bad-password') return res.status(400).json({ message: '旧密码不正确' });
         return res.status(500).json({ message: '修改失败，请稍后再试' });
     }
 
@@ -718,7 +840,7 @@ app.post('/api/change-password', (req, res) => {
 });
 
 // 修改显示名（需要提供密码）
-app.post('/api/change-display-name', (req, res) => {
+app.post('/api/change-display-name', async (req, res) => {
     const { username, password, displayName } = req.body || {};
     if (!username || !password || !displayName) {
         return res.status(400).json({ message: '缺少必要参数' });
@@ -732,17 +854,19 @@ app.post('/api/change-display-name', (req, res) => {
         return res.status(400).json({ message: '显示名过长（最多32字符）' });
     }
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const users = readJsonFile(usersFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const { success, result } = await withUsersLock((users) => {
+        const user = users[username];
+        if (!user) return { data: null, result: { code: 'not-found' } };
+        const oldHash = crypto.createHash('sha256').update(String(password)).digest('hex');
+        if (user.password !== oldHash) return { data: null, result: { code: 'bad-password' } };
 
-    const oldHash = crypto.createHash('sha256').update(String(password)).digest('hex');
-    if (user.password !== oldHash) return res.status(400).json({ message: '密码不正确' });
+        user.displayName = nextName;
+        return { data: users, result: { code: 'ok' } };
+    });
 
-    user.displayName = nextName;
-
-    if (!writeJsonFile(usersFile, users)) {
+    if (!success) {
+        if (result && result.code === 'not-found') return res.status(404).json({ message: '用户不存在' });
+        if (result && result.code === 'bad-password') return res.status(400).json({ message: '密码不正确' });
         return res.status(500).json({ message: '修改失败，请稍后再试' });
     }
 
@@ -802,62 +926,60 @@ app.get('/api/admin/users', verifyAdminToken, (req, res) => {
 });
 
 // 更新用户属性：verified/admin/password（仅管理员）
-app.patch('/api/admin/users/:username', verifyAdminToken, (req, res) => {
+app.patch('/api/admin/users/:username', verifyAdminToken, async (req, res) => {
     const { username } = req.params;
     const { verified, admin, password } = req.body || {};
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const users = readJsonFile(usersFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
+    const { success, result } = await withUsersLock((users) => {
+        const user = users[username];
+        if (!user) return { data: null, result: { code: 'not-found' } };
 
-    if (typeof verified === 'boolean') {
-        user.verified = verified;
-        if (verified) {
-            delete user.verifyToken;
-            delete user.verifyTokenExpires;
+        if (typeof verified === 'boolean') {
+            user.verified = verified;
+            if (verified) {
+                delete user.verifyToken;
+                delete user.verifyTokenExpires;
+            }
         }
-    }
-    if (typeof admin === 'boolean') {
-        user.admin = admin;
-    }
-    if (typeof password === 'string' && password.trim()) {
-        user.password = crypto.createHash('sha256').update(password.trim()).digest('hex');
-    }
+        if (typeof admin === 'boolean') {
+            user.admin = admin;
+        }
+        if (typeof password === 'string' && password.trim()) {
+            user.password = crypto.createHash('sha256').update(password.trim()).digest('hex');
+        }
+        return { data: users, result: { code: 'ok' } };
+    });
 
-    if (!writeJsonFile(usersFile, users)) {
+    if (!success) {
+        if (result && result.code === 'not-found') return res.status(404).json({ message: '用户不存在' });
         return res.status(500).json({ message: '保存失败' });
     }
     res.json({ message: '更新成功' });
 });
 
 // 删除用户（仅管理员）。若为项目所有者则阻止删除
-app.delete('/api/admin/users/:username', verifyAdminToken, (req, res) => {
+app.delete('/api/admin/users/:username', verifyAdminToken, async (req, res) => {
     const { username } = req.params;
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        if (!users[username]) return { users: null, projects: null, result: { code: 'not-found' } };
 
-    if (!users[username]) return res.status(404).json({ message: '用户不存在' });
+        const owning = Object.values(projects).some(p => p && p.owner === username);
+        if (owning) return { users: null, projects: null, result: { code: 'owning' } };
 
-    // 若是任一项目所有者，阻止删除
-    const owning = Object.values(projects).some(p => p && p.owner === username);
-    if (owning) {
-        return res.status(400).json({ message: '用户是某项目的所有者，无法删除' });
-    }
-
-    // 从各项目成员中移除
-    for (const proj of Object.values(projects)) {
-        if (proj && Array.isArray(proj.members)) {
-            const idx = proj.members.indexOf(username);
-            if (idx !== -1) proj.members.splice(idx, 1);
+        for (const proj of Object.values(projects)) {
+            if (proj && Array.isArray(proj.members)) {
+                const idx = proj.members.indexOf(username);
+                if (idx !== -1) proj.members.splice(idx, 1);
+            }
         }
-    }
 
-    delete users[username];
+        delete users[username];
+        return { users, projects, result: { code: 'ok' } };
+    });
 
-    if (!writeJsonFile(projectsFile, projects) || !writeJsonFile(usersFile, users)) {
+    if (!success) {
+        if (result && result.code === 'not-found') return res.status(404).json({ message: '用户不存在' });
+        if (result && result.code === 'owning') return res.status(400).json({ message: '用户是某项目的所有者，无法删除' });
         return res.status(500).json({ message: '删除失败' });
     }
     res.json({ message: '已删除用户' });
@@ -918,129 +1040,157 @@ app.get('/api/user-pinned/:username', (req, res) => {
 });
 
 // Toggle project pinned state
-app.post('/api/toggle-pin-project', (req, res) => {
+app.post('/api/toggle-pin-project', async (req, res) => {
     const { username, projectId, pinned } = req.body || {};
     if (!username || !projectId || typeof pinned !== 'boolean') {
         return res.status(400).json({ message: '缺少参数' });
     }
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-    const user = users[username];
-    const project = projects[projectId];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-    const isMember = Array.isArray(project.members) && project.members.includes(username);
-    if (!isMember) return res.status(403).json({ message: '只有项目成员可以置顶项目' });
-    user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
-    const idx = user.pinnedProjects.indexOf(projectId);
-    if (pinned) {
-        if (idx === -1) user.pinnedProjects.unshift(projectId);
-    } else {
-        if (idx !== -1) user.pinnedProjects.splice(idx, 1);
+    let pinnedProjects = null;
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        const user = users[username];
+        const project = projects[projectId];
+        if (!user) return { users: null, projects: null, result: { code: 'user-not-found' } };
+        if (!project) return { users: null, projects: null, result: { code: 'project-not-found' } };
+        const isMember = Array.isArray(project.members) && project.members.includes(username);
+        if (!isMember) return { users: null, projects: null, result: { code: 'forbidden' } };
+        user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
+        const idx = user.pinnedProjects.indexOf(projectId);
+        if (pinned) {
+            if (idx === -1) user.pinnedProjects.unshift(projectId);
+        } else {
+            if (idx !== -1) user.pinnedProjects.splice(idx, 1);
+        }
+        pinnedProjects = user.pinnedProjects.slice();
+        return { users, projects, result: { code: 'ok' } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目成员可以置顶项目' });
+        return res.status(500).json({ message: '保存失败' });
     }
-    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ message: pinned ? '已置顶' : '已取消置顶', pinnedProjects: user.pinnedProjects.slice() });
+    return res.json({ message: pinned ? '已置顶' : '已取消置顶', pinnedProjects: pinnedProjects || [] });
 });
 
 // Toggle board pinned state (within a project)
-app.post('/api/toggle-pin-board', (req, res) => {
+app.post('/api/toggle-pin-board', async (req, res) => {
     const { username, projectId, boardName, pinned } = req.body || {};
     if (!username || !projectId || !boardName || typeof pinned !== 'boolean') {
         return res.status(400).json({ message: '缺少参数' });
     }
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
     const projects = readJsonFile(projectsFile, {});
-    const user = users[username];
     const project = projects[projectId];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
     if (!project) return res.status(404).json({ message: '项目不存在' });
     const isMember = Array.isArray(project.members) && project.members.includes(username);
     if (!isMember) return res.status(403).json({ message: '只有项目成员可以置顶看板' });
     const exists = (Array.isArray(project.boards) && project.boards.includes(boardName)) || (Array.isArray(project.archivedBoards) && project.archivedBoards.includes(boardName));
     if (!exists) return res.status(404).json({ message: '看板不存在' });
-    user.pinnedBoards = user.pinnedBoards && typeof user.pinnedBoards === 'object' ? user.pinnedBoards : {};
-    user.pinnedBoards[projectId] = Array.isArray(user.pinnedBoards[projectId]) ? user.pinnedBoards[projectId] : [];
-    const arr = user.pinnedBoards[projectId];
-    const idx = arr.indexOf(boardName);
-    if (pinned) {
-        if (idx === -1) arr.unshift(boardName);
-    } else {
-        if (idx !== -1) arr.splice(idx, 1);
+    const { success, result } = await withUsersLock((users) => {
+        const user = users[username];
+        if (!user) return { data: null, result: { code: 'user-not-found' } };
+        user.pinnedBoards = user.pinnedBoards && typeof user.pinnedBoards === 'object' ? user.pinnedBoards : {};
+        user.pinnedBoards[projectId] = Array.isArray(user.pinnedBoards[projectId]) ? user.pinnedBoards[projectId] : [];
+        const arr = user.pinnedBoards[projectId];
+        const idx = arr.indexOf(boardName);
+        if (pinned) {
+            if (idx === -1) arr.unshift(boardName);
+        } else {
+            if (idx !== -1) arr.splice(idx, 1);
+        }
+        return { data: users, result: { code: 'ok', pinnedBoards: arr.slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+        return res.status(500).json({ message: '保存失败' });
     }
-    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ message: pinned ? '已置顶' : '已取消置顶', pinnedBoards: { [projectId]: arr.slice() } });
+
+    return res.json({
+        message: pinned ? '已置顶' : '已取消置顶',
+        pinnedBoards: { [projectId]: (result && result.pinnedBoards) ? result.pinnedBoards : [] }
+    });
 });
 
 // Reorder project to first/last within its group (pinned or normal)
-app.post('/api/reorder-project', (req, res) => {
+app.post('/api/reorder-project', async (req, res) => {
     const { username, projectId, where } = req.body || {};
     if (!username || !projectId || !where || !['first','last'].includes(where)) {
         return res.status(400).json({ message: '缺少参数' });
     }
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
     const projects = readJsonFile(projectsFile, {});
-    const user = users[username];
     const project = projects[projectId];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
     if (!project) return res.status(404).json({ message: '项目不存在' });
     const isMember = Array.isArray(project.members) && project.members.includes(username);
     if (!isMember) return res.status(403).json({ message: '只有项目成员可以调整顺序' });
-    user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
-    user.projects = Array.isArray(user.projects) ? user.projects : [];
-    const targetArr = user.pinnedProjects.includes(projectId) ? user.pinnedProjects : user.projects;
-    const idx = targetArr.indexOf(projectId);
-    if (idx === -1) return res.status(404).json({ message: '项目不在当前分组' });
-    targetArr.splice(idx, 1);
-    if (where === 'first') targetArr.unshift(projectId); else targetArr.push(projectId);
-    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
+    const { success, result } = await withUsersLock((users) => {
+        const user = users[username];
+        if (!user) return { data: null, result: { code: 'user-not-found' } };
+        user.pinnedProjects = Array.isArray(user.pinnedProjects) ? user.pinnedProjects : [];
+        user.projects = Array.isArray(user.projects) ? user.projects : [];
+        const targetArr = user.pinnedProjects.includes(projectId) ? user.pinnedProjects : user.projects;
+        const idx = targetArr.indexOf(projectId);
+        if (idx === -1) return { data: null, result: { code: 'not-in-group' } };
+        targetArr.splice(idx, 1);
+        if (where === 'first') targetArr.unshift(projectId); else targetArr.push(projectId);
+        return { data: users, result: { code: 'ok' } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+        if (result && result.code === 'not-in-group') return res.status(404).json({ message: '项目不在当前分组' });
+        return res.status(500).json({ message: '保存失败' });
+    }
+
     return res.json({ message: '已调整顺序' });
 });
 
 // Reorder board to first/last within its group (pinned or normal)
-app.post('/api/reorder-board', (req, res) => {
+app.post('/api/reorder-board', async (req, res) => {
     const { username, projectId, boardName, where } = req.body || {};
     if (!username || !projectId || !boardName || !where || !['first','last'].includes(where)) {
         return res.status(400).json({ message: '缺少参数' });
     }
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-    const user = users[username];
-    const project = projects[projectId];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-    const isMember = Array.isArray(project.members) && project.members.includes(username);
-    if (!isMember) return res.status(403).json({ message: '只有项目成员可以调整顺序' });
-    const inProject = Array.isArray(project.boards) && project.boards.includes(boardName);
-    const inArchived = Array.isArray(project.archivedBoards) && project.archivedBoards.includes(boardName);
-    if (!inProject && !inArchived) return res.status(404).json({ message: '看板不存在' });
-    user.pinnedBoards = user.pinnedBoards && typeof user.pinnedBoards === 'object' ? user.pinnedBoards : {};
-    const arrPinned = Array.isArray(user.pinnedBoards[projectId]) ? user.pinnedBoards[projectId] : [];
-    const isPinned = arrPinned.includes(boardName);
-    if (isPinned) {
-        const idx = arrPinned.indexOf(boardName);
-        arrPinned.splice(idx, 1);
-        if (where === 'first') arrPinned.unshift(boardName); else arrPinned.push(boardName);
-        user.pinnedBoards[projectId] = arrPinned;
-        if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
-        return res.json({ message: '已调整顺序' });
-    } else {
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        const user = users[username];
+        const project = projects[projectId];
+        if (!user) return { users: null, projects: null, result: { code: 'user-not-found' } };
+        if (!project) return { users: null, projects: null, result: { code: 'project-not-found' } };
+        const isMember = Array.isArray(project.members) && project.members.includes(username);
+        if (!isMember) return { users: null, projects: null, result: { code: 'forbidden' } };
+        const inProject = Array.isArray(project.boards) && project.boards.includes(boardName);
+        const inArchived = Array.isArray(project.archivedBoards) && project.archivedBoards.includes(boardName);
+        if (!inProject && !inArchived) return { users: null, projects: null, result: { code: 'board-not-found' } };
+        user.pinnedBoards = user.pinnedBoards && typeof user.pinnedBoards === 'object' ? user.pinnedBoards : {};
+        const arrPinned = Array.isArray(user.pinnedBoards[projectId]) ? user.pinnedBoards[projectId] : [];
+        const isPinned = arrPinned.includes(boardName);
+        if (isPinned) {
+            const idx = arrPinned.indexOf(boardName);
+            arrPinned.splice(idx, 1);
+            if (where === 'first') arrPinned.unshift(boardName); else arrPinned.push(boardName);
+            user.pinnedBoards[projectId] = arrPinned;
+            return { users, projects, result: { code: 'ok' } };
+        }
+
         // reorder inside normal group (project.boards)
         project.boards = Array.isArray(project.boards) ? project.boards : [];
         const idx = project.boards.indexOf(boardName);
-        if (idx === -1) return res.status(404).json({ message: '仅支持在未归档的看板分组内移动' });
+        if (idx === -1) return { users: null, projects: null, result: { code: 'not-in-normal' } };
         project.boards.splice(idx, 1);
         if (where === 'first') project.boards.unshift(boardName); else project.boards.push(boardName);
-        if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
-        return res.json({ message: '已调整顺序' });
+        return { users, projects, result: { code: 'ok' } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目成员可以调整顺序' });
+        if (result && result.code === 'board-not-found') return res.status(404).json({ message: '看板不存在' });
+        if (result && result.code === 'not-in-normal') return res.status(404).json({ message: '仅支持在未归档的看板分组内移动' });
+        return res.status(500).json({ message: '保存失败' });
     }
+
+    return res.json({ message: '已调整顺序' });
 });
 // === End Pin Groups APIs ===
 
@@ -1056,17 +1206,12 @@ app.get('/api/user-stars/:username', (req, res) => {
     return res.json({ stars: user.stars.slice() });
 });
 
-app.post('/api/user-stars/toggle', (req, res) => {
+app.post('/api/user-stars/toggle', async (req, res) => {
     const { username, projectId, boardName, projectName } = req.body || {};
     if (!username || !projectId || !boardName) {
         return res.status(400).json({ message: '缺少参数' });
     }
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
     const projects = readJsonFile(projectsFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
     const project = projects[projectId];
     if (!project) return res.status(404).json({ message: '项目不存在' });
 
@@ -1077,44 +1222,61 @@ app.post('/api/user-stars/toggle', (req, res) => {
     const exists = (Array.isArray(project.boards) && project.boards.includes(boardName)) || (Array.isArray(project.archivedBoards) && project.archivedBoards.includes(boardName));
     if (!exists) return res.status(404).json({ message: '看板不存在' });
 
-    user.stars = Array.isArray(user.stars) ? user.stars : [];
-    const idx = user.stars.findIndex(s => s && s.projectId === projectId && s.boardName === boardName);
-    let starred = false;
-    if (idx !== -1) {
-        user.stars.splice(idx, 1);
-        starred = false;
-    } else {
-        const pn = projectName || project.name || '';
-        user.stars.unshift({ projectId, boardName, projectName: pn, starredAt: Date.now() });
-        starred = true;
+    const { success, result } = await withUsersLock((users) => {
+        const user = users[username];
+        if (!user) return { data: null, result: { code: 'user-not-found' } };
+        user.stars = Array.isArray(user.stars) ? user.stars : [];
+        const idx = user.stars.findIndex(s => s && s.projectId === projectId && s.boardName === boardName);
+        let starred = false;
+        if (idx !== -1) {
+            user.stars.splice(idx, 1);
+            starred = false;
+        } else {
+            const pn = projectName || project.name || '';
+            user.stars.unshift({ projectId, boardName, projectName: pn, starredAt: Date.now() });
+            starred = true;
+        }
+        return { data: users, result: { code: 'ok', starred, stars: user.stars.slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+        return res.status(500).json({ message: '保存失败' });
     }
-    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ starred, stars: user.stars.slice() });
+
+    return res.json({ starred: result.starred, stars: result.stars });
 });
 // === End User Stars ===
 
 // === Board move-to-front (project-global order) ===
-app.post('/api/user-board-pins/pin', (req, res) => {
+app.post('/api/user-board-pins/pin', async (req, res) => {
     const { username, projectId, boardName } = req.body || {};
     if (!username || !projectId || !boardName) return res.status(400).json({ message: '缺少参数' });
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
     const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-    // 仅项目成员可调整顺序
-    const isMember = Array.isArray(project.members) && project.members.includes(username);
-    if (!isMember) return res.status(403).json({ message: '只有项目成员可以调整顺序' });
-    project.boards = Array.isArray(project.boards) ? project.boards : [];
-    const idx = project.boards.indexOf(boardName);
-    if (idx === -1) return res.status(404).json({ message: '看板不存在' });
-    project.boards.splice(idx, 1);
-    project.boards.unshift(boardName);
-    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ message: '已置前', boards: project.boards.slice() });
+    if (!users[username]) return res.status(404).json({ message: '用户不存在' });
+
+    const { success, result } = await withProjectsLock((projects) => {
+        const project = projects[projectId];
+        if (!project) return { data: null, result: { code: 'project-not-found' } };
+        // 仅项目成员可调整顺序
+        const isMember = Array.isArray(project.members) && project.members.includes(username);
+        if (!isMember) return { data: null, result: { code: 'forbidden' } };
+        project.boards = Array.isArray(project.boards) ? project.boards : [];
+        const idx = project.boards.indexOf(boardName);
+        if (idx === -1) return { data: null, result: { code: 'board-not-found' } };
+        project.boards.splice(idx, 1);
+        project.boards.unshift(boardName);
+        return { data: projects, result: { code: 'ok', boards: project.boards.slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目成员可以调整顺序' });
+        if (result && result.code === 'board-not-found') return res.status(404).json({ message: '看板不存在' });
+        return res.status(500).json({ message: '保存失败' });
+    }
+
+    return res.json({ message: '已置前', boards: result.boards });
 });
 // === End Board move-to-front ===
 
@@ -1131,34 +1293,39 @@ app.get('/api/user-star-pins/:username', (req, res) => {
 });
 
 // Pin a starred board to the front of the starred list
-app.post('/api/user-star-pins/pin', (req, res) => {
+app.post('/api/user-star-pins/pin', async (req, res) => {
     const { username, projectId, boardName } = req.body || {};
     if (!username || !projectId || !boardName) return res.status(400).json({ message: '缺少参数' });
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
     const projects = readJsonFile(projectsFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
     const project = projects[projectId];
     if (!project) return res.status(404).json({ message: '项目不存在' });
     // only members
     const isMember = Array.isArray(project.members) && project.members.includes(username);
     if (!isMember) return res.status(403).json({ message: '只有项目成员可以置前星标看板' });
-    // ensure it's starred; if not, allow but no effect on render until starred
-    user.stars = Array.isArray(user.stars) ? user.stars : [];
-    const starred = user.stars.some(s => s && s.projectId === projectId && s.boardName === boardName);
-    if (!starred) {
-        // Not starred; still record the pin to be effective once starred later
-    }
-    const key = `${projectId}::${boardName}`;
-    user.pinnedStarBoards = Array.isArray(user.pinnedStarBoards) ? user.pinnedStarBoards : [];
-    const existingIndex = user.pinnedStarBoards.indexOf(key);
-    if (existingIndex !== -1) user.pinnedStarBoards.splice(existingIndex, 1);
-    user.pinnedStarBoards.unshift(key);
+    const { success, result } = await withUsersLock((users) => {
+        const user = users[username];
+        if (!user) return { data: null, result: { code: 'user-not-found' } };
+        // ensure it's starred; if not, allow but no effect on render until starred
+        user.stars = Array.isArray(user.stars) ? user.stars : [];
+        const starred = user.stars.some(s => s && s.projectId === projectId && s.boardName === boardName);
+        if (!starred) {
+            // Not starred; still record the pin to be effective once starred later
+        }
+        const key = `${projectId}::${boardName}`;
+        user.pinnedStarBoards = Array.isArray(user.pinnedStarBoards) ? user.pinnedStarBoards : [];
+        const existingIndex = user.pinnedStarBoards.indexOf(key);
+        if (existingIndex !== -1) user.pinnedStarBoards.splice(existingIndex, 1);
+        user.pinnedStarBoards.unshift(key);
 
-    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ message: '已置前', pins: user.pinnedStarBoards.slice() });
+        return { data: users, result: { code: 'ok', pins: user.pinnedStarBoards.slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+        return res.status(500).json({ message: '保存失败' });
+    }
+
+    return res.json({ message: '已置前', pins: result.pins });
 });
 // === End User Starred Boards Pin Order ===
 
@@ -1173,15 +1340,10 @@ app.get('/api/user-pins/:username', (req, res) => {
     return res.json({ pins });
 });
 
-app.post('/api/user-pins/pin', (req, res) => {
+app.post('/api/user-pins/pin', async (req, res) => {
     const { username, projectId } = req.body || {};
     if (!username || !projectId) return res.status(400).json({ message: '缺少参数' });
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
     const projects = readJsonFile(projectsFile, {});
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
     const project = projects[projectId];
     if (!project) return res.status(404).json({ message: '项目不存在' });
 
@@ -1189,20 +1351,29 @@ app.post('/api/user-pins/pin', (req, res) => {
     const isMember = Array.isArray(project.members) && project.members.includes(username);
     if (!isMember) return res.status(403).json({ message: '只有项目成员可以置前项目' });
 
-    // 将项目在用户的 projects 列表中移动到最前（一次性排序，不作为置顶分组）
-    user.projects = Array.isArray(user.projects) ? user.projects : [];
-    const existingIndex = user.projects.indexOf(projectId);
-    if (existingIndex !== -1) {
-        user.projects.splice(existingIndex, 1);
-    }
-    user.projects.unshift(projectId);
+    const { success, result } = await withUsersLock((users) => {
+        const user = users[username];
+        if (!user) return { data: null, result: { code: 'user-not-found' } };
+        // 将项目在用户的 projects 列表中移动到最前（一次性排序，不作为置顶分组）
+        user.projects = Array.isArray(user.projects) ? user.projects : [];
+        const existingIndex = user.projects.indexOf(projectId);
+        if (existingIndex !== -1) {
+            user.projects.splice(existingIndex, 1);
+        }
+        user.projects.unshift(projectId);
+        return { data: users, result: { code: 'ok', projects: user.projects.slice() } };
+    });
 
-    if (!writeJsonFile(usersFile, users)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ message: '已置前', projects: user.projects.slice() });
+    if (!success) {
+        if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+        return res.status(500).json({ message: '保存失败' });
+    }
+
+    return res.json({ message: '已置前', projects: result.projects });
 });
 // === End User Pinned Projects ===
 
-app.post('/api/create-project', (req, res) => {
+app.post('/api/create-project', async (req, res) => {
     const { username, projectName } = req.body;
 
     if (!username || !projectName) {
@@ -1212,105 +1383,114 @@ app.post('/api/create-project', (req, res) => {
     const projectId = generateProjectId();
     const inviteCode = generateInviteCode();
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        if (!users[username]) {
+            return { users: null, projects: null, result: { code: 'user-not-found' } };
+        }
 
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
+        // 创建项目
+        projects[projectId] = {
+            name: projectName,
+            inviteCode: inviteCode,
+            owner: username,
+            created: new Date().toISOString(),
+            members: [username],
+            boards: [], // 初始不创建默认看板
+            archivedBoards: []
+        };
 
-    if (!users[username]) {
-        return res.status(404).json({ message: '用户不存在' });
+        // 更新用户项目列表（新项目置前）
+        users[username].projects = Array.isArray(users[username].projects) ? users[username].projects : [];
+        users[username].projects.unshift(projectId);
+
+        return { users, projects, result: { code: 'ok', projectId, inviteCode } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'user-not-found') {
+            return res.status(404).json({ message: '用户不存在' });
+        }
+        return res.status(500).json({ message: '创建项目失败' });
     }
 
-    // 创建项目
-    projects[projectId] = {
-        name: projectName,
-        inviteCode: inviteCode,
-        owner: username,
-        created: new Date().toISOString(),
-        members: [username],
-        boards: [] // 初始不创建默认看板
-        , archivedBoards: []
-    };
-
-    // 更新用户项目列表（新项目置前）
-    users[username].projects = Array.isArray(users[username].projects) ? users[username].projects : [];
-    users[username].projects.unshift(projectId);
-
-    if (writeJsonFile(projectsFile, projects) &&
-        writeJsonFile(usersFile, users)) {
-        res.json({
-            message: '项目创建成功',
-            projectId,
-            inviteCode
-        });
-    } else {
-        res.status(500).json({ message: '创建项目失败' });
-    }
+    return res.json({
+        message: '项目创建成功',
+        projectId: result.projectId,
+        inviteCode: result.inviteCode
+    });
 });
 
-app.post('/api/join-project', (req, res) => {
+app.post('/api/join-project', async (req, res) => {
     const { username, inviteCode } = req.body;
 
     if (!username || !inviteCode) {
         return res.status(400).json({ message: '用户名和邀请码不能为空' });
     }
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-
     const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-
     if (!users[username]) {
         return res.status(404).json({ message: '用户不存在' });
     }
 
-    // 查找项目
-    let projectId = null;
-    let project = null;
+    const { success, result } = await withProjectsLock((projects) => {
+        // 查找项目
+        let projectId = null;
+        let project = null;
 
-    for (const [id, proj] of Object.entries(projects)) {
-        if (proj.inviteCode === inviteCode.toUpperCase()) {
-            projectId = id;
-            project = proj;
-            break;
+        for (const [id, proj] of Object.entries(projects)) {
+            if (proj.inviteCode === inviteCode.toUpperCase()) {
+                projectId = id;
+                project = proj;
+                break;
+            }
         }
+
+        if (!project) {
+            return { data: null, result: { code: 'invalid-code' } };
+        }
+
+        // 检查用户是否已经在项目中
+        project.members = Array.isArray(project.members) ? project.members : [];
+        if (project.members.includes(username)) {
+            return { data: null, result: { code: 'already-member' } };
+        }
+
+        // 创建加入请求，等待其他成员同意
+        project.pendingRequests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
+        const exists = project.pendingRequests.find(r => r && r.username === username);
+        if (exists) {
+            return { data: null, result: { code: 'already-requested', projectId, boards: (project.boards || []).slice() } };
+        }
+        project.pendingRequests.push({ username, requestedBy: username, requestedAt: new Date().toISOString() });
+
+        return { data: projects, result: { code: 'ok', projectId, boards: (project.boards || []).slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'invalid-code') {
+            return res.status(404).json({ message: '邀请码无效' });
+        }
+        if (result && result.code === 'already-member') {
+            return res.status(400).json({ message: '您已经是该项目的成员' });
+        }
+        if (result && result.code === 'already-requested') {
+            return res.json({ message: '已提交申请，待审批' });
+        }
+        return res.status(500).json({ message: '提交申请失败' });
     }
 
-    if (!project) {
-        return res.status(404).json({ message: '邀请码无效' });
-    }
-
-    // 检查用户是否已经在项目中
-    project.members = Array.isArray(project.members) ? project.members : [];
-    if (project.members.includes(username)) {
-        return res.status(400).json({ message: '您已经是该项目的成员' });
-    }
-
-    // 创建加入请求，等待其他成员同意
-    project.pendingRequests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
-    const exists = project.pendingRequests.find(r => r && r.username === username);
-    if (exists) {
-        return res.json({ message: '已提交申请，待审批' });
-    }
-    project.pendingRequests.push({ username, requestedBy: username, requestedAt: new Date().toISOString() });
-
-    if (writeJsonFile(projectsFile, projects)) {
-        try {
-            (project.boards || []).forEach(boardName => {
-                broadcastToBoard(projectId, boardName, {
-                    type: 'join-request',
-                    projectId,
-                    username,
-                    requestedBy: username
-                });
+    try {
+        const boards = (result && result.boards) ? result.boards : [];
+        boards.forEach(boardName => {
+            broadcastToBoard(result.projectId, boardName, {
+                type: 'join-request',
+                projectId: result.projectId,
+                username,
+                requestedBy: username
             });
-        } catch (e) { console.warn('Broadcast join-request warning:', e.message); }
-        res.json({ message: '已提交申请，待审批' });
-    } else {
-        res.status(500).json({ message: '提交申请失败' });
-    }
+        });
+    } catch (e) { console.warn('Broadcast join-request warning:', e.message); }
+    return res.json({ message: '已提交申请，待审批' });
 });
 
 app.get('/api/project-boards/:projectId', (req, res) => {
@@ -1366,19 +1546,23 @@ app.get('/api/user-background/:username', (req, res) => {
 });
 
 // Set default background for user
-app.post('/api/user-background/set-default', (req, res) => {
+app.post('/api/user-background/set-default', async (req, res) => {
     const { username, index } = req.body || {};
     if (!username) return res.status(400).json({ message: '缺少参数' });
     try {
-        const usersFile = path.join(dataDir, 'users.json');
-        const users = readJsonFile(usersFile, {});
-        const user = users[username];
-        if (!user) return res.status(404).json({ message: '用户不存在' });
         const defaults = getDefaultBackgrounds();
         const i = (typeof index === 'number' && index >= 0 && index < defaults.length) ? index : 0;
-        user.backgroundUrl = defaults[i] || DEFAULT_BACKGROUND_URL || '';
-        writeJsonFile(usersFile, users);
-        return res.json({ url: user.backgroundUrl });
+        const { success, result } = await withUsersLock((users) => {
+            const user = users[username];
+            if (!user) return { data: null, result: { code: 'user-not-found' } };
+            user.backgroundUrl = defaults[i] || DEFAULT_BACKGROUND_URL || '';
+            return { data: users, result: { code: 'ok', url: user.backgroundUrl } };
+        });
+        if (!success) {
+            if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+            return res.status(500).json({ message: '设置失败' });
+        }
+        return res.json({ url: result.url });
     } catch (e) {
         return res.status(500).json({ message: '设置失败' });
     }
@@ -1393,16 +1577,14 @@ app.get('/api/default-backgrounds', (req, res) => {
     }
 });
 
-app.post('/api/user-background/upload', (req, res) => {
+app.post('/api/user-background/upload', async (req, res) => {
     const { username, imageData } = req.body || {};
     if (!username || !imageData || typeof imageData !== 'string') {
         return res.status(400).json({ message: '缺少参数' });
     }
     try {
-        const usersFile = path.join(dataDir, 'users.json');
         const users = readJsonFile(usersFile, {});
-        const user = users[username];
-        if (!user) return res.status(404).json({ message: '用户不存在' });
+        if (!users[username]) return res.status(404).json({ message: '用户不存在' });
 
         // parse data URL
         const m = imageData.match(/^data:(image\/(png|jpeg|jpg|webp));base64,(.+)$/i);
@@ -1427,24 +1609,41 @@ app.post('/api/user-background/upload', (req, res) => {
 
         // persist url on user profile
         const url = `/uploads/wallpapers/${fname}`;
-        user.backgroundUrl = url;
-        writeJsonFile(usersFile, users);
+        const { success, result } = await withUsersLock((users) => {
+            const user = users[username];
+            if (!user) return { data: null, result: { code: 'user-not-found' } };
+            user.backgroundUrl = url;
+            return { data: users, result: { code: 'ok', url } };
+        });
+        if (!success) {
+            if (result && result.code === 'user-not-found') {
+                try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch (_) {}
+                return res.status(404).json({ message: '用户不存在' });
+            }
+            return res.status(500).json({ message: '上传失败' });
+        }
 
-        return res.json({ url });
+        return res.json({ url: result.url });
     } catch (e) {
         console.error('Upload background error:', e);
         return res.status(500).json({ message: '上传失败' });
     }
 });
 
-app.post('/api/user-background/clear', (req, res) => {
+app.post('/api/user-background/clear', async (req, res) => {
     const { username } = req.body || {};
     if (!username) return res.status(400).json({ message: '缺少参数' });
     try {
-        const usersFile = path.join(dataDir, 'users.json');
-        const users = readJsonFile(usersFile, {});
-        const user = users[username];
-        if (!user) return res.status(404).json({ message: '用户不存在' });
+        const { success, result } = await withUsersLock((users) => {
+            const user = users[username];
+            if (!user) return { data: null, result: { code: 'user-not-found' } };
+            delete user.backgroundUrl;
+            return { data: users, result: { code: 'ok' } };
+        });
+        if (!success) {
+            if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+            return res.status(500).json({ message: '清除失败' });
+        }
 
         // remove any stored files for all possible extensions
         try {
@@ -1453,8 +1652,6 @@ app.post('/api/user-background/clear', (req, res) => {
                 if (fs.existsSync(p)) fs.unlinkSync(p);
             });
         } catch(_){}
-        delete user.backgroundUrl;
-        writeJsonFile(usersFile, users);
         return res.json({ success: true });
     } catch (e) {
         console.error('Clear background error:', e);
@@ -1474,7 +1671,7 @@ app.get('/api/join-requests/:projectId', (req, res) => {
 });
 
 // 新增：重命名项目API
-app.post('/api/rename-project', (req, res) => {
+app.post('/api/rename-project', async (req, res) => {
     const { projectId, newName, actor } = req.body;
 
     if (!projectId || !newName) {
@@ -1486,138 +1683,145 @@ app.post('/api/rename-project', (req, res) => {
         return res.status(400).json({ message: '新名称不能为空' });
     }
 
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const projects = readJsonFile(projectsFile, {});
-
-    const project = projects[projectId];
-    if (!project) {
-        return res.status(404).json({ message: '项目不存在' });
-    }
-
-    // 权限校验：只有项目所有者可以重命名项目
-    if (!actor || actor !== project.owner) {
-        return res.status(403).json({ message: '只有项目所有者可以重命名项目' });
-    }
-
-    project.name = sanitized;
-
-    if (writeJsonFile(projectsFile, projects)) {
-        // 同步更新所有用户的星标中的项目名称
-        try {
-            const usersFile = path.join(dataDir, 'users.json');
-            const users = readJsonFile(usersFile, {});
-            let changed = false;
-            for (const [uname, u] of Object.entries(users)) {
-                if (!u || !Array.isArray(u.stars)) continue;
-                u.stars.forEach(s => { if (s && s.projectId === projectId) { s.projectName = sanitized; changed = true; } });
-            }
-            if (changed) writeJsonFile(usersFile, users);
-        } catch (e) { console.warn('Update stars projectName warning:', e && e.message ? e.message : e); }
-        // 通知该项目下所有看板的参与者
-        try {
-            (project.boards || []).forEach(boardName => {
-                broadcastToBoard(projectId, boardName, {
-                    type: 'project-renamed',
-                    projectId,
-                    newName: sanitized
-                });
-            });
-        } catch (e) {
-            console.warn('Broadcast project-renamed warning:', e.message);
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        const project = projects[projectId];
+        if (!project) {
+            return { users: null, projects: null, result: { code: 'project-not-found' } };
         }
-        return res.json({ message: '项目重命名成功' });
-    } else {
+
+        // 权限校验：只有项目所有者可以重命名项目
+        if (!actor || actor !== project.owner) {
+            return { users: null, projects: null, result: { code: 'forbidden' } };
+        }
+
+        project.name = sanitized;
+
+        // 同步更新所有用户的星标中的项目名称
+        for (const u of Object.values(users)) {
+            if (!u || !Array.isArray(u.stars)) continue;
+            u.stars.forEach(s => {
+                if (s && s.projectId === projectId) {
+                    s.projectName = sanitized;
+                }
+            });
+        }
+
+        return { users, projects, result: { code: 'ok', boards: (project.boards || []).slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目所有者可以重命名项目' });
         return res.status(500).json({ message: '保存项目数据失败' });
     }
+
+    // 通知该项目下所有看板的参与者
+    try {
+        (result.boards || []).forEach(boardName => {
+            broadcastToBoard(projectId, boardName, {
+                type: 'project-renamed',
+                projectId,
+                newName: sanitized
+            });
+        });
+    } catch (e) {
+        console.warn('Broadcast project-renamed warning:', e.message);
+    }
+    return res.json({ message: '项目重命名成功' });
 });
 
 // 新增：项目成员管理 - 添加成员
-app.post('/api/add-project-member', (req, res) => {
+app.post('/api/add-project-member', async (req, res) => {
     const { projectId, username } = req.body || {};
     if (!projectId || !username) {
         return res.status(400).json({ message: '项目ID和用户名不能为空' });
     }
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        const project = projects[projectId];
+        if (!project) return { users: null, projects: null, result: { code: 'project-not-found' } };
 
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
+        const user = users[username];
+        if (!user) return { users: null, projects: null, result: { code: 'user-not-found' } };
 
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
+        project.members = Array.isArray(project.members) ? project.members : [];
+        if (project.members.includes(username)) {
+            return { users: null, projects: null, result: { code: 'already-member' } };
+        }
 
-    const user = users[username];
-    if (!user) return res.status(404).json({ message: '用户不存在' });
+        project.members.push(username);
+        user.projects = Array.isArray(user.projects) ? user.projects : [];
+        if (!user.projects.includes(projectId)) user.projects.push(projectId);
 
-    project.members = Array.isArray(project.members) ? project.members : [];
-    if (project.members.includes(username)) {
-        return res.status(400).json({ message: '该用户已是项目成员' });
+        return { users, projects, result: { code: 'ok', members: project.members.slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'user-not-found') return res.status(404).json({ message: '用户不存在' });
+        if (result && result.code === 'already-member') return res.status(400).json({ message: '该用户已是项目成员' });
+        return res.status(500).json({ message: '保存失败' });
     }
 
-    project.members.push(username);
-    user.projects = Array.isArray(user.projects) ? user.projects : [];
-    if (!user.projects.includes(projectId)) user.projects.push(projectId);
-
-    const ok = writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users);
-    if (!ok) return res.status(500).json({ message: '保存失败' });
-
-    return res.json({ message: '已添加成员', members: project.members });
+    return res.json({ message: '已添加成员', members: result.members });
 });
 
 // 新增：项目成员管理 - 移除成员（不能移除所有者）
-app.post('/api/remove-project-member', (req, res) => {
+app.post('/api/remove-project-member', async (req, res) => {
     const { projectId, username, actor } = req.body || {};
     if (!projectId || !username) {
         return res.status(400).json({ message: '项目ID和用户名不能为空' });
     }
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        const project = projects[projectId];
+        if (!project) return { users: null, projects: null, result: { code: 'project-not-found' } };
 
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
+        // 权限：只有所有者可以移除他人；非所有者只能移除自己
+        const isOwner = project.owner && actor === project.owner;
+        const isSelf = actor && username && actor === username;
+        if (!isOwner && !isSelf) {
+            return { users: null, projects: null, result: { code: 'forbidden' } };
+        }
 
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
+        if (project.owner && project.owner === username) {
+            return { users: null, projects: null, result: { code: 'cannot-remove-owner' } };
+        }
 
-    // 权限：只有所有者可以移除他人；非所有者只能移除自己
-    const isOwner = project.owner && actor === project.owner;
-    const isSelf = actor && username && actor === username;
-    if (!isOwner && !isSelf) {
-        return res.status(403).json({ message: '无权限移除其他成员' });
+        project.members = Array.isArray(project.members) ? project.members : [];
+        const idx = project.members.indexOf(username);
+        if (idx === -1) return { users: null, projects: null, result: { code: 'not-member' } };
+
+        project.members.splice(idx, 1);
+
+        // 从用户的项目列表中移除
+        const user = users[username];
+        if (user && Array.isArray(user.projects)) {
+            users[username].projects = user.projects.filter(id => id !== projectId);
+        }
+        // 同时清理该用户在该项目下的星标
+        if (user && Array.isArray(user.stars)) {
+            users[username].stars = user.stars.filter(s => s && s.projectId !== projectId);
+        }
+        // 同时清理该用户在该项目下的置前
+        if (user && Array.isArray(user.pinnedProjects)) {
+            users[username].pinnedProjects = user.pinnedProjects.filter(id => id !== projectId);
+        }
+
+        return { users, projects, result: { code: 'ok', members: project.members.slice(), boards: (project.boards || []).slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '无权限移除其他成员' });
+        if (result && result.code === 'cannot-remove-owner') return res.status(400).json({ message: '无法移除项目所有者' });
+        if (result && result.code === 'not-member') return res.status(404).json({ message: '该用户不在项目中' });
+        return res.status(500).json({ message: '保存失败' });
     }
-
-    if (project.owner && project.owner === username) {
-        return res.status(400).json({ message: '无法移除项目所有者' });
-    }
-
-    project.members = Array.isArray(project.members) ? project.members : [];
-    const idx = project.members.indexOf(username);
-    if (idx === -1) return res.status(404).json({ message: '该用户不在项目中' });
-
-    project.members.splice(idx, 1);
-
-    // 从用户的项目列表中移除
-    const user = users[username];
-    if (user && Array.isArray(user.projects)) {
-        users[username].projects = user.projects.filter(id => id !== projectId);
-    }
-    // 同时清理该用户在该项目下的星标
-    if (user && Array.isArray(user.stars)) {
-        users[username].stars = user.stars.filter(s => s && s.projectId !== projectId);
-    }
-    // 同时清理该用户在该项目下的置前
-    if (user && Array.isArray(user.pinnedProjects)) {
-        users[username].pinnedProjects = user.pinnedProjects.filter(id => id !== projectId);
-    }
-
-    const ok = writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users);
-    if (!ok) return res.status(500).json({ message: '保存失败' });
 
     // 广播成员移除事件到该项目下所有看板
     try {
-        (project.boards || []).forEach(boardName => {
+        (result.boards || []).forEach(boardName => {
             broadcastToBoard(projectId, boardName, {
                 type: 'member-removed',
                 projectId,
@@ -1628,59 +1832,95 @@ app.post('/api/remove-project-member', (req, res) => {
         console.warn('Broadcast member-removed warning:', e && e.message ? e.message : e);
     }
 
-    return res.json({ message: '已移除成员', members: project.members });
+    return res.json({ message: '已移除成员', members: result.members });
 });
 
 // 新增：项目成员管理 - 重置邀请码
-app.post('/api/regenerate-invite-code', (req, res) => {
+app.post('/api/regenerate-invite-code', async (req, res) => {
     const { projectId, actor } = req.body || {};
     if (!projectId) return res.status(400).json({ message: '项目ID不能为空' });
 
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const projects = readJsonFile(projectsFile, {});
+    const { success, result } = await withProjectsLock((projects) => {
+        const project = projects[projectId];
+        if (!project) return { data: null, result: { code: 'project-not-found' } };
+        if (!actor || actor !== project.owner) {
+            return { data: null, result: { code: 'forbidden' } };
+        }
+        project.inviteCode = generateInviteCode();
+        return { data: projects, result: { code: 'ok', inviteCode: project.inviteCode } };
+    });
 
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-
-    if (!actor || actor !== project.owner) {
-        return res.status(403).json({ message: '只有所有者可以重置邀请码' });
-    }
-
-    project.inviteCode = generateInviteCode();
-
-    if (!writeJsonFile(projectsFile, projects)) {
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有所有者可以重置邀请码' });
         return res.status(500).json({ message: '保存失败' });
     }
 
-    return res.json({ message: '邀请码已重置', inviteCode: project.inviteCode });
+    return res.json({ message: '邀请码已重置', inviteCode: result.inviteCode });
 });
 
 // 新增：删除项目API
-app.delete('/api/delete-project', (req, res) => {
+app.delete('/api/delete-project', async (req, res) => {
     const { projectId, actor } = req.body || {};
 
     if (!projectId) {
         return res.status(400).json({ message: '项目ID不能为空' });
     }
 
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const usersFile = path.join(dataDir, 'users.json');
-
-    const projects = readJsonFile(projectsFile, {});
-    const users = readJsonFile(usersFile, {});
-
-    const project = projects[projectId];
-    if (!project) {
-        return res.status(404).json({ message: '项目不存在' });
-    }
-    if (!actor || actor !== project.owner) {
-        return res.status(403).json({ message: '只有所有者可以删除项目' });
-    }
-
     try {
+        const { success, result } = await withUsersProjectsLock((users, projects) => {
+            const project = projects[projectId];
+            if (!project) {
+                return { users: null, projects: null, result: { code: 'project-not-found' } };
+            }
+            if (!actor || actor !== project.owner) {
+                return { users: null, projects: null, result: { code: 'forbidden' } };
+            }
+
+            const boards = Array.isArray(project.boards) ? project.boards.slice() : [];
+
+            // 从所有用户中移除此项目，并清理星标
+            for (const [username, user] of Object.entries(users)) {
+                if (Array.isArray(user.projects)) {
+                    users[username].projects = user.projects.filter(id => id !== projectId);
+                }
+                if (Array.isArray(user.stars)) {
+                    users[username].stars = user.stars.filter(s => s && s.projectId !== projectId);
+                }
+                if (Array.isArray(user.pinnedProjects)) {
+                    users[username].pinnedProjects = user.pinnedProjects.filter(id => id !== projectId);
+                }
+                // 清理项目内的置前看板顺序
+                if (user && user.pinnedBoards && Array.isArray(user.pinnedBoards[projectId])) {
+                    delete users[username].pinnedBoards[projectId];
+                }
+                // 清理星标置前顺序中属于该项目的条目
+                if (user && Array.isArray(user.pinnedStarBoards)) {
+                    users[username].pinnedStarBoards = user.pinnedStarBoards.filter(k => !String(k).startsWith(projectId + '::'));
+                }
+            }
+
+            // 从项目列表中删除
+            delete projects[projectId];
+
+            return { users, projects, result: { code: 'ok', boards } };
+        });
+
+        if (!success) {
+            if (result && result.code === 'project-not-found') {
+                return res.status(404).json({ message: '项目不存在' });
+            }
+            if (result && result.code === 'forbidden') {
+                return res.status(403).json({ message: '只有所有者可以删除项目' });
+            }
+            return res.status(500).json({ message: '删除项目失败：无法保存数据' });
+        }
+
+        const boards = result.boards || [];
+
         // 广播项目删除（通知所有看板参与者）
         try {
-            (project.boards || []).forEach(boardName => {
+            boards.forEach(boardName => {
                 broadcastToBoard(projectId, boardName, {
                     type: 'project-deleted',
                     projectId
@@ -1691,7 +1931,7 @@ app.delete('/api/delete-project', (req, res) => {
         }
 
         // 删除所有看板文件
-        (project.boards || []).forEach(boardName => {
+        boards.forEach(boardName => {
             const boardFile = path.join(dataDir, `${projectId}_${boardName}.json`);
             if (fs.existsSync(boardFile)) {
                 try { fs.unlinkSync(boardFile); } catch (e) { console.warn('Remove board file warning:', boardFile, e.message); }
@@ -1709,65 +1949,47 @@ app.delete('/api/delete-project', (req, res) => {
             console.warn('Clean backups warning:', e.message);
         }
 
-        // 从所有用户中移除此项目，并清理星标
-        for (const [username, user] of Object.entries(users)) {
-            if (Array.isArray(user.projects)) {
-                users[username].projects = user.projects.filter(id => id !== projectId);
-            }
-            if (Array.isArray(user.stars)) {
-                users[username].stars = user.stars.filter(s => s && s.projectId !== projectId);
-            }
-            if (Array.isArray(user.pinnedProjects)) {
-                users[username].pinnedProjects = user.pinnedProjects.filter(id => id !== projectId);
-            }
-            // 清理项目内的置前看板顺序
-            if (user && user.pinnedBoards && Array.isArray(user.pinnedBoards[projectId])) {
-                delete users[username].pinnedBoards[projectId];
-            }
-            // 清理星标置前顺序中属于该项目的条目
-            if (user && Array.isArray(user.pinnedStarBoards)) {
-                users[username].pinnedStarBoards = user.pinnedStarBoards.filter(k => !String(k).startsWith(projectId + '::'));
-            }
-        }
-
-        // 从项目列表中删除
-        delete projects[projectId];
-
-        if (writeJsonFile(projectsFile, projects) && writeJsonFile(usersFile, users)) {
-            return res.json({ message: '项目删除成功' });
-        } else {
-            return res.status(500).json({ message: '删除项目失败：无法保存数据' });
-        }
+        return res.json({ message: '项目删除成功' });
     } catch (error) {
         console.error('Delete project error:', error);
         return res.status(500).json({ message: '删除项目失败' });
     }
 });
 
-app.post('/api/create-board', (req, res) => {
+app.post('/api/create-board', async (req, res) => {
     const { projectId, boardName, actor } = req.body || {};
 
     if (!projectId || !boardName) {
         return res.status(400).json({ message: '项目ID和看板名称不能为空' });
     }
+    const { success, result } = await withProjectsLock((projects) => {
+        const project = projects[projectId];
+        if (!project) {
+            return { data: null, result: { code: 'project-not-found' } };
+        }
 
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const projects = readJsonFile(projectsFile, {});
+        // 只有项目所有者或申请者自身是所有者（创建者）
+        if (!actor || (actor !== project.owner && !project.members.includes(actor))) {
+            return { data: null, result: { code: 'forbidden' } };
+        }
 
-    const project = projects[projectId];
-    if (!project) {
-        return res.status(404).json({ message: '项目不存在' });
-    }
+        project.boardOwners = project.boardOwners || {};
 
-    // 只有项目所有者或申请者自身是所有者（创建者）
-    if (!actor || (actor !== project.owner && !project.members.includes(actor))) {
-        return res.status(403).json({ message: '无权限创建看板' });
-    }
+        if (project.boards.includes(boardName)) {
+            return { data: null, result: { code: 'board-exists' } };
+        }
 
-    project.boardOwners = project.boardOwners || {};
+        project.boards.unshift(boardName);
+        project.boardOwners[boardName] = actor || project.owner;
 
-    if (project.boards.includes(boardName)) {
-        return res.status(400).json({ message: '看板名称已存在' });
+        return { data: projects, result: { code: 'ok', owner: project.boardOwners[boardName] } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '无权限创建看板' });
+        if (result && result.code === 'board-exists') return res.status(400).json({ message: '看板名称已存在' });
+        return res.status(500).json({ message: '创建看板失败' });
     }
 
     // 创建看板文件
@@ -1778,47 +2000,70 @@ app.post('/api/create-board', (req, res) => {
         lists: { listIds: [], lists: {} }
     };
 
-    project.boards.unshift(boardName);
-    project.boardOwners[boardName] = actor || project.owner;
-
-    if (writeJsonFile(projectsFile, projects) && writeJsonFile(boardFile, defaultBoard)) {
-        res.json({ message: '看板创建成功', owner: project.boardOwners[boardName] });
-    } else {
-        res.status(500).json({ message: '创建看板失败' });
+    if (writeJsonFile(boardFile, defaultBoard)) {
+        return res.json({ message: '看板创建成功', owner: result.owner });
     }
+
+    return res.status(500).json({ message: '创建看板失败' });
 });
 
 // 删除看板API
-app.delete('/api/delete-board', (req, res) => {
+app.delete('/api/delete-board', async (req, res) => {
     const { projectId, boardName, actor } = req.body || {};
 
     if (!projectId || !boardName) {
         return res.status(400).json({ message: '项目ID和看板名称不能为空' });
     }
 
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const projects = readJsonFile(projectsFile, {});
-
-    const project = projects[projectId];
-    if (!project) {
-        return res.status(404).json({ message: '项目不存在' });
-    }
-    const isProjectOwner = actor && actor === project.owner;
-    const isBoardOwner = project.boardOwners && actor && project.boardOwners[boardName] === actor;
-    if (!isProjectOwner && !isBoardOwner) {
-        return res.status(403).json({ message: '只有项目所有者或看板创建者可以删除看板' });
-    }
-
-    const boardIndex = project.boards.indexOf(boardName);
-    if (boardIndex === -1) {
-        // allow deletion from archived list as well
-        project.archivedBoards = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
-        const aidx = project.archivedBoards.indexOf(boardName);
-        if (aidx === -1) {
-            return res.status(404).json({ message: '看板不存在' });
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        const project = projects[projectId];
+        if (!project) {
+            return { users: null, projects: null, result: { code: 'project-not-found' } };
         }
-        // remove from archived list and proceed to delete file
-        project.archivedBoards.splice(aidx, 1);
+        const isProjectOwner = actor && actor === project.owner;
+        const isBoardOwner = project.boardOwners && actor && project.boardOwners[boardName] === actor;
+        if (!isProjectOwner && !isBoardOwner) {
+            return { users: null, projects: null, result: { code: 'forbidden' } };
+        }
+
+        const boardIndex = project.boards.indexOf(boardName);
+        if (boardIndex === -1) {
+            // allow deletion from archived list as well
+            project.archivedBoards = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
+            const aidx = project.archivedBoards.indexOf(boardName);
+            if (aidx === -1) {
+                return { users: null, projects: null, result: { code: 'board-not-found' } };
+            }
+            // remove from archived list and proceed to delete file
+            project.archivedBoards.splice(aidx, 1);
+        } else {
+            // 从项目中移除看板（若存在于 boards 列表）
+            project.boards.splice(boardIndex, 1);
+        }
+
+        // 同步清理所有用户在该项目该看板的星标
+        for (const u of Object.values(users)) {
+            if (!u || !Array.isArray(u.stars)) continue;
+            const next = u.stars.filter(s => !(s && s.projectId === projectId && s.boardName === boardName));
+            if (next.length !== u.stars.length) u.stars = next;
+            // 同步清理置前的看板
+            if (u && u.pinnedBoards && Array.isArray(u.pinnedBoards[projectId])) {
+                u.pinnedBoards[projectId] = u.pinnedBoards[projectId].filter(n => n !== boardName);
+            }
+            // 清理星标列表的置前顺序
+            if (u && Array.isArray(u.pinnedStarBoards)) {
+                u.pinnedStarBoards = u.pinnedStarBoards.filter(k => k !== `${projectId}::${boardName}`);
+            }
+        }
+
+        return { users, projects, result: { code: 'ok' } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目所有者或看板创建者可以删除看板' });
+        if (result && result.code === 'board-not-found') return res.status(404).json({ message: '看板不存在' });
+        return res.status(500).json({ message: '删除看板失败' });
     }
 
     // 删除看板文件
@@ -1827,49 +2072,15 @@ app.delete('/api/delete-board', (req, res) => {
         if (fs.existsSync(boardFile)) {
             fs.unlinkSync(boardFile);
         }
-
-        // 从项目中移除看板（若存在于 boards 列表）
-        if (boardIndex !== -1) {
-            project.boards.splice(boardIndex, 1);
-        }
-
-        if (writeJsonFile(projectsFile, projects)) {
-            // 同步清理所有用户在该项目该看板的星标
-            try {
-                const usersFile = path.join(dataDir, 'users.json');
-                const users = readJsonFile(usersFile, {});
-                let changed = false;
-                for (const [uname, u] of Object.entries(users)) {
-                    if (!u || !Array.isArray(u.stars)) continue;
-                    const next = u.stars.filter(s => !(s && s.projectId === projectId && s.boardName === boardName));
-                    if (next.length !== u.stars.length) { u.stars = next; changed = true; }
-                    // 同步清理置前的看板
-                    if (u && u.pinnedBoards && Array.isArray(u.pinnedBoards[projectId])) {
-                        const before = u.pinnedBoards[projectId].length;
-                        u.pinnedBoards[projectId] = u.pinnedBoards[projectId].filter(n => n !== boardName);
-                        if (u.pinnedBoards[projectId].length !== before) changed = true;
-                    }
-                    // 清理星标列表的置前顺序
-                    if (u && Array.isArray(u.pinnedStarBoards)) {
-                        const before2 = u.pinnedStarBoards.length;
-                        u.pinnedStarBoards = u.pinnedStarBoards.filter(k => k !== `${projectId}::${boardName}`);
-                        if (u.pinnedStarBoards.length !== before2) changed = true;
-                    }
-                }
-                if (changed) writeJsonFile(usersFile, users);
-            } catch (e) { console.warn('Clean stars on board delete warning:', e && e.message ? e.message : e); }
-            res.json({ message: '看板删除成功' });
-        } else {
-            res.status(500).json({ message: '删除看板失败' });
-        }
     } catch (error) {
-        console.error('Delete board error:', error);
-        res.status(500).json({ message: '删除看板失败' });
+        console.warn('Delete board file warning:', boardFile, error && error.message ? error.message : error);
     }
+
+    return res.json({ message: '看板删除成功' });
 });
 
 // 新增：重命名看板API
-app.post('/api/rename-board', (req, res) => {
+app.post('/api/rename-board', async (req, res) => {
     const { projectId, oldName, newName, actor } = req.body || {};
 
     if (!projectId || !oldName || !newName) {
@@ -1881,28 +2092,24 @@ app.post('/api/rename-board', (req, res) => {
         return res.status(400).json({ message: '新名称不能为空' });
     }
 
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const usersFile = path.join(dataDir, 'users.json');
-    const projects = readJsonFile(projectsFile, {});
-    const users = readJsonFile(usersFile, {});
-
-    const project = projects[projectId];
-    if (!project) {
+    const projectsSnapshot = readJsonFile(projectsFile, {});
+    const projectSnapshot = projectsSnapshot[projectId];
+    if (!projectSnapshot) {
         return res.status(404).json({ message: '项目不存在' });
     }
 
-    const idx = project.boards.indexOf(oldName);
-    if (idx === -1) {
+    const idxSnapshot = projectSnapshot.boards.indexOf(oldName);
+    if (idxSnapshot === -1) {
         return res.status(404).json({ message: '原看板不存在' });
     }
 
-    const isProjectOwner = actor && actor === project.owner;
-    const isBoardOwner = project.boardOwners && actor && project.boardOwners[oldName] === actor;
+    const isProjectOwner = actor && actor === projectSnapshot.owner;
+    const isBoardOwner = projectSnapshot.boardOwners && actor && projectSnapshot.boardOwners[oldName] === actor;
     if (!isProjectOwner && !isBoardOwner) {
         return res.status(403).json({ message: '只有项目所有者或看板创建者可以重命名看板' });
     }
 
-    if (project.boards.includes(sanitizedNew)) {
+    if (projectSnapshot.boards.includes(sanitizedNew)) {
         return res.status(400).json({ message: '新看板名称已存在' });
     }
 
@@ -1916,41 +2123,64 @@ app.post('/api/rename-board', (req, res) => {
         } else {
             writeJsonFile(newFile, readJsonFile(oldFile, { archived: [], lists: { listIds: [], lists: {} } }));
         }
+        const { success, result } = await withUsersProjectsLock((users, projects) => {
+            const project = projects[projectId];
+            if (!project) {
+                return { users: null, projects: null, result: { code: 'project-not-found' } };
+            }
 
-        // 更新项目中的名称
-        project.boards[idx] = sanitizedNew;
-        if (project.boardOwners && project.boardOwners[oldName]) {
-            project.boardOwners[sanitizedNew] = project.boardOwners[oldName];
-            delete project.boardOwners[oldName];
-        }
+            const idx = project.boards.indexOf(oldName);
+            if (idx === -1) {
+                return { users: null, projects: null, result: { code: 'board-not-found' } };
+            }
 
-        if (!writeJsonFile(projectsFile, projects)) {
-            // 回滚文件名
-            try { if (fs.existsSync(newFile)) fs.renameSync(newFile, oldFile); } catch (e) {}
-            return res.status(500).json({ message: '保存项目数据失败' });
-        }
+            const isProjectOwner = actor && actor === project.owner;
+            const isBoardOwner = project.boardOwners && actor && project.boardOwners[oldName] === actor;
+            if (!isProjectOwner && !isBoardOwner) {
+                return { users: null, projects: null, result: { code: 'forbidden' } };
+            }
 
-        // 同步更新所有用户星标中的看板名称
-        try {
-            let changed = false;
-            for (const [uname, u] of Object.entries(users)) {
+            if (project.boards.includes(sanitizedNew)) {
+                return { users: null, projects: null, result: { code: 'board-exists' } };
+            }
+
+            // 更新项目中的名称
+            project.boards[idx] = sanitizedNew;
+            if (project.boardOwners && project.boardOwners[oldName]) {
+                project.boardOwners[sanitizedNew] = project.boardOwners[oldName];
+                delete project.boardOwners[oldName];
+            }
+
+            // 同步更新所有用户星标中的看板名称
+            for (const u of Object.values(users)) {
                 if (!u || !Array.isArray(u.stars)) continue;
-                u.stars.forEach(s => { if (s && s.projectId === projectId && s.boardName === oldName) { s.boardName = sanitizedNew; changed = true; } });
+                u.stars.forEach(s => { if (s && s.projectId === projectId && s.boardName === oldName) { s.boardName = sanitizedNew; } });
                 // 同步更新置前列表中的看板名称
                 if (u && u.pinnedBoards && Array.isArray(u.pinnedBoards[projectId])) {
                     const arr = u.pinnedBoards[projectId];
                     const i = arr.indexOf(oldName);
-                    if (i !== -1) { arr[i] = sanitizedNew; changed = true; }
+                    if (i !== -1) arr[i] = sanitizedNew;
                 }
                 // 更新星标置前顺序中的键
                 if (u && Array.isArray(u.pinnedStarBoards)) {
                     const oldKey = `${projectId}::${oldName}`;
                     const i2 = u.pinnedStarBoards.indexOf(oldKey);
-                    if (i2 !== -1) { u.pinnedStarBoards[i2] = `${projectId}::${sanitizedNew}`; changed = true; }
+                    if (i2 !== -1) u.pinnedStarBoards[i2] = `${projectId}::${sanitizedNew}`;
                 }
             }
-            if (changed) writeJsonFile(usersFile, users);
-        } catch (e) { console.warn('Update stars boardName warning:', e && e.message ? e.message : e); }
+
+            return { users, projects, result: { code: 'ok' } };
+        });
+
+        if (!success) {
+            // 回滚文件名
+            try { if (fs.existsSync(newFile)) fs.renameSync(newFile, oldFile); } catch (e) {}
+            if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+            if (result && result.code === 'board-not-found') return res.status(404).json({ message: '原看板不存在' });
+            if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目所有者或看板创建者可以重命名看板' });
+            if (result && result.code === 'board-exists') return res.status(400).json({ message: '新看板名称已存在' });
+            return res.status(500).json({ message: '保存项目数据失败' });
+        }
 
         // 通知旧看板参与者
         broadcastToBoard(projectId, oldName, {
@@ -1968,7 +2198,7 @@ app.post('/api/rename-board', (req, res) => {
 });
 
 // 新增：移动看板到其他项目
-app.post('/api/move-board', (req, res) => {
+app.post('/api/move-board', async (req, res) => {
     const { fromProjectId, toProjectId, boardName, actor } = req.body || {};
 
     if (!fromProjectId || !toProjectId || !boardName) {
@@ -1978,26 +2208,22 @@ app.post('/api/move-board', (req, res) => {
         return res.status(400).json({ message: '目标项目不能与源项目相同' });
     }
 
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const usersFile = path.join(dataDir, 'users.json');
-    const projects = readJsonFile(projectsFile, {});
-    const users = readJsonFile(usersFile, {});
-
-    const fromProject = projects[fromProjectId];
-    const toProject = projects[toProjectId];
-    if (!fromProject || !toProject) {
+    const projectsSnapshot = readJsonFile(projectsFile, {});
+    const fromProjectSnapshot = projectsSnapshot[fromProjectId];
+    const toProjectSnapshot = projectsSnapshot[toProjectId];
+    if (!fromProjectSnapshot || !toProjectSnapshot) {
         return res.status(404).json({ message: '源项目或目标项目不存在' });
     }
 
-    const idx = Array.isArray(fromProject.boards) ? fromProject.boards.indexOf(boardName) : -1;
-    if (idx === -1) {
+    const idxSnapshot = Array.isArray(fromProjectSnapshot.boards) ? fromProjectSnapshot.boards.indexOf(boardName) : -1;
+    if (idxSnapshot === -1) {
         return res.status(404).json({ message: '源项目中不存在该看板' });
     }
 
     // 权限：源项目所有者或该看板的创建者，且必须是目标项目成员
-    const isSourceOwner = actor && actor === fromProject.owner;
-    const isBoardOwner = fromProject.boardOwners && actor && fromProject.boardOwners[boardName] === actor;
-    const isDestMember = Array.isArray(toProject.members) && toProject.members.includes(actor);
+    const isSourceOwner = actor && actor === fromProjectSnapshot.owner;
+    const isBoardOwner = fromProjectSnapshot.boardOwners && actor && fromProjectSnapshot.boardOwners[boardName] === actor;
+    const isDestMember = Array.isArray(toProjectSnapshot.members) && toProjectSnapshot.members.includes(actor);
     if (!isSourceOwner && !isBoardOwner) {
         return res.status(403).json({ message: '只有源项目所有者或看板创建者可以移动看板' });
     }
@@ -2005,7 +2231,7 @@ app.post('/api/move-board', (req, res) => {
         return res.status(403).json({ message: '只能移动到你参与的目标项目' });
     }
 
-    if (Array.isArray(toProject.boards) && toProject.boards.includes(boardName)) {
+    if (Array.isArray(toProjectSnapshot.boards) && toProjectSnapshot.boards.includes(boardName)) {
         return res.status(400).json({ message: '目标项目已存在同名看板' });
     }
 
@@ -2033,49 +2259,76 @@ app.post('/api/move-board', (req, res) => {
             });
         } catch (e) { console.warn('List backups on move warning:', e && e.message ? e.message : e); }
 
-        // 从源项目移除并加入目标项目
-        fromProject.boards.splice(idx, 1);
-        fromProject.boardOwners = fromProject.boardOwners || {};
-        const owner = fromProject.boardOwners[boardName] || fromProject.owner;
-        if (!toProject.boards) toProject.boards = [];
-        if (!toProject.boardOwners) toProject.boardOwners = {};
-        toProject.boards.unshift(boardName);
-        toProject.boardOwners[boardName] = owner;
-        delete fromProject.boardOwners[boardName];
+        const { success, result } = await withUsersProjectsLock((users, projects) => {
+            const fromProject = projects[fromProjectId];
+            const toProject = projects[toProjectId];
+            if (!fromProject || !toProject) {
+                return { users: null, projects: null, result: { code: 'project-not-found' } };
+            }
 
-        if (!writeJsonFile(projectsFile, projects)) {
-            // 回滚文件
-            try { if (fs.existsSync(newFile)) fs.renameSync(newFile, oldFile); } catch (e) {}
-            return res.status(500).json({ message: '保存项目数据失败' });
-        }
+            const idx = Array.isArray(fromProject.boards) ? fromProject.boards.indexOf(boardName) : -1;
+            if (idx === -1) {
+                return { users: null, projects: null, result: { code: 'board-not-found' } };
+            }
 
-        // 更新所有用户的星标（项目ID与项目名称）
-        try {
-            let changed = false;
-            for (const [uname, u] of Object.entries(users)) {
+            const isSourceOwner = actor && actor === fromProject.owner;
+            const isBoardOwner = fromProject.boardOwners && actor && fromProject.boardOwners[boardName] === actor;
+            const isDestMember = Array.isArray(toProject.members) && toProject.members.includes(actor);
+            if (!isSourceOwner && !isBoardOwner) {
+                return { users: null, projects: null, result: { code: 'forbidden' } };
+            }
+            if (!isDestMember) {
+                return { users: null, projects: null, result: { code: 'forbidden-dest' } };
+            }
+
+            if (Array.isArray(toProject.boards) && toProject.boards.includes(boardName)) {
+                return { users: null, projects: null, result: { code: 'board-exists' } };
+            }
+
+            // 从源项目移除并加入目标项目
+            fromProject.boards.splice(idx, 1);
+            fromProject.boardOwners = fromProject.boardOwners || {};
+            const owner = fromProject.boardOwners[boardName] || fromProject.owner;
+            if (!toProject.boards) toProject.boards = [];
+            if (!toProject.boardOwners) toProject.boardOwners = {};
+            toProject.boards.unshift(boardName);
+            toProject.boardOwners[boardName] = owner;
+            delete fromProject.boardOwners[boardName];
+
+            // 更新所有用户的星标（项目ID与项目名称）
+            for (const u of Object.values(users)) {
                 if (!u || !Array.isArray(u.stars)) continue;
                 u.stars.forEach(s => {
                     if (s && s.projectId === fromProjectId && s.boardName === boardName) {
                         s.projectId = toProjectId;
                         s.projectName = toProject.name || s.projectName || '';
-                        changed = true;
                     }
                 });
                 // 同步清理源项目中的置前条目
                 if (u && u.pinnedBoards && Array.isArray(u.pinnedBoards[fromProjectId])) {
-                    const before = u.pinnedBoards[fromProjectId].length;
                     u.pinnedBoards[fromProjectId] = u.pinnedBoards[fromProjectId].filter(n => n !== boardName);
-                    if (u.pinnedBoards[fromProjectId].length !== before) changed = true;
                 }
                 // 更新星标置前顺序键的项目ID
                 if (u && Array.isArray(u.pinnedStarBoards)) {
                     const oldKey = `${fromProjectId}::${boardName}`;
                     const i2 = u.pinnedStarBoards.indexOf(oldKey);
-                    if (i2 !== -1) { u.pinnedStarBoards[i2] = `${toProjectId}::${boardName}`; changed = true; }
+                    if (i2 !== -1) u.pinnedStarBoards[i2] = `${toProjectId}::${boardName}`;
                 }
             }
-            if (changed) writeJsonFile(usersFile, users);
-        } catch (e) { console.warn('Update stars on move warning:', e && e.message ? e.message : e); }
+
+            return { users, projects, result: { code: 'ok', toProjectName: toProject.name || '' } };
+        });
+
+        if (!success) {
+            // 回滚文件
+            try { if (fs.existsSync(newFile)) fs.renameSync(newFile, oldFile); } catch (e) {}
+            if (result && result.code === 'project-not-found') return res.status(404).json({ message: '源项目或目标项目不存在' });
+            if (result && result.code === 'board-not-found') return res.status(404).json({ message: '源项目中不存在该看板' });
+            if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有源项目所有者或看板创建者可以移动看板' });
+            if (result && result.code === 'forbidden-dest') return res.status(403).json({ message: '只能移动到你参与的目标项目' });
+            if (result && result.code === 'board-exists') return res.status(400).json({ message: '目标项目已存在同名看板' });
+            return res.status(500).json({ message: '保存项目数据失败' });
+        }
 
         // 通知旧看板参与者重连到新项目
         try {
@@ -2083,12 +2336,12 @@ app.post('/api/move-board', (req, res) => {
                 type: 'board-moved',
                 fromProjectId,
                 toProjectId,
-                toProjectName: toProject.name || '',
+                toProjectName: result.toProjectName,
                 boardName
             });
         } catch (e) { console.warn('Broadcast board-moved warning:', e && e.message ? e.message : e); }
 
-        return res.json({ message: '移动成功', toProjectId, toProjectName: toProject.name || '' });
+        return res.json({ message: '移动成功', toProjectId, toProjectName: result.toProjectName });
     } catch (error) {
         console.error('Move board error:', error);
         // 尝试回滚文件名
@@ -2646,7 +2899,7 @@ app.get('/api/user-backup/:username', (req, res) => {
  * POST /api/user-restore
  * Body: { username, backupData }
  */
-app.post('/api/user-restore', (req, res) => {
+app.post('/api/user-restore', async (req, res) => {
     const { username, backupData } = req.body;
 
     if (!username || !backupData) {
@@ -2657,23 +2910,11 @@ app.post('/api/user-restore', (req, res) => {
         return res.status(400).json({ message: '无效的备份文件格式' });
     }
 
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-
-    if (!users[username]) {
-        return res.status(404).json({ message: '用户不存在' });
-    }
-
     const importedProjects = [];
     const idMapping = {}; // 旧ID -> 新ID 映射
+    const newProjects = [];
 
     try {
-        if (backupData.user && backupData.user.displayName) {
-            const dn = String(backupData.user.displayName).trim();
-            if (dn) users[username].displayName = dn;
-        }
         // 为每个项目创建新的 projectId
         backupData.projects.forEach(projectExport => {
             const newProjectId = Date.now().toString() + Math.random().toString(36).slice(2, 12);
@@ -2701,13 +2942,7 @@ app.post('/api/user-restore', (req, res) => {
                 writeJsonFile(boardFile, boardExport.data);
             });
 
-            // 保存项目
-            projects[newProjectId] = newProject;
-
-            // 将项目添加到用户的项目列表
-            if (!users[username].projects.includes(newProjectId)) {
-                users[username].projects.unshift(newProjectId);
-            }
+            newProjects.push({ id: newProjectId, project: newProject });
 
             importedProjects.push({
                 oldId: projectExport.originalId,
@@ -2717,11 +2952,31 @@ app.post('/api/user-restore', (req, res) => {
             });
         });
 
-        // 保存更新
-        if (!writeJsonFile(projectsFile, projects)) {
-            return res.status(500).json({ message: '保存项目数据失败' });
-        }
-        if (!writeJsonFile(usersFile, users)) {
+        const { success, result } = await withUsersProjectsLock((users, projects) => {
+            if (!users[username]) {
+                return { users: null, projects: null, result: { code: 'user-not-found' } };
+            }
+
+            if (backupData.user && backupData.user.displayName) {
+                const dn = String(backupData.user.displayName).trim();
+                if (dn) users[username].displayName = dn;
+            }
+
+            users[username].projects = Array.isArray(users[username].projects) ? users[username].projects : [];
+            newProjects.forEach(({ id, project }) => {
+                projects[id] = project;
+                if (!users[username].projects.includes(id)) {
+                    users[username].projects.unshift(id);
+                }
+            });
+
+            return { users, projects, result: { code: 'ok' } };
+        });
+
+        if (!success) {
+            if (result && result.code === 'user-not-found') {
+                return res.status(404).json({ message: '用户不存在' });
+            }
             return res.status(500).json({ message: '保存用户数据失败' });
         }
 
@@ -2801,7 +3056,7 @@ app.get('/api/project-backup/:projectId', (req, res) => {
  * POST /api/project-restore
  * Body: { username, backupData }
  */
-app.post('/api/project-restore', (req, res) => {
+app.post('/api/project-restore', async (req, res) => {
     const { username, backupData } = req.body;
 
     if (!username || !backupData) {
@@ -2810,15 +3065,6 @@ app.post('/api/project-restore', (req, res) => {
 
     if (!backupData.version || !backupData.project) {
         return res.status(400).json({ message: '无效的项目备份文件格式' });
-    }
-
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-
-    if (!users[username]) {
-        return res.status(404).json({ message: '用户不存在' });
     }
 
     try {
@@ -2846,18 +3092,27 @@ app.post('/api/project-restore', (req, res) => {
             writeJsonFile(boardFile, boardExport.data);
         });
 
-        // 保存项目
-        projects[newProjectId] = newProject;
+        const { success, result } = await withUsersProjectsLock((users, projects) => {
+            if (!users[username]) {
+                return { users: null, projects: null, result: { code: 'user-not-found' } };
+            }
 
-        // 添加到用户项目列表
-        if (!users[username].projects.includes(newProjectId)) {
-            users[username].projects.unshift(newProjectId);
-        }
+            // 保存项目
+            projects[newProjectId] = newProject;
 
-        if (!writeJsonFile(projectsFile, projects)) {
-            return res.status(500).json({ message: '保存项目数据失败' });
-        }
-        if (!writeJsonFile(usersFile, users)) {
+            // 添加到用户项目列表
+            users[username].projects = Array.isArray(users[username].projects) ? users[username].projects : [];
+            if (!users[username].projects.includes(newProjectId)) {
+                users[username].projects.unshift(newProjectId);
+            }
+
+            return { users, projects, result: { code: 'ok' } };
+        });
+
+        if (!success) {
+            if (result && result.code === 'user-not-found') {
+                return res.status(404).json({ message: '用户不存在' });
+            }
             return res.status(500).json({ message: '保存用户数据失败' });
         }
 
@@ -3670,27 +3925,36 @@ server.on('error', (error) => {
 });
 
 // 新增：成员申请与审批 API
-app.post('/api/request-add-member', (req, res) => {
+app.post('/api/request-add-member', async (req, res) => {
     const { projectId, username, actor } = req.body || {};
     if (!projectId || !username || !actor) {
         return res.status(400).json({ message: '缺少参数' });
     }
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
     const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-    project.members = Array.isArray(project.members) ? project.members : [];
-    if (!project.members.includes(actor)) return res.status(403).json({ message: '只有项目成员可以邀请' });
     if (!users[username]) return res.status(404).json({ message: '被邀请用户不存在' });
-    if (project.members.includes(username)) return res.status(400).json({ message: '该用户已是成员' });
-    project.pendingInvites = Array.isArray(project.pendingInvites) ? project.pendingInvites : [];
-    if (project.pendingInvites.find(r => r && r.username === username)) {
-        return res.json({ message: '邀请已发送，等待对方接受' });
+
+    const { success, result } = await withProjectsLock((projects) => {
+        const project = projects[projectId];
+        if (!project) return { data: null, result: { code: 'project-not-found' } };
+        project.members = Array.isArray(project.members) ? project.members : [];
+        if (!project.members.includes(actor)) return { data: null, result: { code: 'forbidden' } };
+        if (project.members.includes(username)) return { data: null, result: { code: 'already-member' } };
+        project.pendingInvites = Array.isArray(project.pendingInvites) ? project.pendingInvites : [];
+        if (project.pendingInvites.find(r => r && r.username === username)) {
+            return { data: null, result: { code: 'already-invited' } };
+        }
+        project.pendingInvites.push({ username, invitedBy: actor, invitedAt: new Date().toISOString() });
+        return { data: projects, result: { code: 'ok' } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目成员可以邀请' });
+        if (result && result.code === 'already-member') return res.status(400).json({ message: '该用户已是成员' });
+        if (result && result.code === 'already-invited') return res.json({ message: '邀请已发送，等待对方接受' });
+        return res.status(500).json({ message: '保存失败' });
     }
-    project.pendingInvites.push({ username, invitedBy: actor, invitedAt: new Date().toISOString() });
-    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
+
     return res.json({ message: '邀请已发送，等待对方接受' });
 });
 
@@ -3745,156 +4009,194 @@ app.get('/api/user-approvals/:username', (req, res) => {
     res.json({ approvals, userDisplayNames: buildDisplayNameMap(users, Array.from(nameSet)) });
 });
 
-app.post('/api/accept-invite', (req, res) => {
+app.post('/api/accept-invite', async (req, res) => {
     const { username, projectId } = req.body || {};
     if (!username || !projectId) return res.status(400).json({ message: '缺少参数' });
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-    project.pendingInvites = Array.isArray(project.pendingInvites) ? project.pendingInvites : [];
-    const idx = project.pendingInvites.findIndex(i => i && i.username === username);
-    if (idx === -1) return res.status(404).json({ message: '没有该邀请' });
-    project.pendingInvites.splice(idx, 1);
-    project.members = Array.isArray(project.members) ? project.members : [];
-    if (!project.members.includes(username)) project.members.push(username);
-    if (users[username]) {
-        users[username].projects = Array.isArray(users[username].projects) ? users[username].projects : [];
-        if (!users[username].projects.includes(projectId)) users[username].projects.unshift(projectId);
-    }
-    if (!writeJsonFile(projectsFile, projects) || !writeJsonFile(usersFile, users)) {
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        const project = projects[projectId];
+        if (!project) return { users: null, projects: null, result: { code: 'project-not-found' } };
+        project.pendingInvites = Array.isArray(project.pendingInvites) ? project.pendingInvites : [];
+        const idx = project.pendingInvites.findIndex(i => i && i.username === username);
+        if (idx === -1) return { users: null, projects: null, result: { code: 'invite-not-found' } };
+        project.pendingInvites.splice(idx, 1);
+        project.members = Array.isArray(project.members) ? project.members : [];
+        if (!project.members.includes(username)) project.members.push(username);
+        if (users[username]) {
+            users[username].projects = Array.isArray(users[username].projects) ? users[username].projects : [];
+            if (!users[username].projects.includes(projectId)) users[username].projects.unshift(projectId);
+        }
+        return { users, projects, result: { code: 'ok', members: project.members.slice(), boards: (project.boards || []).slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'invite-not-found') return res.status(404).json({ message: '没有该邀请' });
         return res.status(500).json({ message: '保存失败' });
     }
+
     try {
-        (project.boards || []).forEach(boardName => {
+        (result.boards || []).forEach(boardName => {
             broadcastToBoard(projectId, boardName, { type: 'member-added', projectId, username });
         });
     } catch (e) {}
-    res.json({ message: '已加入项目', members: project.members });
+    res.json({ message: '已加入项目', members: result.members });
 });
 
-app.post('/api/decline-invite', (req, res) => {
+app.post('/api/decline-invite', async (req, res) => {
     const { username, projectId } = req.body || {};
     if (!username || !projectId) return res.status(400).json({ message: '缺少参数' });
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const projects = readJsonFile(projectsFile, {});
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-    project.pendingInvites = Array.isArray(project.pendingInvites) ? project.pendingInvites : [];
-    const idx = project.pendingInvites.findIndex(i => i && i.username === username);
-    if (idx === -1) return res.status(404).json({ message: '没有该邀请' });
-    project.pendingInvites.splice(idx, 1);
-    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
+    const { success, result } = await withProjectsLock((projects) => {
+        const project = projects[projectId];
+        if (!project) return { data: null, result: { code: 'project-not-found' } };
+        project.pendingInvites = Array.isArray(project.pendingInvites) ? project.pendingInvites : [];
+        const idx = project.pendingInvites.findIndex(i => i && i.username === username);
+        if (idx === -1) return { data: null, result: { code: 'invite-not-found' } };
+        project.pendingInvites.splice(idx, 1);
+        return { data: projects, result: { code: 'ok' } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'invite-not-found') return res.status(404).json({ message: '没有该邀请' });
+        return res.status(500).json({ message: '保存失败' });
+    }
     res.json({ message: '已拒绝邀请' });
 });
 
-app.post('/api/deny-join', (req, res) => {
+app.post('/api/deny-join', async (req, res) => {
     const { projectId, username, actor } = req.body || {};
     if (!projectId || !username || !actor) return res.status(400).json({ message: '缺少参数' });
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const projects = readJsonFile(projectsFile, {});
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-    if (!actor || actor !== project.owner) return res.status(403).json({ message: '只有项目所有者可以审批' });
-    project.pendingRequests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
-    const idx = project.pendingRequests.findIndex(r => r && r.username === username);
-    if (idx === -1) return res.status(404).json({ message: '没有该申请' });
-    project.pendingRequests.splice(idx, 1);
-    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
-    return res.json({ message: '已拒绝申请', pendingRequests: project.pendingRequests });
+    const { success, result } = await withProjectsLock((projects) => {
+        const project = projects[projectId];
+        if (!project) return { data: null, result: { code: 'project-not-found' } };
+        if (!actor || actor !== project.owner) return { data: null, result: { code: 'forbidden' } };
+        project.pendingRequests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
+        const idx = project.pendingRequests.findIndex(r => r && r.username === username);
+        if (idx === -1) return { data: null, result: { code: 'request-not-found' } };
+        project.pendingRequests.splice(idx, 1);
+        return { data: projects, result: { code: 'ok', pendingRequests: project.pendingRequests.slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目所有者可以审批' });
+        if (result && result.code === 'request-not-found') return res.status(404).json({ message: '没有该申请' });
+        return res.status(500).json({ message: '保存失败' });
+    }
+    return res.json({ message: '已拒绝申请', pendingRequests: result.pendingRequests });
 });
 
-app.post('/api/approve-join', (req, res) => {
+app.post('/api/approve-join', async (req, res) => {
     const { projectId, username, actor } = req.body || {};
     if (!projectId || !username || !actor) return res.status(400).json({ message: '缺少参数' });
-    const usersFile = path.join(dataDir, 'users.json');
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const users = readJsonFile(usersFile, {});
-    const projects = readJsonFile(projectsFile, {});
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
-    if (!actor || actor !== project.owner) return res.status(403).json({ message: '只有项目所有者可以审批' });
-    project.pendingRequests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
-    const idx = project.pendingRequests.findIndex(r => r && r.username === username);
-    if (idx === -1) return res.status(404).json({ message: '没有该申请' });
-    project.pendingRequests.splice(idx, 1);
-    project.members = Array.isArray(project.members) ? project.members : [];
-    if (!project.members.includes(username)) project.members.push(username);
-    const user = users[username];
-    if (user) {
-        user.projects = Array.isArray(user.projects) ? user.projects : [];
-        if (!user.projects.includes(projectId)) user.projects.unshift(projectId);
-    }
-    if (!writeJsonFile(projectsFile, projects) || !writeJsonFile(usersFile, users)) {
+    const { success, result } = await withUsersProjectsLock((users, projects) => {
+        const project = projects[projectId];
+        if (!project) return { users: null, projects: null, result: { code: 'project-not-found' } };
+        if (!actor || actor !== project.owner) return { users: null, projects: null, result: { code: 'forbidden' } };
+        project.pendingRequests = Array.isArray(project.pendingRequests) ? project.pendingRequests : [];
+        const idx = project.pendingRequests.findIndex(r => r && r.username === username);
+        if (idx === -1) return { users: null, projects: null, result: { code: 'request-not-found' } };
+        project.pendingRequests.splice(idx, 1);
+        project.members = Array.isArray(project.members) ? project.members : [];
+        if (!project.members.includes(username)) project.members.push(username);
+        const user = users[username];
+        if (user) {
+            user.projects = Array.isArray(user.projects) ? user.projects : [];
+            if (!user.projects.includes(projectId)) user.projects.unshift(projectId);
+        }
+        return {
+            users,
+            projects,
+            result: {
+                code: 'ok',
+                members: project.members.slice(),
+                pendingRequests: project.pendingRequests.slice(),
+                boards: (project.boards || []).slice()
+            }
+        };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目所有者可以审批' });
+        if (result && result.code === 'request-not-found') return res.status(404).json({ message: '没有该申请' });
         return res.status(500).json({ message: '保存失败' });
     }
     try {
-        (project.boards || []).forEach(boardName => {
+        (result.boards || []).forEach(boardName => {
             broadcastToBoard(projectId, boardName, { type: 'member-added', projectId, username });
         });
     } catch (e) {}
-    return res.json({ message: '已同意加入', members: project.members, pendingRequests: project.pendingRequests });
+    return res.json({ message: '已同意加入', members: result.members, pendingRequests: result.pendingRequests });
 });
 
-app.post('/api/archive-board', (req, res) => {
+app.post('/api/archive-board', async (req, res) => {
     const { projectId, boardName, actor } = req.body || {};
     if (!projectId || !boardName) return res.status(400).json({ message: '项目ID和看板名称不能为空' });
+    const { success, result } = await withProjectsLock((projects) => {
+        const project = projects[projectId];
+        if (!project) return { data: null, result: { code: 'project-not-found' } };
 
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const projects = readJsonFile(projectsFile, {});
+        const isProjectOwner = actor && actor === project.owner;
+        const isBoardOwner = project.boardOwners && actor && project.boardOwners[boardName] === actor;
+        if (!isProjectOwner && !isBoardOwner) {
+            return { data: null, result: { code: 'forbidden' } };
+        }
 
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
+        project.archivedBoards = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
+        project.boards = Array.isArray(project.boards) ? project.boards : [];
 
-    const isProjectOwner = actor && actor === project.owner;
-    const isBoardOwner = project.boardOwners && actor && project.boardOwners[boardName] === actor;
-    if (!isProjectOwner && !isBoardOwner) {
-        return res.status(403).json({ message: '只有项目所有者或看板创建者可以归档看板' });
+        const idx = project.boards.indexOf(boardName);
+        if (idx === -1) return { data: null, result: { code: 'board-not-found' } };
+
+        // Move name from boards to archivedBoards (avoid duplicates)
+        project.boards.splice(idx, 1);
+        if (!project.archivedBoards.includes(boardName)) project.archivedBoards.unshift(boardName);
+
+        return { data: projects, result: { code: 'ok', boards: project.boards.slice(), archivedBoards: project.archivedBoards.slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目所有者或看板创建者可以归档看板' });
+        if (result && result.code === 'board-not-found') return res.status(404).json({ message: '看板不存在' });
+        return res.status(500).json({ message: '保存失败' });
     }
 
-    project.archivedBoards = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
-    project.boards = Array.isArray(project.boards) ? project.boards : [];
-
-    const idx = project.boards.indexOf(boardName);
-    if (idx === -1) return res.status(404).json({ message: '看板不存在' });
-
-    // Move name from boards to archivedBoards (avoid duplicates)
-    project.boards.splice(idx, 1);
-    if (!project.archivedBoards.includes(boardName)) project.archivedBoards.unshift(boardName);
-
-    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
-
-    return res.json({ message: '看板已归档', boards: project.boards, archivedBoards: project.archivedBoards });
+    return res.json({ message: '看板已归档', boards: result.boards, archivedBoards: result.archivedBoards });
 });
 
-app.post('/api/unarchive-board', (req, res) => {
+app.post('/api/unarchive-board', async (req, res) => {
     const { projectId, boardName, actor } = req.body || {};
     if (!projectId || !boardName) return res.status(400).json({ message: '项目ID和看板名称不能为空' });
+    const { success, result } = await withProjectsLock((projects) => {
+        const project = projects[projectId];
+        if (!project) return { data: null, result: { code: 'project-not-found' } };
 
-    const projectsFile = path.join(dataDir, 'projects.json');
-    const projects = readJsonFile(projectsFile, {});
+        const isProjectOwner = actor && actor === project.owner;
+        const isBoardOwner = project.boardOwners && actor && project.boardOwners[boardName] === actor;
+        if (!isProjectOwner && !isBoardOwner) {
+            return { data: null, result: { code: 'forbidden' } };
+        }
 
-    const project = projects[projectId];
-    if (!project) return res.status(404).json({ message: '项目不存在' });
+        project.archivedBoards = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
+        project.boards = Array.isArray(project.boards) ? project.boards : [];
 
-    const isProjectOwner = actor && actor === project.owner;
-    const isBoardOwner = project.boardOwners && actor && project.boardOwners[boardName] === actor;
-    if (!isProjectOwner && !isBoardOwner) {
-        return res.status(403).json({ message: '只有项目所有者或看板创建者可以还原看板' });
+        const idx = project.archivedBoards.indexOf(boardName);
+        if (idx === -1) return { data: null, result: { code: 'board-not-found' } };
+
+        project.archivedBoards.splice(idx, 1);
+        if (!project.boards.includes(boardName)) project.boards.unshift(boardName);
+
+        return { data: projects, result: { code: 'ok', boards: project.boards.slice(), archivedBoards: project.archivedBoards.slice() } };
+    });
+
+    if (!success) {
+        if (result && result.code === 'project-not-found') return res.status(404).json({ message: '项目不存在' });
+        if (result && result.code === 'forbidden') return res.status(403).json({ message: '只有项目所有者或看板创建者可以还原看板' });
+        if (result && result.code === 'board-not-found') return res.status(404).json({ message: '归档中不存在该看板' });
+        return res.status(500).json({ message: '保存失败' });
     }
 
-    project.archivedBoards = Array.isArray(project.archivedBoards) ? project.archivedBoards : [];
-    project.boards = Array.isArray(project.boards) ? project.boards : [];
-
-    const idx = project.archivedBoards.indexOf(boardName);
-    if (idx === -1) return res.status(404).json({ message: '归档中不存在该看板' });
-
-    project.archivedBoards.splice(idx, 1);
-    if (!project.boards.includes(boardName)) project.boards.unshift(boardName);
-
-    if (!writeJsonFile(projectsFile, projects)) return res.status(500).json({ message: '保存失败' });
-
-    return res.json({ message: '看板已还原', boards: project.boards, archivedBoards: project.archivedBoards });
+    return res.json({ message: '看板已还原', boards: result.boards, archivedBoards: result.archivedBoards });
 });
