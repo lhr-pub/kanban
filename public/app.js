@@ -4441,6 +4441,7 @@ function moveDeferredCardInDom(cardId, deferred, cardEl) {
     const status = listEl ? listEl.getAttribute('data-status') : null;
     if (!status || !Array.isArray(boardData[status])) return false;
 
+    const replacement = findReplacementCardForMove(el);
     const listCards = boardData[status];
     const index = listCards.findIndex(c => c && c.id === cardId);
     if (index === -1) return false;
@@ -4494,7 +4495,34 @@ function moveDeferredCardInDom(cardId, deferred, cardEl) {
         divider.remove();
     }
     updateContainerEmptyState(cardsEl);
+    if (replacement && replacement.isConnected) boostCardQuickActions(replacement);
     return true;
+}
+
+function findReplacementCardForMove(cardEl) {
+    if (!cardEl) return null;
+    let candidate = cardEl.nextElementSibling;
+    while (candidate && !candidate.classList.contains('card')) {
+        candidate = candidate.nextElementSibling;
+    }
+    if (candidate) return candidate;
+    candidate = cardEl.previousElementSibling;
+    while (candidate && !candidate.classList.contains('card')) {
+        candidate = candidate.previousElementSibling;
+    }
+    return candidate || null;
+}
+
+function boostCardQuickActions(cardEl, duration = 200) {
+    if (!cardEl) return;
+    if (cardEl._quickBoostTimer) {
+        clearTimeout(cardEl._quickBoostTimer);
+    }
+    cardEl.classList.add('quick-actions-boost');
+    cardEl._quickBoostTimer = setTimeout(() => {
+        cardEl.classList.remove('quick-actions-boost');
+        cardEl._quickBoostTimer = null;
+    }, duration);
 }
 
 // 通过 ID 删除卡片
