@@ -4299,15 +4299,15 @@ body {
     }
 }
 
-/* Keep quick actions visible on the replacement card to avoid flicker */
-.card.quick-actions-boost:not(.inline-editing) .card-quick,
-.card.quick-actions-boost:not(.inline-editing) .card-quick-copy,
-.card.quick-actions-boost:not(.inline-editing) .card-quick-trash,
-.card.quick-actions-boost:not(.inline-editing) .card-quick-archive,
-.card.quick-actions-boost:not(.inline-editing) .card-quick-delete,
-.card.quick-actions-boost:not(.inline-editing) .card-quick-star,
-.card.quick-actions-boost:not(.inline-editing) .card-quick-defer {
-    opacity: 1 !important;
+/* Suppress quick actions on the replacement card to avoid flicker */
+.card.quick-actions-suppress:not(.inline-editing) .card-quick,
+.card.quick-actions-suppress:not(.inline-editing) .card-quick-copy,
+.card.quick-actions-suppress:not(.inline-editing) .card-quick-trash,
+.card.quick-actions-suppress:not(.inline-editing) .card-quick-archive,
+.card.quick-actions-suppress:not(.inline-editing) .card-quick-delete,
+.card.quick-actions-suppress:not(.inline-editing) .card-quick-star,
+.card.quick-actions-suppress:not(.inline-editing) .card-quick-defer {
+    opacity: 0 !important;
     transition: none !important;
 }
 
