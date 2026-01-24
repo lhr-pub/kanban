@@ -183,6 +183,9 @@ const UNDO_LIMIT = 20;
 const UNDO_TTL_MS = 10 * 60 * 1000;
 const EDIT_UNDO_MERGE_MS = 1500;
 const CARD_EDIT_FIELDS = new Set(['title', 'description', 'assignee', 'deadline', 'priority', 'labels', 'checklist']);
+const LOCAL_BOARD_RENDER_SKIP_MS = 800;
+const LOCAL_BOARD_RENDER_MAX_PENDING = 3;
+const pendingLocalCardUpdates = new Map();
 
 // DOM 元素
 const loginPage = document.getElementById('loginPage');
@@ -629,6 +632,88 @@ function listsMatch(localLists, remoteLists){
         if (localMeta.status !== remoteMeta.status) return false;
         if (localMeta.title !== remoteMeta.title) return false;
     }
+    return true;
+}
+
+function registerLocalCardUpdate(cardId, fields){
+    if (!cardId || !Array.isArray(fields) || fields.length === 0) return;
+    pendingLocalCardUpdates.set(cardId, { fields: fields.slice(), ts: Date.now() });
+}
+
+function pruneLocalCardUpdates(){
+    const now = Date.now();
+    for (const [cardId, entry] of pendingLocalCardUpdates.entries()) {
+        if (!entry || (now - entry.ts) > LOCAL_BOARD_RENDER_SKIP_MS) {
+            pendingLocalCardUpdates.delete(cardId);
+        }
+    }
+}
+
+function getBoardArrayKeys(board){
+    if (!board || typeof board !== 'object') return [];
+    return Object.keys(board).filter(k => Array.isArray(board[k]));
+}
+
+function stripCardFields(card, ignoreFields){
+    if (!card || typeof card !== 'object') return card;
+    if (!ignoreFields || ignoreFields.size === 0) return card;
+    const next = {};
+    Object.keys(card).forEach((key) => {
+        if (ignoreFields.has(key)) return;
+        next[key] = card[key];
+    });
+    return next;
+}
+
+function cardsEqualExcept(a, b, ignoreFields){
+    if (a === b) return true;
+    if (!a || !b) return false;
+    const left = stripCardFields(a, ignoreFields);
+    const right = stripCardFields(b, ignoreFields);
+    try { return JSON.stringify(left) === JSON.stringify(right); } catch(_) { return false; }
+}
+
+function boardsEqualExceptFields(prevBoard, nextBoard, ignoreMap){
+    if (!prevBoard || !nextBoard) return false;
+    const prevKeys = getBoardArrayKeys(prevBoard).sort();
+    const nextKeys = getBoardArrayKeys(nextBoard).sort();
+    if (prevKeys.length !== nextKeys.length) return false;
+    for (let i = 0; i < prevKeys.length; i++) {
+        if (prevKeys[i] !== nextKeys[i]) return false;
+    }
+    for (const key of prevKeys) {
+        const prevArr = prevBoard[key] || [];
+        const nextArr = nextBoard[key] || [];
+        if (prevArr.length !== nextArr.length) return false;
+        for (let i = 0; i < prevArr.length; i++) {
+            const prevCard = prevArr[i];
+            const nextCard = nextArr[i];
+            if (!prevCard || !nextCard || prevCard.id !== nextCard.id) return false;
+            const ignoreFields = ignoreMap && ignoreMap.get(prevCard.id);
+            if (!cardsEqualExcept(prevCard, nextCard, ignoreFields)) return false;
+        }
+    }
+    return true;
+}
+
+function shouldSkipBoardRenderForLocalUpdate(actor, prevBoard, nextBoard){
+    if (!actor || actor !== currentUser) return false;
+    pruneLocalCardUpdates();
+    if (pendingLocalCardUpdates.size === 0) return false;
+    if (!prevBoard || !nextBoard) return false;
+    if (pendingLocalCardUpdates.size > LOCAL_BOARD_RENDER_MAX_PENDING) return false;
+    if (prevBoard.lists && nextBoard.lists && !listsMatch(prevBoard.lists, nextBoard.lists)) return false;
+
+    const ignoreMap = new Map();
+    for (const [cardId, entry] of pendingLocalCardUpdates.entries()) {
+        if (!entry || !Array.isArray(entry.fields) || entry.fields.length !== 1 || entry.fields[0] !== 'deferred') {
+            return false;
+        }
+        ignoreMap.set(cardId, new Set(entry.fields));
+    }
+
+    if (!boardsEqualExceptFields(prevBoard, nextBoard, ignoreMap)) return false;
+    pendingLocalCardUpdates.clear();
     return true;
 }
 
@@ -3266,6 +3351,7 @@ function handleWebSocketMessage(data) {
             if (data.projectId === currentProjectId && data.boardName === currentBoardName) {
                 // Suppress the first WS update right after an initial fetch-render to avoid double render
                 if (ignoreFirstBoardUpdate) { ignoreFirstBoardUpdate = false; lastLoadedBoardKey = `${currentProjectId}|${currentBoardName}`; break; }
+                const prevBoardData = boardData;
                 boardData = data.board;
                 if (boardData && boardData.lists && Array.isArray(boardData.lists.listIds) && boardData.lists.lists) {
                     if (hasPendingListsSync()) {
@@ -3315,10 +3401,11 @@ function handleWebSocketMessage(data) {
                 prunePendingCardAdds();
                 applyPendingCardAddsToBoardData();
                 flushPendingCardAdds();
-                pendingBoardUpdate = true;
+                const skipRender = shouldSkipBoardRenderForLocalUpdate(data.actor, prevBoardData, boardData);
+                if (!skipRender) pendingBoardUpdate = true;
                 initialBoardRendered = true;
                 if (initialBoardTimeout) { try{ clearTimeout(initialBoardTimeout); }catch(_){} initialBoardTimeout = null; }
-                scheduleDeferredRender();
+                if (!skipRender) scheduleDeferredRender();
                 // 如果编辑模态打开，刷新评论列表
                 if (editingCardId && !editModal.classList.contains('hidden')) {
                     const c = getCardById(editingCardId);
@@ -4320,6 +4407,7 @@ function toggleCardDeferred(cardId, btn) {
     const card = getCardById(cardId);
     if (!card) return;
     const next = !card.deferred;
+    registerLocalCardUpdate(cardId, ['deferred']);
     updateCardImmediately(cardId, { deferred: next });
     if (btn) {
         btn.classList.toggle('active', next);
