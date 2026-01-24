@@ -4301,8 +4301,8 @@ body {
 
 /* Suppress hover flash when cards move between groups */
 #boardPage.suppress-card-hover .card:hover {
-    background: inherit !important;
-    box-shadow: inherit !important;
+    background: var(--card-bg) !important;
+    box-shadow: var(--card-shadow) !important;
 }
 #boardPage.suppress-card-hover .card {
     transition: none !important;
