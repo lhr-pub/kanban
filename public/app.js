@@ -3889,18 +3889,37 @@ function inlineEditCardTitle(cardEl){
     input.focus();
     try { input.setSelectionRange(old.length, old.length); } catch(e) {}
     setCardInlineEditingState(cardEl.dataset.cardId, true);
-    let canceled = false;
-    input.addEventListener('keydown',(e)=>{
-        if (e.key === 'Enter') { e.preventDefault(); try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; input.blur(); }
-        if (e.key === 'Escape') { e.preventDefault(); canceled = true; input.blur(); }
-    });
-    input.addEventListener('blur', ()=>{
+    let settled = false;
+    const commit = () => {
+        if (settled) return;
+        settled = true;
         const val = input.value.trim();
-        const next = (canceled ? old : (val || old));
+        const next = val || old;
         const t = document.createElement('div'); t.className='card-title'; t.textContent = next; t.tabIndex = 0;
         input.replaceWith(t);
-        if (!canceled && val && val !== old) { saveCardTitle(cardEl.dataset.cardId, val); }
+        if (val && val !== old) { saveCardTitle(cardEl.dataset.cardId, val); }
         setCardInlineEditingState(cardEl.dataset.cardId, false);
+    };
+    const cancel = () => {
+        if (settled) return;
+        settled = true;
+        const t = document.createElement('div'); t.className='card-title'; t.textContent = old; t.tabIndex = 0;
+        input.replaceWith(t);
+        setCardInlineEditingState(cardEl.dataset.cardId, false);
+    };
+    input.addEventListener('keydown',(e)=>{
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            try { enterComposerSuppressUntil = Date.now() + 600; } catch(_){}; 
+            commit();
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            cancel();
+        }
+    });
+    input.addEventListener('blur', ()=>{
+        commit();
     });
 }
 
@@ -5753,15 +5772,6 @@ function editCardTitle(cardId, clickEvent) {
         e.stopPropagation();
     });
 
-    // in editCardTitle: blur handler already saves; add fallback timer after focus
-    setTimeout(() => {
-        if (document.activeElement !== input) return;
-        // safety autosave after 8s if still focused
-        const t = setInterval(() => {
-            if (document.activeElement !== input) { clearInterval(t); return; }
-            // no-op: keep alive; autosave is handled on blur/ctrl+enter
-        }, 2000);
-    }, 50);
 }
 
 // 内联编辑任务描述
@@ -5980,13 +5990,6 @@ function editCardDescription(cardId, clickEvent) {
         e.stopPropagation();
     });
 
-    // strengthen blur saving and add fallback timer
-    setTimeout(() => {
-        if (document.activeElement !== textarea) return;
-        const t2 = setInterval(() => {
-            if (document.activeElement !== textarea) { clearInterval(t2); return; }
-        }, 2000);
-    }, 50);
 }
 
 // 内联编辑分配用户
@@ -6218,7 +6221,7 @@ function shouldKeepInlineEditingActive(cardId) {
 
 // 检测是否有任何内联编辑控件正在打开
 function isAnyInlineEditorOpen() {
-    return !!document.querySelector('.inline-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown, .card-composer.is-open');
+    return !!document.querySelector('.inline-title-input, .card-title-input, .inline-description-textarea, .inline-date-input, .assignee-dropdown, .card-composer.is-open');
 }
 
 // 恢复待聚焦的编辑器（带重试）
