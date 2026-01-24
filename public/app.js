@@ -4017,7 +4017,9 @@ function inlineEditCardTitle(cardEl){
     if (cardEl.querySelector('.card-title-input')) return;
     const view = cardEl.querySelector('.card-title');
     if (!view) return;
-    const old = view ? (view.textContent || '') : '';
+    const cardId = cardEl.dataset.cardId;
+    const card = cardId ? getCardById(cardId) : null;
+    const old = (card && typeof card.title === 'string') ? card.title : (view.textContent || '');
     const input = document.createElement('textarea');
     input.className = 'card-title-input';
     input.value = old;
@@ -4026,24 +4028,25 @@ function inlineEditCardTitle(cardEl){
     try { autoResizeTextarea(input); } catch(e) {}
     input.focus();
     try { input.setSelectionRange(old.length, old.length); } catch(e) {}
-    setCardInlineEditingState(cardEl.dataset.cardId, true);
+    setCardInlineEditingState(cardId, true);
     let settled = false;
     const commit = () => {
         if (settled) return;
         settled = true;
         const val = input.value.trim();
-        const next = val || old;
-        const t = document.createElement('div'); t.className='card-title'; t.textContent = next; t.tabIndex = 0;
+        const display = val || '未命名';
+        const t = document.createElement('div'); t.className='card-title'; t.textContent = display; t.tabIndex = 0;
         input.replaceWith(t);
-        if (val && val !== old) { saveCardTitle(cardEl.dataset.cardId, val); }
-        setCardInlineEditingState(cardEl.dataset.cardId, false);
+        if (val !== old) { saveCardTitle(cardId, val); }
+        setCardInlineEditingState(cardId, false);
     };
     const cancel = () => {
         if (settled) return;
         settled = true;
-        const t = document.createElement('div'); t.className='card-title'; t.textContent = old; t.tabIndex = 0;
+        const display = old || '未命名';
+        const t = document.createElement('div'); t.className='card-title'; t.textContent = display; t.tabIndex = 0;
         input.replaceWith(t);
-        setCardInlineEditingState(cardEl.dataset.cardId, false);
+        setCardInlineEditingState(cardId, false);
     };
     input.addEventListener('keydown',(e)=>{
         if (e.key === 'Enter') {
@@ -4327,7 +4330,74 @@ function toggleCardDeferred(cardId, btn) {
     }
     const cardEl = btn && btn.closest ? btn.closest('.card') : document.querySelector(`.card[data-card-id="${cardId}"]`);
     if (cardEl) cardEl.classList.toggle('card-deferred', next);
-    renderBoard();
+    if (!moveDeferredCardInDom(cardId, next, cardEl)) {
+        renderBoard();
+    }
+}
+
+function moveDeferredCardInDom(cardId, deferred, cardEl) {
+    const el = cardEl || document.querySelector(`.card[data-card-id="${cardId}"]`);
+    if (!el) return false;
+    const cardsEl = el.closest('.cards');
+    if (!cardsEl) return false;
+    const listEl = el.closest('.list');
+    const status = listEl ? listEl.getAttribute('data-status') : null;
+    if (!status || !Array.isArray(boardData[status])) return false;
+
+    const listCards = boardData[status];
+    const index = listCards.findIndex(c => c && c.id === cardId);
+    if (index === -1) return false;
+
+    let divider = cardsEl.querySelector('.card-group-divider');
+    if (deferred && !divider) {
+        divider = document.createElement('div');
+        divider.className = 'card-group-divider';
+        divider.textContent = '稍后';
+        let insertAfter = null;
+        for (let i = listCards.length - 1; i >= 0; i--) {
+            const c = listCards[i];
+            if (!c || c.deferred) continue;
+            const ref = cardsEl.querySelector(`.card[data-card-id="${c.id}"]`);
+            if (ref) { insertAfter = ref; break; }
+        }
+        if (insertAfter) insertAfter.after(divider);
+        else cardsEl.prepend(divider);
+    }
+
+    let refAfter = null;
+    for (let i = index - 1; i >= 0; i--) {
+        const c = listCards[i];
+        if (!c || !!c.deferred !== deferred) continue;
+        const ref = cardsEl.querySelector(`.card[data-card-id="${c.id}"]`);
+        if (ref) { refAfter = ref; break; }
+    }
+    let refBefore = null;
+    if (!refAfter) {
+        for (let i = index + 1; i < listCards.length; i++) {
+            const c = listCards[i];
+            if (!c || !!c.deferred !== deferred) continue;
+            const ref = cardsEl.querySelector(`.card[data-card-id="${c.id}"]`);
+            if (ref) { refBefore = ref; break; }
+        }
+    }
+
+    if (refAfter) {
+        refAfter.after(el);
+    } else if (refBefore) {
+        refBefore.before(el);
+    } else if (deferred && divider) {
+        divider.after(el);
+    } else if (!deferred && divider) {
+        divider.before(el);
+    } else {
+        cardsEl.appendChild(el);
+    }
+
+    if (divider && !cardsEl.querySelector('.card.card-deferred')) {
+        divider.remove();
+    }
+    updateContainerEmptyState(cardsEl);
+    return true;
 }
 
 // 通过 ID 删除卡片
@@ -4453,8 +4523,6 @@ function gatherDrawerUpdates(){
 function saveCardFromDrawer(){
     if(!drawerCardId) return;
     const updates = gatherDrawerUpdates();
-    if (!updates.title) { uiToast('任务标题不能为空','error'); return; }
-
     applyCardEditsWithUndo(drawerCardId, updates, { label: '编辑任务' });
 
     closeCardModal();
@@ -4900,11 +4968,6 @@ function saveCard() {
     const description = document.getElementById('editCardDescription').value.trim();
     const assignee = document.getElementById('editCardAssignee').value || null;
     const deadline = document.getElementById('editCardDeadline').value || null;
-
-    if (!title) {
-        uiToast('任务标题不能为空','error');
-        return;
-    }
 
     const updates = { title, description, assignee, deadline };
 
