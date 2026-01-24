@@ -4310,6 +4310,16 @@ body {
     opacity: 0 !important;
     transition: none !important;
 }
+#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick,
+#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-copy,
+#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-trash,
+#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-archive,
+#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-delete,
+#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-star,
+#boardPage .card.quick-actions-suppress:not(.inline-editing) .card-quick-defer {
+    opacity: 0 !important;
+    transition: none !important;
+}
 
 /* Suppress hover flash when cards move between groups */
 .cards.suppress-card-hover .card:hover {

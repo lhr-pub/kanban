@@ -4473,7 +4473,11 @@ function moveDeferredCardInDom(cardId, deferred, cardEl) {
     }
     updateContainerEmptyState(cardsEl);
     suppressCardHover(cardsEl);
+    const insertionNeighbor = getNextCardSibling(el);
     if (replacement && replacement.isConnected) suppressCardQuickActions(replacement);
+    if (insertionNeighbor && insertionNeighbor.isConnected && insertionNeighbor !== replacement) {
+        suppressCardQuickActions(insertionNeighbor);
+    }
     return true;
 }
 
@@ -4489,15 +4493,20 @@ function suppressCardHover(container, duration = 160) {
     }, duration);
 }
 
-function findReplacementCardForMove(cardEl) {
+function getNextCardSibling(cardEl) {
     if (!cardEl) return null;
     let sibling = cardEl.nextElementSibling;
-    while (sibling) {
-        if (sibling.classList.contains('card-group-divider')) return null;
-        if (sibling.classList.contains('card')) return sibling;
-        if (sibling.classList.contains('card-composer') || sibling.classList.contains('add-card')) return null;
+    while (sibling && !sibling.classList.contains('card')) {
+        if (sibling.classList.contains('card-group-divider') || sibling.classList.contains('card-composer') || sibling.classList.contains('add-card')) return null;
         sibling = sibling.nextElementSibling;
     }
+    return sibling && sibling.classList.contains('card') ? sibling : null;
+}
+
+function findReplacementCardForMove(cardEl) {
+    if (!cardEl) return null;
+    const sibling = cardEl.nextElementSibling;
+    if (sibling && sibling.classList.contains('card')) return sibling;
     return null;
 }
 
